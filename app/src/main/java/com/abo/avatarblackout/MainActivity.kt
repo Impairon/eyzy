@@ -55,11 +55,15 @@ class MainActivity : Activity() {
         tabs.addView(lowery, LinearLayout.LayoutParams(0, dp(48), 1f))
         tabs.addView(sibha, LinearLayout.LayoutParams(0, dp(48), 1f))
         shell.addView(tabs)
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+        }
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(pad, dp(8), pad, pad)
         }
-        shell.addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
+        scroll.addView(content)
+        shell.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(shell)
         lowery.setOnClickListener { selectTab(lowery, sibha); showLowery() }
         sibha.setOnClickListener { selectTab(sibha, lowery); showSibha() }
@@ -70,7 +74,7 @@ class MainActivity : Activity() {
     private fun showLowery() {
         content.removeAllViews()
         content.addView(card("Avatar blackout") {
-            addText(it, "Keep profile pictures hidden without blocking touch or typing.")
+            addText(it, "Hide avatar pictures with a narrow bar while keeping chats, buttons, and the keyboard usable.")
             val enabled = Switch(this).apply {
                 text = "Blackout service enabled"
                 textSize = 16f
@@ -90,7 +94,7 @@ class MainActivity : Activity() {
             addText(it, "Lowery draws a narrow vertical black bar over each detected avatar. It does not cover message text, controls, or the keyboard.")
         })
         content.addView(card("Quick Settings") {
-            addText(it, "Add the Hide avatars tile to toggle Lowery from the notification shade.")
+            addText(it, "Add the Hide avatars tile to toggle Lowery quickly from the notification shade.")
         })
     }
 
@@ -168,6 +172,8 @@ class MainActivity : Activity() {
 
     private fun actionButton(text: String) = Button(this).apply {
         this.text = text
+        isAllCaps = false
+        minHeight = dp(48)
         setTextColor(Color.WHITE)
         background = rounded(purple, 14)
     }
@@ -175,6 +181,7 @@ class MainActivity : Activity() {
     private fun tabButton(text: String) = Button(this).apply {
         this.text = text
         textSize = 15f
+        minHeight = dp(48)
         setTextColor(Color.WHITE)
         isAllCaps = false
         background = rounded(panel, 14)

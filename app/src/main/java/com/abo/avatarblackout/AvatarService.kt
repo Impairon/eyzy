@@ -3,7 +3,6 @@ package com.abo.avatarblackout
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -13,20 +12,14 @@ import android.graphics.RectF
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
 import android.util.Log
-import android.view.Display
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
-import java.util.concurrent.Executors
-import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.max
-import kotlin.math.sin
 
 class AvatarService : AccessibilityService() {
 
@@ -43,11 +36,6 @@ class AvatarService : AccessibilityService() {
         // view-id fragments that mark a profile picture
         private val AVATAR_ID = Regex("photo|avatar|picture|profile|portrait|headshot|actor_image|initials|group_image")
 
-        // --- Telegram in-chat pixel check (tune these if it misses or over-blacks) ---
-        private const val EDGE_DIST = 45        // colour jump (sum of R,G,B) across the circle's edge that counts as "an edge"
-        private const val EDGE_SHARE = 0.55f    // share of the 24 edge samples that must show that jump
-        private const val RECHECK_MS = 1500L    // look again at least this often (photos can load late)
-        private const val SHOT_GAP_MS = 450L    // Android refuses screenshots closer together than this
     }
 
     /** One black circle: where to draw it, and an optional area it must not leave (for half-visible rows). */
@@ -62,12 +50,9 @@ class AvatarService : AccessibilityService() {
         var hasInput = false
     }
 
-    private class Decision(val top: Int, val h: Int, val avatar: Boolean)
-
     private lateinit var wm: WindowManager
     private var overlay: OverlayView? = null
     private val handler = Handler(Looper.getMainLooper())
-    private val worker = Executors.newSingleThreadExecutor()
     private var pending = false
     private val scan = Runnable { pending = false; doScan() }
     // safety net: rescan every second so a missed event or a dropped overlay recovers by itself
@@ -80,11 +65,6 @@ class AvatarService : AccessibilityService() {
         }
     }
 
-    @Volatile private var tgDecisions: List<Decision> = emptyList()
-    @Volatile private var tgAnalyzedAt = 0L
-    @Volatile private var shotBusy = false
-    private var lastShot = 0L
-
     override fun onServiceConnected() {
         instance = this
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -95,7 +75,6 @@ class AvatarService : AccessibilityService() {
     override fun onUnbind(intent: Intent?): Boolean {
         instance = null
         handler.removeCallbacks(tick)
-        worker.shutdownNow()
         overlay?.let { try { wm.removeView(it) } catch (_: Exception) {} }
         overlay = null
         return super.onUnbind(intent)
@@ -104,7 +83,6 @@ class AvatarService : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
-        if (e?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) tgDecisions = emptyList()
         if (!Prefs.isEnabled(this) || pending) return
         pending = true
         handler.post(scan)
@@ -114,7 +92,6 @@ class AvatarService : AccessibilityService() {
         handler.removeCallbacks(scan)
         handler.removeCallbacks(tick)
         pending = false
-        tgDecisions = emptyList()
         if (Prefs.isEnabled(this)) {
             doScan()
             handler.postDelayed(tick, 1000)
@@ -169,9 +146,9 @@ class AvatarService : AccessibilityService() {
                     val sc = Scan()
                     walk(root, sc, 0)
                     out.addAll(sc.items)
-                    // Telegram: no message box on screen = chat list (position guess);
-                    // message box on screen = inside a chat (pixel check)
-                    if (!sc.hasInput) out.addAll(sc.tgRows) else tgChat(sc, out)
+                    if (packageName in TELEGRAM) {
+                        if (!sc.hasInput) out.addAll(sc.tgRows) else tgChat(sc, out)
+                    }
                 }
             }
             // if a big container and a bigger-than-half child both matched, keep the child
@@ -181,7 +158,11 @@ class AvatarService : AccessibilityService() {
                         b.rect.area() * 2 >= a.rect.area()
                 }
             }
-            overlay?.setItems(finalItems)
+            val uniqueItems = finalItems.distinctBy {
+                "${it.rect.left},${it.rect.top},${it.rect.right},${it.rect.bottom}"
+            }
+            Log.d(TAG, "rendering ${uniqueItems.size} avatar bars")
+            overlay?.setItems(uniqueItems)
         } catch (e: Exception) {
             Log.w(TAG, "scan failed", e)
         }
@@ -223,14 +204,14 @@ class AvatarService : AccessibilityService() {
         val bySize = isImage && n.packageName?.toString() == LINKEDIN && w >= 28 * dp && w <= 110 * dp
         if (!byId && !bySize) return null
         val ratio = w.toFloat() / h
-        if (ratio >= 0.8f && ratio <= 1.25f) return Item(r)
+        if (ratio >= 0.8f && ratio <= 1.25f) return Item(barFor(r))
         // Half scrolled off the top or bottom edge: rebuild the whole circle and clip it to what is visible
         val textOnly = cls.contains("TextView") && !id.contains("initials")
         if (byId && !textOnly && h >= 0.25f * w && h < 0.8f * w) {
             val atBottom = (r.top + r.bottom) / 2 > resources.displayMetrics.heightPixels / 2
             val full = if (atBottom) Rect(r.left, r.top, r.right, r.top + w)
                        else Rect(r.left, r.bottom - w, r.right, r.bottom)
-            return Item(full, r)
+            return Item(barFor(full), r)
         }
         return null
     }
@@ -268,7 +249,8 @@ class AvatarService : AccessibilityService() {
     }
 
     // ---------------------------------------------------------------------------------------
-    // Telegram inside a chat: avatars are not in the accessibility tree, so we look at the pixels.
+    // Telegram inside a chat: avatars are not in the accessibility tree, so derive their
+    // fixed left-side position from the visible message rows.
     // ---------------------------------------------------------------------------------------
 
     /** Where Telegram draws the sender's avatar: bottom-left of the message row, 42dp wide. */
@@ -289,111 +271,14 @@ class AvatarService : AccessibilityService() {
         for (r in rows) {
             val avatar = slot(r, dp)
             val clip = Rect(r.left, max(r.top, toolbarBottom), r.left + (54 * dp).toInt(), r.bottom)
-            out.add(Item(avatar, clip))
+            out.add(Item(barFor(avatar), clip))
         }
     }
 
-    private fun requestShot(rows: List<Rect>) {
-        if (Build.VERSION.SDK_INT < 30 || shotBusy) return
-        val now = SystemClock.uptimeMillis()
-        if (now - lastShot < SHOT_GAP_MS) return
-        shotBusy = true
-        lastShot = now
-        val snap = rows.map { Rect(it) }
-        val dp = resources.displayMetrics.density
-        try {
-            takeScreenshot(Display.DEFAULT_DISPLAY, worker, object : AccessibilityService.TakeScreenshotCallback {
-                override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
-                    var decisions: List<Decision>? = null
-                    try {
-                        val hb = result.hardwareBuffer
-                        val hw = Bitmap.wrapHardwareBuffer(hb, result.colorSpace)
-                        val bmp = hw?.copy(Bitmap.Config.ARGB_8888, false)
-                        hb.close()
-                        hw?.recycle()
-                        if (bmp != null) {
-                            decisions = analyze(bmp, snap, dp)
-                            bmp.recycle()
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "analysis failed", e)
-                    }
-                    val d = decisions
-                    handler.post {
-                        shotBusy = false
-                        if (d != null) {
-                            tgDecisions = d
-                            tgAnalyzedAt = SystemClock.uptimeMillis()
-                        }
-                        doScan()
-                    }
-                }
-
-                override fun onFailure(errorCode: Int) {
-                    Log.w(TAG, "screenshot failed: $errorCode")
-                    handler.post { shotBusy = false }
-                }
-            })
-        } catch (e: Exception) {
-            shotBusy = false
-            Log.w(TAG, "takeScreenshot not available", e)
-        }
-    }
-
-    private fun analyze(bmp: Bitmap, rows: List<Rect>, dp: Float): List<Decision>? {
-        val sx = bmp.width.toFloat() / resources.displayMetrics.widthPixels
-        // protected chats come back completely black: don't trust those
-        var dark = 0; var total = 0
-        for (i in 1..4) for (j in 1..4) {
-            val x = bmp.width * i / 5
-            val y = (bmp.height * (0.15f + 0.15f * j)).toInt()
-            total++
-            if ((bmp.getPixel(x, y) and 0xFFFFFF) == 0) dark++
-        }
-        if (dark >= total - 1) return null
-
-        val result = ArrayList<Decision>()
-        for (r in rows) {
-            result.add(Decision(r.top, r.height(), looksLikeAvatar(bmp, slot(r, dp), sx)))
-        }
-        return result
-    }
-
-    private fun colorDist(a: Int, b: Int) =
-        abs(Color.red(a) - Color.red(b)) + abs(Color.green(a) - Color.green(b)) + abs(Color.blue(a) - Color.blue(b))
-
-    private fun looksLikeAvatar(b: Bitmap, s: Rect, sx: Float): Boolean {
-        val cx = (s.left + s.right) / 2f * sx
-        val cy = (s.top + s.bottom) / 2f * sx
-        val rad = s.width() / 2f * sx
-        fun inside(x: Int, y: Int) = x in 0 until b.width && y in 0 until b.height
-
-        // 1) solid black inside the circle = our own overlay is already covering an avatar here
-        var black = 0; var n = 0
-        for (k in 0 until 12) {
-            val a = k * 2 * Math.PI / 12
-            val rr = if (k % 2 == 0) rad * 0.45f else rad * 0.75f
-            val x = (cx + rr * cos(a)).toInt(); val y = (cy + rr * sin(a)).toInt()
-            if (!inside(x, y)) continue
-            n++
-            if ((b.getPixel(x, y) and 0xFFFFFF) == 0) black++
-        }
-        if (n >= 8 && black >= n - 1) return true
-
-        // 2) a hard circular edge: the colour just inside the rim differs from just outside it
-        var valid = 0; var edges = 0
-        val gap = 4f * sx
-        for (k in 0 until 24) {
-            val a = k * 2 * Math.PI / 24
-            val xi = (cx + (rad - gap) * cos(a)).toInt(); val yi = (cy + (rad - gap) * sin(a)).toInt()
-            val xo = (cx + (rad + gap) * cos(a)).toInt(); val yo = (cy + (rad + gap) * sin(a)).toInt()
-            if (!inside(xi, yi) || !inside(xo, yo)) continue
-            valid++
-            if (colorDist(b.getPixel(xi, yi), b.getPixel(xo, yo)) > EDGE_DIST) edges++
-        }
-        val avatar = valid >= 12 && edges >= valid * EDGE_SHARE
-        Log.d(TAG, "slot y=${s.top} edges=$edges/$valid black=$black/$n -> avatar=$avatar")
-        return avatar
+    private fun barFor(r: Rect): Rect {
+        val width = (r.width() * 0.24f).toInt().coerceAtLeast((8 * resources.displayMetrics.density).toInt())
+        val center = (r.left + r.right) / 2
+        return Rect(center - width / 2, r.top, center + width / 2, r.bottom)
     }
 
     private class OverlayView(c: Context) : View(c) {
@@ -415,13 +300,10 @@ class AvatarService : AccessibilityService() {
                     )
                 }
                 val r = it.rect
-                val left = (r.left - dx).toFloat()
-                val top = (r.top - dy).toFloat()
-                val right = (r.right - dx).toFloat()
-                val bottom = (r.bottom - dy).toFloat()
-                val width = (r.width() * 0.24f).coerceIn(8f * resources.displayMetrics.density, 16f * resources.displayMetrics.density)
-                val center = (left + right) / 2f
-                canvas.drawRect(center - width / 2f, top, center + width / 2f, bottom, paint)
+                canvas.drawRect(
+                    (r.left - dx).toFloat(), (r.top - dy).toFloat(),
+                    (r.right - dx).toFloat(), (r.bottom - dy).toFloat(), paint
+                )
                 canvas.restore()
             }
         }
