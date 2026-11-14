@@ -315,30 +315,31 @@ class AvatarService : AccessibilityService() {
             y = resources.displayMetrics.heightPixels / 2
         }
 
-        private fun orientationKey() =
-            if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-                "landscape"
-            } else {
-                "portrait"
-            }
-
-        private fun profileId() = Prefs.profileForPackage(this, activePackage).id
-
-        private fun manualRects(): List<Rect> {
-            val scoped = Prefs.manualHideRects(this, profileId(), orientationKey())
-            if (scoped.isNotEmpty()) return scoped
-            val legacy = Prefs.manualHideRects(this)
-            if (legacy.isNotEmpty()) {
-                saveManualRects(legacy)
-            }
-            return legacy
-        }
-
-        private fun saveManualRects(rects: List<Rect>) =
-            Prefs.saveManualHideRects(this, profileId(), orientationKey(), rects)
         wm.addView(v, lp)
         control = v
     }
+
+    private fun orientationKey() =
+        if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            "landscape"
+        } else {
+            "portrait"
+        }
+
+    private fun profileId() = Prefs.profileForPackage(this, activePackage).id
+
+    private fun manualRects(): List<Rect> {
+        val scoped = Prefs.manualHideRects(this, profileId(), orientationKey())
+        if (scoped.isNotEmpty()) return scoped
+        val legacy = Prefs.manualHideRects(this)
+        if (legacy.isNotEmpty()) {
+            saveManualRects(legacy)
+        }
+        return legacy
+    }
+
+    private fun saveManualRects(rects: List<Rect>) =
+        Prefs.saveManualHideRects(this, profileId(), orientationKey(), rects)
 
     private fun removeControl() {
         control?.let { try { wm.removeView(it) } catch (_: Exception) {} }
