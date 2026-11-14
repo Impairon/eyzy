@@ -116,7 +116,7 @@ object Prefs {
                 }
             }
         }.getOrDefault(emptyList())
-        if (parsed.isNotEmpty()) return parsed
+        if (raw != null) return parsed
         val defaults = listOf(
             Profile("whatsapp", "WhatsApp", "com.whatsapp"),
             Profile("telegram", "Telegram", "org.telegram.messenger"),
@@ -141,6 +141,23 @@ object Prefs {
             if (it.id == id) it.copy(name = cleanName) else it
         })
     }
+
+    fun deleteProfile(c: Context, id: String) {
+        val prefs = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        saveProfiles(c, profiles(c).filterNot { it.id == id })
+        prefs.edit().apply {
+            prefs.all.keys
+                .filter { it.startsWith("manual_hide_rect_${id}_") }
+                .forEach { remove(it) }
+        }.apply()
+    }
+
+    fun hasProfileForPackage(c: Context, packageName: String): Boolean =
+        profiles(c).any { profile ->
+            profile.packageName == packageName ||
+                (profile.id == "whatsapp" && packageName.startsWith("com.whatsapp")) ||
+                (profile.id == "telegram" && packageName.startsWith("org.telegram"))
+        }
 
     fun profileForPackage(c: Context, packageName: String): Profile {
         return profiles(c).lastOrNull { profile ->

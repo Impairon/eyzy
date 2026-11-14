@@ -73,7 +73,7 @@ class AvatarService : AccessibilityService() {
     private var resizingTouchOffset: Pair<Float, Float>? = null
     private var resizingPreview: Rect? = null
     private var profileCreationId: String? = null
-    private var activePackage = "com.whatsapp"
+    private var activePackage = ""
     private val undoStack = ArrayDeque<List<Rect>>()
     private val redoStack = ArrayDeque<List<Rect>>()
     private val handler = Handler(Looper.getMainLooper())
@@ -108,6 +108,18 @@ class AvatarService : AccessibilityService() {
     }
 
     override fun onInterrupt() {}
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (manualSessionActive) {
+            removeControl()
+            addControl()
+        }
+        if (Prefs.hasProfileForPackage(this, activePackage)) {
+            Prefs.setManualHideVisible(this, true)
+        }
+        doScan()
+    }
 
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
         if (Prefs.maskMode(this) == Prefs.MaskMode.NONE) return
@@ -293,7 +305,9 @@ class AvatarService : AccessibilityService() {
     }
 
     private fun closeManualSession() {
+        cancelProfileCreation()
         manualSessionActive = false
+        Prefs.setManualHideVisible(this, false)
         removeControl()
         doScan()
     }
@@ -341,14 +355,7 @@ class AvatarService : AccessibilityService() {
         profileCreationId ?: Prefs.profileForPackage(this, activePackage).id
 
     private fun manualRects(): List<Rect> {
-        val scoped = Prefs.manualHideRects(this, profileId(), orientationKey())
-        if (Prefs.hasManualHideRects(this, profileId(), orientationKey())) return scoped
-        if (profileCreationId != null) return emptyList()
-        val legacy = Prefs.manualHideRects(this)
-        if (legacy.isNotEmpty()) {
-            saveManualRects(legacy)
-        }
-        return legacy
+        return Prefs.manualHideRects(this, profileId(), orientationKey())
     }
 
     private fun saveManualRects(rects: List<Rect>) =
@@ -377,6 +384,11 @@ class AvatarService : AccessibilityService() {
         profileCreationId = null
         control?.invalidate()
         doScan()
+    }
+
+    private fun cancelProfileCreation() {
+        profileCreationId?.let { Prefs.deleteProfile(this, it) }
+        profileCreationId = null
     }
 
     private fun removeControl() {
@@ -421,7 +433,7 @@ class AvatarService : AccessibilityService() {
     private fun doScan() {
         try {
             ensureOverlay()
-            activePackage = windows.asSequence()
+            val detectedPackage = windows.asSequence()
                 .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
                 .mapNotNull { window ->
                     runCatching {
@@ -434,8 +446,19 @@ class AvatarService : AccessibilityService() {
                     }.getOrNull()
                 }
                 .firstOrNull() ?: activePackage
+            if (detectedPackage != activePackage) {
+                activePackage = detectedPackage
+                if (Prefs.hasProfileForPackage(this, activePackage)) {
+                    Prefs.setManualHideVisible(this, true)
+                }
+            }
             val out = ArrayList<Item>()
-            val manualItems = if (Prefs.manualHideVisible(this) && manualRects().isNotEmpty()) {
+            val hasActiveProfile = Prefs.hasProfileForPackage(this, activePackage)
+            val manualItems = if (
+                Prefs.manualHideVisible(this) &&
+                (manualSessionActive || hasActiveProfile) &&
+                manualRects().isNotEmpty()
+            ) {
                 manualRects().map { Item(it, forceRect = true) }
             } else emptyList()
             out.addAll(manualItems)

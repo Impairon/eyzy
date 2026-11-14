@@ -2,6 +2,7 @@ package com.abo.avatarblackout
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
@@ -50,6 +51,8 @@ class BlackoutTile : TileService() {
 
     private fun update() {
         val t = qsTile ?: return
+        t.label = "swizy"
+        t.icon = Icon.createWithResource(this, R.drawable.ic_tile)
         t.state = if (Prefs.isEnabled(this) && AvatarService.instance != null)
             Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
         t.updateTile()

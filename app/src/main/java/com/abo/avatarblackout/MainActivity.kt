@@ -270,7 +270,7 @@ class MainActivity : Activity() {
             addText(it, "Simple line is the default straight vertical bar. Dynamic circle mode and both size controls are available in Settings.")
         })
         content.addView(card("Quick Settings") {
-            addText(it, "Add the Hide avatars tile to toggle Lowery quickly from the notification shade.")
+            addText(it, "Add the swizy tile to start or close swizy from the notification shade.")
         })
     }
 
@@ -331,11 +331,31 @@ class MainActivity : Activity() {
             val profileNames = profiles.map { profile ->
                 "${profile.name} · ${profile.packageName}"
             }.toTypedArray()
-            val profileList = Spinner(this)
-            profileList.adapter = ArrayAdapter(
-                this, android.R.layout.simple_spinner_dropdown_item, profileNames
-            )
-            it.addView(profileList, LinearLayout.LayoutParams(-1, dp(52)))
+            profiles.forEach { profile ->
+                val row = LinearLayout(this).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                row.addView(TextView(this@MainActivity).apply {
+                    text = "${profile.name}\n${profile.packageName}"
+                    textSize = 14f
+                    setTextColor(Color.WHITE)
+                }, LinearLayout.LayoutParams(0, dp(58), 1f))
+                val remove = actionButton("Remove")
+                remove.setOnClickListener {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Remove profile?")
+                        .setMessage(profile.name)
+                        .setPositiveButton("Remove") { _, _ ->
+                            Prefs.deleteProfile(this@MainActivity, profile.id)
+                            AvatarService.instance?.refresh()
+                            showSettings()
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+                row.addView(remove, LinearLayout.LayoutParams(dp(110), dp(52)))
+                it.addView(row)
+            }
             val create = actionButton("Create new profile")
             create.setOnClickListener { showCreateProfileDialog() }
             it.addView(create)
