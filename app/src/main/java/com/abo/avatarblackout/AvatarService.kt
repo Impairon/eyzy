@@ -193,32 +193,23 @@ class AvatarService : AccessibilityService() {
     }
 
     private fun movedArea(old: Rect, start: Pair<Float, Float>, end: Pair<Float, Float>): Rect {
-        val moved = Rect(old).apply {
-            offset((end.first - start.first).toInt(), (end.second - start.second).toInt())
-        }
         val screenW = resources.displayMetrics.widthPixels
         val screenH = resources.displayMetrics.heightPixels
-        moved.offset(
-            (0 - moved.left).coerceAtMost(0) + (screenW - moved.right).coerceAtMost(0),
-            (0 - moved.top).coerceAtMost(0) + (screenH - moved.bottom).coerceAtMost(0)
-        )
-        return moved
+        val left = (old.left + end.first - start.first).toInt()
+            .coerceIn(0, (screenW - old.width()).coerceAtLeast(0))
+        val top = (old.top + end.second - start.second).toInt()
+            .coerceIn(0, (screenH - old.height()).coerceAtLeast(0))
+        return Rect(left, top, left + old.width(), top + old.height())
     }
 
     private fun areaAtTouch(old: Rect, x: Float, y: Float, offset: Pair<Float, Float>): Rect {
-        val moved = Rect(
-            (x - offset.first).toInt(),
-            (y - offset.second).toInt(),
-            (x - offset.first + old.width()).toInt(),
-            (y - offset.second + old.height()).toInt()
-        )
         val screenW = resources.displayMetrics.widthPixels
         val screenH = resources.displayMetrics.heightPixels
-        moved.offset(
-            (0 - moved.left).coerceAtMost(0) + (screenW - moved.right).coerceAtMost(0),
-            (0 - moved.top).coerceAtMost(0) + (screenH - moved.bottom).coerceAtMost(0)
-        )
-        return moved
+        val left = (x - offset.first).toInt()
+            .coerceIn(0, (screenW - old.width()).coerceAtLeast(0))
+        val top = (y - offset.second).toInt()
+            .coerceIn(0, (screenH - old.height()).coerceAtLeast(0))
+        return Rect(left, top, left + old.width(), top + old.height())
     }
 
     private fun closeManualSession() {
