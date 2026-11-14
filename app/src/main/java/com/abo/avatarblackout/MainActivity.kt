@@ -233,6 +233,20 @@ class MainActivity : Activity() {
         content.addView(card("Mask shape") {
             addText(it, "Simple line is the default straight vertical bar. Dynamic circle mode and both size controls are available in Settings.")
         })
+        content.addView(card("Hide an area manually") {
+            addText(it, "Choose any part of WhatsApp or another supported app and keep it completely black. The small side control can hide or restore it, choose a new area, or remove it.")
+            val manual = actionButton("Highlight an area to hide")
+            manual.setOnClickListener {
+                val service = AvatarService.instance
+                if (service == null || !Prefs.isEnabled(this)) {
+                    Toast.makeText(this, "Enable the blackout service first", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "Drag over the area you want to hide", Toast.LENGTH_LONG).show()
+                    service.beginManualHideSelection()
+                }
+            }
+            it.addView(manual)
+        })
         content.addView(card("Quick Settings") {
             addText(it, "Add the Hide avatars tile to toggle Lowery quickly from the notification shade.")
         })

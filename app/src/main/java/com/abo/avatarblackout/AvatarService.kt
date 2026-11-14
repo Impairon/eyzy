@@ -16,6 +16,7 @@ import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.view.MotionEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
@@ -39,7 +40,11 @@ class AvatarService : AccessibilityService() {
     }
 
     /** One black circle: where to draw it, and an optional area it must not leave (for half-visible rows). */
-    private class Item(val rect: Rect, val clip: Rect? = null)
+    private class Item(
+        val rect: Rect,
+        val clip: Rect? = null,
+        val forceRect: Boolean = false
+    )
 
     /** Everything found in one app window. Telegram guesses are kept apart so they can be dropped or replaced. */
     private class Scan {
@@ -54,6 +59,8 @@ class AvatarService : AccessibilityService() {
 
     private lateinit var wm: WindowManager
     private var overlay: OverlayView? = null
+    private var control: ControlView? = null
+    private var selectionStart: Pair<Float, Float>? = null
     private val handler = Handler(Looper.getMainLooper())
     private var pending = false
     private val scan = Runnable { pending = false; doScan() }
@@ -79,6 +86,8 @@ class AvatarService : AccessibilityService() {
         handler.removeCallbacks(tick)
         overlay?.let { try { wm.removeView(it) } catch (_: Exception) {} }
         overlay = null
+        control?.let { try { wm.removeView(it) } catch (_: Exception) {} }
+        control = null
         return super.onUnbind(intent)
     }
 
@@ -100,10 +109,72 @@ class AvatarService : AccessibilityService() {
         if (Prefs.isEnabled(this)) {
             doScan()
             handler.postDelayed(tick, 1000)
+            if (Prefs.manualHideRect(this) != null) addControl()
         } else {
             overlay?.setItems(emptyList())
+            removeControl()
         }
     }
+
+    fun beginManualHideSelection() {
+        if (!Prefs.isEnabled(this)) return
+        selectionStart = null
+        removeControl()
+        overlay?.setSelectionMode(true)
+        setOverlayTouchable(true)
+    }
+
+    private fun finishManualSelection(rect: Rect) {
+        if (rect.width() < 12 || rect.height() < 12) {
+            overlay?.setSelectionMode(false)
+            setOverlayTouchable(false)
+            addControl()
+            return
+        }
+        Prefs.setManualHideRect(this, rect)
+        Prefs.setManualHideVisible(this, true)
+        overlay?.setSelectionMode(false)
+        setOverlayTouchable(false)
+        addControl()
+        doScan()
+    }
+
+    private fun setOverlayTouchable(touchable: Boolean) {
+        overlay?.let {
+            val lp = it.layoutParams as WindowManager.LayoutParams
+            val interactionFlags = if (touchable) {
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+            } else {
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            }
+            lp.flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or interactionFlags
+            wm.updateViewLayout(it, lp)
+        }
+    }
+
+    private fun addControl() {
+        if (control != null || Prefs.manualHideRect(this) == null) return
+        val v = ControlView(this)
+        val lp = WindowManager.LayoutParams(
+            dp(58), dp(58), WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            x = dp(10)
+        }
+        wm.addView(v, lp)
+        control = v
+    }
+
+    private fun removeControl() {
+        control?.let { try { wm.removeView(it) } catch (_: Exception) {} }
+        control = null
+    }
+
+    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     private fun ensureOverlay() {
         val v = overlay
@@ -141,6 +212,9 @@ class AvatarService : AccessibilityService() {
         try {
             ensureOverlay()
             val out = ArrayList<Item>()
+            val manual = if (Prefs.manualHideVisible(this)) {
+                Prefs.manualHideRect(this)?.let { Item(it, forceRect = true) }
+            } else null
             for (w in windows) {
                 if (w.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
                 val root = (if (Build.VERSION.SDK_INT >= 33)
@@ -173,6 +247,9 @@ class AvatarService : AccessibilityService() {
             }
             val uniqueItems = finalItems.distinctBy {
                 "${it.rect.left},${it.rect.top},${it.rect.right},${it.rect.bottom}"
+            }.toMutableList()
+            if (manual != null && uniqueItems.none { it.rect == manual.rect }) {
+                uniqueItems.add(0, manual)
             }
             Log.d(TAG, "rendering ${uniqueItems.size} avatar bars")
             overlay?.setItems(uniqueItems)
@@ -370,12 +447,56 @@ class AvatarService : AccessibilityService() {
         return Rect(cx - actual / 2, cy - actual / 2, cx + actual / 2, cy + actual / 2)
     }
 
-    private class OverlayView(c: Context) : View(c) {
+    private inner class OverlayView(c: Context) : View(c) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
+        private val guidePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.STROKE
+            strokeWidth = dp(2).toFloat()
+        }
+        private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = dp(16).toFloat()
+        }
         private var items: List<Item> = emptyList()
+        private var selection = false
+        private var selectionEnd: Pair<Float, Float>? = null
         private val loc = IntArray(2)
 
         fun setItems(i: List<Item>) { items = i; invalidate() }
+        fun setSelectionMode(enabled: Boolean) {
+            selection = enabled
+            selectionEnd = null
+            invalidate()
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            if (!selection) return false
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    selectionStart = event.rawX to event.rawY
+                    invalidate()
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    selectionEnd = event.rawX to event.rawY
+                    invalidate()
+                }
+                MotionEvent.ACTION_UP -> {
+                    val start = selectionStart
+                    if (start != null) {
+                        selectionEnd = event.rawX to event.rawY
+                        finishManualSelection(Rect(
+                            minOf(start.first, event.rawX).toInt(),
+                            minOf(start.second, event.rawY).toInt(),
+                            maxOf(start.first, event.rawX).toInt(),
+                            maxOf(start.second, event.rawY).toInt()
+                        ))
+                    }
+                    selectionStart = null
+                }
+            }
+            return true
+        }
 
         override fun onDraw(canvas: Canvas) {
             getLocationOnScreen(loc)
@@ -393,13 +514,104 @@ class AvatarService : AccessibilityService() {
                 val top = (r.top - dy).toFloat()
                 val right = (r.right - dx).toFloat()
                 val bottom = (r.bottom - dy).toFloat()
-                if (Prefs.maskMode(context) == Prefs.MaskMode.DYNAMIC) {
+                if (!it.forceRect && Prefs.maskMode(context) == Prefs.MaskMode.DYNAMIC) {
                     canvas.drawOval(RectF(left, top, right, bottom), paint)
                 } else {
                     canvas.drawRect(left, top, right, bottom, paint)
                 }
                 canvas.restore()
             }
+            if (selection) {
+                val start = selectionStart
+                val end = selectionEnd
+                if (start != null && end != null) {
+                    val r = RectF(
+                        minOf(start.first, end.first) - dx, minOf(start.second, end.second) - dy,
+                        maxOf(start.first, end.first) - dx, maxOf(start.second, end.second) - dy
+                    )
+                    canvas.drawRect(r, guidePaint)
+                }
+                canvas.drawText("Drag over the area to hide", dp(16).toFloat(), dp(48).toFloat(), textPaint)
+            }
         }
+    }
+
+    private inner class ControlView(c: Context) : View(c) {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private var menu = false
+        private var downX = 0f
+        private var downY = 0f
+
+        override fun onDraw(canvas: Canvas) {
+            val ballX = if (menu) width - dp(29) else width / 2f
+            val ballY = if (menu) height / 2f else height / 2f
+            if (menu) {
+                paint.color = Color.argb(235, 35, 29, 46)
+                canvas.drawRoundRect(
+                    0f, 0f, (width - dp(58)).toFloat(), height.toFloat(),
+                    dp(14).toFloat(), dp(14).toFloat(), paint
+                )
+                paint.color = Color.WHITE
+                paint.textAlign = Paint.Align.LEFT
+                paint.textSize = dp(14).toFloat()
+                canvas.drawText("Hide / show", dp(16).toFloat(), dp(54).toFloat(), paint)
+                canvas.drawText("Highlight another area", dp(16).toFloat(), dp(110).toFloat(), paint)
+                canvas.drawText("Remove manual hide", dp(16).toFloat(), dp(166).toFloat(), paint)
+            }
+            paint.color = purple()
+            canvas.drawCircle(ballX, ballY, dp(26).toFloat(), paint)
+            paint.color = Color.WHITE
+            paint.textAlign = Paint.Align.CENTER
+            paint.textSize = dp(24).toFloat()
+            canvas.drawText("▰", ballX, ballY + dp(8), paint)
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.rawX
+                    downY = event.rawY
+                    return true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (kotlin.math.abs(event.rawY - downY) > dp(12) && !menu) {
+                        val lp = layoutParams as WindowManager.LayoutParams
+                        lp.y = (lp.y + (event.rawY - downY).toInt()).coerceAtLeast(dp(10))
+                        wm.updateViewLayout(this, lp)
+                    } else if (!menu) {
+                        menu = true
+                        val lp = layoutParams as WindowManager.LayoutParams
+                        lp.width = dp(250)
+                        lp.height = dp(220)
+                        lp.x = dp(10)
+                        wm.updateViewLayout(this, lp)
+                        invalidate()
+                    } else {
+                        val y = event.y
+                        when {
+                            y < dp(75) -> Prefs.setManualHideVisible(this@AvatarService, !Prefs.manualHideVisible(this@AvatarService))
+                            y < dp(135) -> beginManualHideSelection()
+                            else -> {
+                                Prefs.clearManualHide(this@AvatarService)
+                                removeControl()
+                            }
+                        }
+                        menu = false
+                        if (control != null) {
+                            val lp = layoutParams as WindowManager.LayoutParams
+                            lp.width = dp(58)
+                            lp.x = dp(10)
+                            wm.updateViewLayout(this, lp)
+                            invalidate()
+                        }
+                        doScan()
+                    }
+                    return true
+                }
+            }
+            return true
+        }
+
+        private fun purple() = Color.rgb(139, 92, 246)
     }
 }

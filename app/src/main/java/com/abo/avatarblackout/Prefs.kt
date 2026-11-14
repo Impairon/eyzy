@@ -19,6 +19,8 @@ object Prefs {
     private const val KEY_PRAYER_DATE = "prayer_date"
     private const val KEY_PRAYER_TIMES = "prayer_times"
     private const val KEY_PRAYER_METHOD = "prayer_method"
+    private const val KEY_MANUAL_RECT = "manual_hide_rect"
+    private const val KEY_MANUAL_VISIBLE = "manual_hide_visible"
 
     fun isEnabled(c: Context) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY, false)
@@ -105,4 +107,29 @@ object Prefs {
     fun setPrayerCache(c: Context, date: String, timesJson: String) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
             .putString(KEY_PRAYER_DATE, date).putString(KEY_PRAYER_TIMES, timesJson).apply()
+
+    fun manualHideRect(c: Context): android.graphics.Rect? {
+        val raw = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getString(KEY_MANUAL_RECT, null) ?: return null
+        val values = raw.split(',').mapNotNull { it.toIntOrNull() }
+        return if (values.size == 4 && values[2] > values[0] && values[3] > values[1]) {
+            android.graphics.Rect(values[0], values[1], values[2], values[3])
+        } else null
+    }
+
+    fun setManualHideRect(c: Context, rect: android.graphics.Rect) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putString(KEY_MANUAL_RECT, "${rect.left},${rect.top},${rect.right},${rect.bottom}")
+            .putBoolean(KEY_MANUAL_VISIBLE, true).apply()
+
+    fun manualHideVisible(c: Context) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_MANUAL_VISIBLE, true)
+
+    fun setManualHideVisible(c: Context, visible: Boolean) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_MANUAL_VISIBLE, visible).apply()
+
+    fun clearManualHide(c: Context) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .remove(KEY_MANUAL_RECT).remove(KEY_MANUAL_VISIBLE).apply()
 }
