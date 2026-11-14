@@ -85,20 +85,8 @@ class MainActivity : Activity() {
             access.setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
             it.addView(access)
         })
-        content.addView(card("Mask style") {
-            addText(it, "Automatic uses a fast edge mask for side-by-side chat avatars and dynamic detection for layouts where content sits beneath an avatar.")
-            val spinner = Spinner(this)
-            val values = arrayOf("Automatic", "Edge mask", "Dynamic detection", "Off")
-            spinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, values)
-            spinner.setSelection(Prefs.mode(this).ordinal)
-            spinner.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
-                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    Prefs.setMode(this@MainActivity, Prefs.MaskMode.entries[position])
-                    AvatarService.instance?.refresh()
-                }
-            })
-            it.addView(spinner, LinearLayout.LayoutParams(-1, dp(56)))
+        content.addView(card("Mask shape") {
+            addText(it, "Lowery draws a narrow vertical black bar over each detected avatar. It does not cover message text, controls, or the keyboard.")
         })
         content.addView(card("Quick Settings") {
             addText(it, "Add the Hide avatars tile to toggle Lowery from the notification shade.")

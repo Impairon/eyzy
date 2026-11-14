@@ -51,11 +51,7 @@ class AvatarService : AccessibilityService() {
     }
 
     /** One black circle: where to draw it, and an optional area it must not leave (for half-visible rows). */
-    private class Item(
-        val rect: Rect,
-        val clip: Rect? = null,
-        val edgeMask: Boolean = false
-    )
+    private class Item(val rect: Rect, val clip: Rect? = null)
 
     /** Everything found in one app window. Telegram guesses are kept apart so they can be dropped or replaced. */
     private class Scan {
@@ -169,13 +165,13 @@ class AvatarService : AccessibilityService() {
                     w.getRoot(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
                 else w.root) ?: continue
                 val packageName = root.packageName?.toString() ?: continue
-                if (packageName in TARGETS && Prefs.mode(this) != Prefs.MaskMode.OFF) {
+                if (packageName in TARGETS) {
                     val sc = Scan()
                     walk(root, sc, 0)
                     out.addAll(sc.items)
                     // Telegram: no message box on screen = chat list (position guess);
                     // message box on screen = inside a chat (pixel check)
-                    if (!sc.hasInput) out.addAll(sc.tgRows) else tgChat(sc, out, packageName)
+                    if (!sc.hasInput) out.addAll(sc.tgRows) else tgChat(sc, out)
                 }
             }
             // if a big container and a bigger-than-half child both matched, keep the child
@@ -283,60 +279,17 @@ class AvatarService : AccessibilityService() {
         return Rect(left, bottom - size, left + size, bottom)
     }
 
-    private fun tgChat(sc: Scan, out: MutableList<Item>, packageName: String) {
+    private fun tgChat(sc: Scan, out: MutableList<Item>) {
         val list = sc.listRect ?: return
         val dp = resources.displayMetrics.density
         // skip date pills / service lines (too short for an avatar) and rows cut off at the bottom
         val rows = sc.msgRows.filter { it.height() >= 44 * dp && it.bottom < list.bottom - 2 }
         if (rows.isEmpty()) return
-        val edge = isEdgeLayout(packageName)
-        if (edge) {
-            val toolbarBottom = (93 * dp).toInt()
-            for (r in rows) {
-                val avatar = slot(r, dp)
-                val clip = Rect(
-                    r.left,
-                    max(r.top, toolbarBottom),
-                    r.left + (54 * dp).toInt(),
-                    r.bottom
-                )
-                out.add(Item(avatar, clip, edgeMask = true))
-            }
-            return
-        }
-        val dec = tgDecisions
-
-        // all rows move together when scrolling: find the most common vertical shift since the last look
-        val votes = HashMap<Int, Int>()
-        for (r in rows) for (d in dec) if (d.h == r.height()) {
-            val s = r.top - d.top
-            votes[s] = (votes[s] ?: 0) + 1
-        }
-        val shift = votes.entries
-            .sortedWith(compareByDescending<Map.Entry<Int, Int>> { it.value }.thenBy { abs(it.key) })
-            .firstOrNull()?.key ?: 0
-
-        var needLook = SystemClock.uptimeMillis() - tgAnalyzedAt > RECHECK_MS
         val toolbarBottom = (93 * dp).toInt()
         for (r in rows) {
-            val m = dec.firstOrNull { it.h == r.height() && it.top + shift == r.top }
-            if (m == null) { needLook = true; continue }
-            if (m.avatar) {
-                val avatar = slot(r, dp)
-                val clip = Rect(r.left, max(r.top, toolbarBottom), r.right, r.bottom)
-                out.add(Item(avatar, clip))
-            }
-        }
-        if (needLook && !edge) requestShot(rows)
-    }
-
-    private fun isEdgeLayout(packageName: String): Boolean {
-        return when (Prefs.mode(this)) {
-            Prefs.MaskMode.EDGE -> true
-            Prefs.MaskMode.DYNAMIC -> false
-            Prefs.MaskMode.AUTO -> packageName.startsWith("org.telegram") ||
-                packageName.startsWith("com.whatsapp")
-            Prefs.MaskMode.OFF -> false
+            val avatar = slot(r, dp)
+            val clip = Rect(r.left, max(r.top, toolbarBottom), r.left + (54 * dp).toInt(), r.bottom)
+            out.add(Item(avatar, clip))
         }
     }
 
@@ -466,16 +419,9 @@ class AvatarService : AccessibilityService() {
                 val top = (r.top - dy).toFloat()
                 val right = (r.right - dx).toFloat()
                 val bottom = (r.bottom - dy).toFloat()
-                if (it.edgeMask) {
-                    canvas.drawRoundRect(
-                        RectF(left, top, right, bottom),
-                        (r.width() / 2f).coerceAtLeast(8f),
-                        (r.height() / 2f).coerceAtLeast(8f),
-                        paint
-                    )
-                } else {
-                    canvas.drawOval(RectF(left, top, right, bottom), paint)
-                }
+                val width = (r.width() * 0.24f).coerceIn(8f * resources.displayMetrics.density, 16f * resources.displayMetrics.density)
+                val center = (left + right) / 2f
+                canvas.drawRect(center - width / 2f, top, center + width / 2f, bottom, paint)
                 canvas.restore()
             }
         }
