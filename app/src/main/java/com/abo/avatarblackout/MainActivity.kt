@@ -17,6 +17,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.View
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.animation.TranslateAnimation
 import android.widget.*
 import org.json.JSONObject
@@ -39,6 +40,7 @@ class MainActivity : Activity() {
     private lateinit var menu: LinearLayout
     private lateinit var pageTitle: TextView
     private lateinit var root: FrameLayout
+    private var currentPage = 0
     private val prayerLabels = linkedMapOf(
         "Fajr" to "Fajr",
         "Sunrise" to "Sunrise",
@@ -55,9 +57,52 @@ class MainActivity : Activity() {
         showShell()
     }
 
+    private class SwipeFrameLayout(
+        context: android.content.Context,
+        private val onSwipe: (Int) -> Unit
+    ) : FrameLayout(context) {
+        private var downX = 0f
+        private var downY = 0f
+        private var tracking = false
+
+        override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.x
+                    downY = event.y
+                    tracking = false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.x - downX
+                    val dy = event.y - downY
+                    if (!tracking && kotlin.math.abs(dx) > 48f &&
+                        kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.25f
+                    ) {
+                        tracking = true
+                        return true
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> tracking = false
+            }
+            return tracking
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            if (event.actionMasked == MotionEvent.ACTION_UP && tracking) {
+                onSwipe(if (event.x < downX) -1 else 1)
+                tracking = false
+            } else if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                tracking = false
+            }
+            return true
+        }
+    }
+
     private fun showShell() {
         val pad = dp(20)
-        root = FrameLayout(this).apply {
+        root = SwipeFrameLayout(this) { direction ->
+            navigate(if (direction < 0) 1 else -1)
+        }.apply {
             setBackgroundColor(backgroundColor)
         }
         val shell = LinearLayout(this).apply {
@@ -104,10 +149,10 @@ class MainActivity : Activity() {
         }
         root.addView(shell, FrameLayout.LayoutParams(-1, -1))
         root.addView(menu, drawerParams)
-        addMenuItem("Lowery") { showLowery(); menu.visibility = View.GONE }
-        addMenuItem("Sibha") { showSibha(); menu.visibility = View.GONE }
-        addMenuItem("Prayers") { showPrayers(); menu.visibility = View.GONE }
-        addMenuItem("Settings") { showSettings(); menu.visibility = View.GONE }
+        addMenuItem("Lowery") { openPage(0) }
+        addMenuItem("Sibha") { openPage(1) }
+        addMenuItem("Prayers") { openPage(2) }
+        addMenuItem("Settings") { openPage(3) }
         val scroll = ScrollView(this).apply {
             isFillViewport = true
         }
@@ -119,7 +164,22 @@ class MainActivity : Activity() {
         shell.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         menu.bringToFront()
         setContentView(root)
-        showLowery()
+        openPage(0)
+    }
+
+    private fun openPage(page: Int) {
+        currentPage = page.mod(4)
+        menu.visibility = View.GONE
+        when (currentPage) {
+            0 -> showLowery()
+            1 -> showSibha()
+            2 -> showPrayers()
+            else -> showSettings()
+        }
+    }
+
+    private fun navigate(step: Int) {
+        openPage((currentPage + step).mod(4))
     }
 
     private fun toggleMenu() {
@@ -128,6 +188,7 @@ class MainActivity : Activity() {
                 duration = 180
                 fillAfter = true
             }
+
             out.setAnimationListener(object : android.view.animation.Animation.AnimationListener {
                 override fun onAnimationStart(animation: android.view.animation.Animation?) = Unit
                 override fun onAnimationRepeat(animation: android.view.animation.Animation?) = Unit
