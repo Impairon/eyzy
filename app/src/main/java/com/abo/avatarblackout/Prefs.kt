@@ -316,6 +316,11 @@ object Prefs {
         }
     }
 
+    fun hasManualHideRects(c: Context, profileId: String, orientation: String): Boolean {
+        return c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .contains("manual_hide_rect_${profileId}_${orientation}")
+    }
+
     fun saveManualHideRects(
         c: Context,
         profileId: String,

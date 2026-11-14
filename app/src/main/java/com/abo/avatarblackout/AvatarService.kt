@@ -176,6 +176,7 @@ class AvatarService : AccessibilityService() {
     private fun removeAllManualAreas() {
         if (manualRects().isEmpty()) return
         rememberManualChange()
+        Prefs.clearManualHide(this)
         saveManualRects(emptyList())
         Prefs.setManualHideVisible(this, true)
         doScan()
@@ -341,7 +342,7 @@ class AvatarService : AccessibilityService() {
 
     private fun manualRects(): List<Rect> {
         val scoped = Prefs.manualHideRects(this, profileId(), orientationKey())
-        if (scoped.isNotEmpty()) return scoped
+        if (Prefs.hasManualHideRects(this, profileId(), orientationKey())) return scoped
         if (profileCreationId != null) return emptyList()
         val legacy = Prefs.manualHideRects(this)
         if (legacy.isNotEmpty()) {
