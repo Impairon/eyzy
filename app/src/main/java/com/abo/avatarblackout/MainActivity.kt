@@ -213,10 +213,10 @@ class MainActivity : Activity() {
     private fun showLowery() {
         pageTitle.text = "Lowery"
         content.removeAllViews()
-        content.addView(card("Avatar blackout") {
+        content.addView(card("swizy magic ✨") {
             addText(it, "Hide avatar pictures with a narrow bar while keeping chats, buttons, and the keyboard usable.")
             val enabled = Switch(this).apply {
-                text = "Blackout service enabled"
+                text = "swizy is watching"
                 textSize = 16f
                 setTextColor(Color.WHITE)
                 isChecked = Prefs.isEnabled(this@MainActivity)
