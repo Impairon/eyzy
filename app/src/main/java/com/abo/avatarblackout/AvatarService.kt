@@ -253,14 +253,6 @@ class AvatarService : AccessibilityService() {
     // fixed left-side position from the visible message rows.
     // ---------------------------------------------------------------------------------------
 
-    /** Where Telegram draws the sender's avatar: bottom-left of the message row, 42dp wide. */
-    private fun slot(r: Rect, dp: Float): Rect {
-        val size = (42 * dp).toInt()
-        val left = (6 * dp).toInt()
-        val bottom = r.bottom - (2.3f * dp).toInt()
-        return Rect(left, bottom - size, left + size, bottom)
-    }
-
     private fun tgChat(sc: Scan, out: MutableList<Item>) {
         val list = sc.listRect ?: return
         val dp = resources.displayMetrics.density
@@ -268,8 +260,20 @@ class AvatarService : AccessibilityService() {
         val rows = sc.msgRows.filter { it.height() >= 44 * dp && it.bottom < list.bottom - 2 }
         if (rows.isEmpty()) return
         val toolbarBottom = (93 * dp).toInt()
+        if (Prefs.maskMode(this) == Prefs.MaskMode.SIMPLE) {
+            val top = max(toolbarBottom, rows.minOf { it.top })
+            val bottom = rows.maxOf { it.bottom }.coerceAtMost(list.bottom)
+            val column = Rect(
+                (6 * dp).toInt(),
+                top,
+                (48 * dp).toInt(),
+                bottom
+            )
+            out.add(Item(barFor(column), Rect(list.left, top, list.right, bottom)))
+            return
+        }
         for (r in rows) {
-            val avatar = if (Prefs.maskMode(this) == Prefs.MaskMode.DYNAMIC) dynamicSlot(r, dp) else slot(r, dp)
+            val avatar = dynamicSlot(r, dp)
             val clip = Rect(r.left, max(r.top, toolbarBottom), r.left + (54 * dp).toInt(), r.bottom)
             out.add(Item(maskFor(avatar), clip))
         }

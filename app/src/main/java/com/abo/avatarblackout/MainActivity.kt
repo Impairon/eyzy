@@ -21,6 +21,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.View
 import android.view.Gravity
+import android.view.animation.TranslateAnimation
 import android.widget.*
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -41,6 +42,7 @@ class MainActivity : Activity() {
     private lateinit var content: LinearLayout
     private lateinit var menu: LinearLayout
     private lateinit var pageTitle: TextView
+    private lateinit var root: FrameLayout
     private val prayerLabels = linkedMapOf(
         "Fajr" to "Fajr",
         "Sunrise" to "Sunrise",
@@ -59,6 +61,9 @@ class MainActivity : Activity() {
 
     private fun showShell() {
         val pad = dp(20)
+        root = FrameLayout(this).apply {
+            setBackgroundColor(backgroundColor)
+        }
         val shell = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(backgroundColor)
@@ -80,7 +85,7 @@ class MainActivity : Activity() {
             textSize = 25f
             setTextColor(Color.WHITE)
             background = rounded(panel, 14)
-            setOnClickListener { menu.visibility = if (menu.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
+            setOnClickListener { toggleMenu() }
         }
         header.addView(menuButton, LinearLayout.LayoutParams(dp(54), dp(48)))
         pageTitle = TextView(this).apply {
@@ -98,7 +103,11 @@ class MainActivity : Activity() {
             background = rounded(panel, 16)
             visibility = View.GONE
         }
-        shell.addView(menu)
+        val drawerParams = FrameLayout.LayoutParams(dp(292), -1).apply {
+            gravity = Gravity.START
+        }
+        root.addView(shell, FrameLayout.LayoutParams(-1, -1))
+        root.addView(menu, drawerParams)
         addMenuItem("Lowery") { showLowery(); menu.visibility = View.GONE }
         addMenuItem("Sibha") { showSibha(); menu.visibility = View.GONE }
         addMenuItem("Prayers") { showPrayers(); menu.visibility = View.GONE }
@@ -112,8 +121,31 @@ class MainActivity : Activity() {
         }
         scroll.addView(content)
         shell.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        setContentView(shell)
+        menu.bringToFront()
+        setContentView(root)
         showLowery()
+    }
+
+    private fun toggleMenu() {
+        if (menu.visibility == View.VISIBLE) {
+            val out = TranslateAnimation(0f, -menu.width.toFloat(), 0f, 0f).apply {
+                duration = 180
+                fillAfter = true
+            }
+            out.setAnimationListener(object : android.view.animation.Animation.AnimationListener {
+                override fun onAnimationStart(animation: android.view.animation.Animation?) = Unit
+                override fun onAnimationRepeat(animation: android.view.animation.Animation?) = Unit
+                override fun onAnimationEnd(animation: android.view.animation.Animation?) {
+                    menu.visibility = View.GONE
+                    menu.clearAnimation()
+                }
+            })
+            menu.startAnimation(out)
+        } else {
+            menu.visibility = View.VISIBLE
+            menu.translationX = -menu.width.toFloat()
+            menu.animate().translationX(0f).setDuration(180).start()
+        }
     }
 
     private fun showLowery() {
