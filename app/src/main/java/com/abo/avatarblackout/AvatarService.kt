@@ -172,6 +172,14 @@ class AvatarService : AccessibilityService() {
         doScan()
     }
 
+    private fun removeAllManualAreas() {
+        if (manualRects().isEmpty()) return
+        rememberManualChange()
+        saveManualRects(emptyList())
+        Prefs.setManualHideVisible(this, true)
+        doScan()
+    }
+
     private fun rememberManualChange() {
         undoStack.addLast(manualRects().map { Rect(it) })
         while (undoStack.size > 20) undoStack.removeFirst()
@@ -963,16 +971,17 @@ class AvatarService : AccessibilityService() {
                 paint.textSize = dp(14).toFloat()
                 canvas.drawText("Add", dp(16).toFloat(), dp(42).toFloat(), paint)
                 canvas.drawText("Remove last added area", dp(16).toFloat(), dp(84).toFloat(), paint)
-                canvas.drawText("Undo", dp(16).toFloat(), dp(126).toFloat(), paint)
-                canvas.drawText("Redo", dp(16).toFloat(), dp(168).toFloat(), paint)
+                canvas.drawText("Remove all black boxes", dp(16).toFloat(), dp(126).toFloat(), paint)
+                canvas.drawText("Undo", dp(16).toFloat(), dp(168).toFloat(), paint)
+                canvas.drawText("Redo", dp(16).toFloat(), dp(210).toFloat(), paint)
                 canvas.drawText(
                     if (Prefs.manualHideVisible(this@AvatarService)) "Hide all black boxes"
                     else "Show all black boxes",
-                    dp(16).toFloat(), dp(210).toFloat(), paint
+                    dp(16).toFloat(), dp(252).toFloat(), paint
                 )
-                canvas.drawText("Move black boxes", dp(16).toFloat(), dp(252).toFloat(), paint)
-                canvas.drawText("Resize black boxes", dp(16).toFloat(), dp(294).toFloat(), paint)
-                canvas.drawText("Close", dp(16).toFloat(), dp(336).toFloat(), paint)
+                canvas.drawText("Move black boxes", dp(16).toFloat(), dp(294).toFloat(), paint)
+                canvas.drawText("Resize black boxes", dp(16).toFloat(), dp(336).toFloat(), paint)
+                canvas.drawText("Close", dp(16).toFloat(), dp(378).toFloat(), paint)
             }
             paint.color = purple()
             canvas.drawCircle(ballX, ballY, dp(26).toFloat(), paint)
@@ -1025,7 +1034,7 @@ class AvatarService : AccessibilityService() {
                         menuOriginX = lp.x
                         menuOriginY = lp.y
                         lp.width = dp(250)
-                        lp.height = dp(373)
+                        lp.height = dp(415)
                         lp.x = (lp.x - dp(192)).coerceAtLeast(0)
                         lp.y = (menuOriginY - (lp.height - dp(58)) / 2).coerceIn(
                             0, resources.displayMetrics.heightPixels - lp.height
@@ -1043,11 +1052,12 @@ class AvatarService : AccessibilityService() {
                         when {
                             y < dp(58) -> beginManualHideSelection()
                             y < dp(102) -> removeLastManualArea()
-                            y < dp(148) -> undoManualChange()
-                            y < dp(190) -> redoManualChange()
-                            y < dp(232) -> toggleManualAreas()
-                            y < dp(274) -> beginManualAreaMove()
-                            y < dp(316) -> beginManualAreaResize()
+                            y < dp(148) -> removeAllManualAreas()
+                            y < dp(190) -> undoManualChange()
+                            y < dp(232) -> redoManualChange()
+                            y < dp(274) -> toggleManualAreas()
+                            y < dp(316) -> beginManualAreaMove()
+                            y < dp(358) -> beginManualAreaResize()
                             else -> closeManualSession()
                         }
                         if (control != null && manualSessionActive) {
