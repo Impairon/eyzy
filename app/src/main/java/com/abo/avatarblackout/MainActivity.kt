@@ -74,6 +74,13 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::content.isInitialized) {
+            openPage(currentPage)
+        }
+    }
+
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
         if (menu.visibility == View.VISIBLE) {
