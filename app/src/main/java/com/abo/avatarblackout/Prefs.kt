@@ -128,6 +128,17 @@ object Prefs {
 
     fun addProfile(c: Context, name: String, packageName: String): Profile {
         val cleanName = name.trim().ifBlank { "New profile" }
+        val existing = profiles(c).filter { profile ->
+            profile.packageName == packageName.trim() ||
+                (profile.id == "whatsapp" && packageName.startsWith("com.whatsapp")) ||
+                (profile.id == "telegram" && packageName.startsWith("org.telegram"))
+        }
+        if (existing.isNotEmpty()) {
+            val selected = existing.last()
+            val duplicateIds = existing.map { it.id }.toSet()
+            saveProfiles(c, profiles(c).filterNot { it.id in duplicateIds } + selected)
+            return selected
+        }
         val id = cleanName.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
             .ifBlank { "profile" } + "-" + System.currentTimeMillis()
         val profile = Profile(id, cleanName, packageName.trim())
