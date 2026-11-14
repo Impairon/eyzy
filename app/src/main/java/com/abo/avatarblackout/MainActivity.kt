@@ -412,7 +412,7 @@ class MainActivity : Activity() {
                 "ISNA"
             )
             val methodValues = intArrayOf(5, 3, 4, 1, 2)
-            method.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, methodNames)
+            method.adapter = optionAdapter(methodNames)
             method.setSelection(methodValues.indexOf(Prefs.prayerMethod(this)).coerceAtLeast(0))
             method.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
                 override fun onNothingSelected(parent: AdapterView<*>?) = Unit
@@ -427,9 +427,7 @@ class MainActivity : Activity() {
             it.addView(method, LinearLayout.LayoutParams(-1, dp(52)))
             addText(it, "swizy mask mode")
             val mode = styledSpinner()
-            mode.adapter = ArrayAdapter(
-                this,
-                android.R.layout.simple_spinner_dropdown_item,
+            mode.adapter = optionAdapter(
                 arrayOf("Simple line", "Dynamic circle", "Do nothing (manual only)")
             )
             mode.setSelection(Prefs.maskMode(this).ordinal)
@@ -445,9 +443,7 @@ class MainActivity : Activity() {
             it.addView(mode, LinearLayout.LayoutParams(-1, dp(52)))
             addText(it, "Mask color")
             val color = styledSpinner()
-            color.adapter = ArrayAdapter(
-                this,
-                android.R.layout.simple_spinner_dropdown_item,
+            color.adapter = optionAdapter(
                 arrayOf("Black (privacy safe)", "Purple", "White")
             )
             color.setSelection(Prefs.boxColor(this).ordinal)
@@ -471,9 +467,7 @@ class MainActivity : Activity() {
             }
             addText(it, "Quick Settings action")
             val tileAction = styledSpinner()
-            tileAction.adapter = ArrayAdapter(
-                this,
-                android.R.layout.simple_spinner_dropdown_item,
+            tileAction.adapter = optionAdapter(
                 arrayOf("Start app", "Start app and summon the paw")
             )
             tileAction.setSelection(Prefs.tileAction(this).ordinal)
@@ -923,8 +917,34 @@ class MainActivity : Activity() {
 
     private fun styledSpinner() = Spinner(this).apply {
         background = outlined(panelRaised, border, 12)
+        popupBackground = outlined(Color.rgb(28, 23, 38), border, 12)
         setPadding(dp(12), 0, dp(12), 0)
     }
+
+    private fun optionAdapter(values: Array<String>) =
+        object : ArrayAdapter<String>(this, 0, values) {
+            private fun row(position: Int) = TextView(this@MainActivity).apply {
+                text = values[position]
+                textSize = 15f
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(14), 0, dp(14), 0)
+                minHeight = dp(48)
+                background = rounded(panelRaised, 10)
+            }
+
+            override fun getView(
+                position: Int,
+                convertView: View?,
+                parent: android.view.ViewGroup
+            ): View = row(position)
+
+            override fun getDropDownView(
+                position: Int,
+                convertView: View?,
+                parent: android.view.ViewGroup
+            ): View = row(position)
+        }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
