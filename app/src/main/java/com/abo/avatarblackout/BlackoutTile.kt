@@ -12,23 +12,31 @@ class BlackoutTile : TileService() {
     override fun onStartListening() = update()
 
     override fun onClick() {
-        MainActivity.instance?.let {
-            it.finish()
+        val svc = AvatarService.instance
+        if (svc != null && Prefs.isEnabled(this)) {
+            Prefs.set(this, false)
+            svc.refresh()
+            MainActivity.instance?.finish()
+            update()
             return
         }
-        val svc = AvatarService.instance
+
         if (svc == null) {
             Toast.makeText(this, "Turn on the Avatar Blackout accessibility service first", Toast.LENGTH_LONG).show()
-            val i = Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            if (Build.VERSION.SDK_INT >= 34) {
-                startActivityAndCollapse(
-                    PendingIntent.getActivity(this, 0, i, PendingIntent.FLAG_IMMUTABLE)
-                )
-            } else {
-                @Suppress("DEPRECATION") startActivityAndCollapse(i)
-            }
+            openApp()
             return
         }
+
+        Prefs.set(this, true)
+        svc.refresh()
+        openApp()
+        if (Prefs.tileAction(this) == Prefs.TileAction.START_APP_AND_PAW) {
+            svc.summonManualHideControl()
+        }
+        update()
+    }
+
+    private fun openApp() {
         val intent = Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         if (Build.VERSION.SDK_INT >= 34) {
@@ -37,11 +45,6 @@ class BlackoutTile : TileService() {
             )
         } else {
             @Suppress("DEPRECATION") startActivityAndCollapse(intent)
-        }
-        if (Prefs.tileAction(this) == Prefs.TileAction.START_APP_AND_PAW &&
-            Prefs.isEnabled(this)
-        ) {
-            svc.summonManualHideControl()
         }
     }
 
