@@ -565,6 +565,9 @@ class AvatarService : AccessibilityService() {
 
     private inner class OverlayView(c: Context) : View(c) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
+        private val resizeHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(139, 92, 246)
+        }
         private val guidePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             style = Paint.Style.STROKE
@@ -767,6 +770,20 @@ class AvatarService : AccessibilityService() {
                     )
                 }
             }
+            if (resizeMode) {
+                Prefs.manualHideRects(context).forEach { area ->
+                    val handle = dp(18).toFloat()
+                    canvas.drawRoundRect(
+                        area.right - handle - dx,
+                        area.bottom - handle - dy,
+                        area.right.toFloat() - dx,
+                        area.bottom.toFloat() - dy,
+                        dp(4).toFloat(),
+                        dp(4).toFloat(),
+                        resizeHandlePaint
+                    )
+                }
+            }
             if (selection) {
                 val start = selectionStart
                 val end = selectionEnd
@@ -803,6 +820,7 @@ class AvatarService : AccessibilityService() {
         private var downY = 0f
         private var dragging = false
         private var menuOriginX = 0
+        private var menuOriginY = 0
         private val fade = Runnable { dock() }
 
         init {
@@ -895,9 +913,13 @@ class AvatarService : AccessibilityService() {
                         menu = true
                         val lp = layoutParams as WindowManager.LayoutParams
                         menuOriginX = lp.x
+                        menuOriginY = lp.y
                         lp.width = dp(250)
                         lp.height = dp(289)
                         lp.x = (lp.x - dp(192)).coerceAtLeast(0)
+                        lp.y = (menuOriginY - (lp.height - dp(58)) / 2).coerceIn(
+                            0, resources.displayMetrics.heightPixels - lp.height
+                        )
                         translationX = 0f
                         wm.updateViewLayout(this, lp)
                         invalidate()
@@ -934,6 +956,7 @@ class AvatarService : AccessibilityService() {
             lp.width = dp(58)
             lp.height = dp(58)
             lp.x = menuOriginX.coerceIn(0, resources.displayMetrics.widthPixels - dp(58))
+            lp.y = menuOriginY.coerceIn(0, resources.displayMetrics.heightPixels - dp(58))
             translationX = 0f
             wm.updateViewLayout(this, lp)
             invalidate()

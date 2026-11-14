@@ -398,6 +398,7 @@ class MainActivity : Activity() {
         })
     }
 
+    @Suppress("DEPRECATION")
     private fun peepIfNeeded(count: Int) {
         val every = Prefs.sibhaPeepEvery(this)
         if (every <= 0 || count % every != 0) return
@@ -413,10 +414,11 @@ class MainActivity : Activity() {
             if (Build.VERSION.SDK_INT >= 31) {
                 getSystemService(VibratorManager::class.java).defaultVibrator.vibrate(effect)
             } else if (Build.VERSION.SDK_INT >= 26) {
-                (getSystemService(VIBRATOR_SERVICE) as Vibrator).vibrate(effect)
+                getSystemService(Vibrator::class.java).vibrate(effect)
             } else {
                 @Suppress("DEPRECATION")
-                (getSystemService(VIBRATOR_SERVICE) as Vibrator).vibrate(60)
+                val vibrator = getSystemService(Vibrator::class.java)
+                vibrator.vibrate(60)
             }
         }
     }
