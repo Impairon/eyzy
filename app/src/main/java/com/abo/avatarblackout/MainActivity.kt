@@ -1,6 +1,7 @@
 package com.abo.avatarblackout
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -27,7 +28,9 @@ import android.view.animation.TranslateAnimation
 import android.widget.*
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.OutputStreamWriter
 import java.io.InputStreamReader
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -57,9 +60,22 @@ class MainActivity : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        installCrashLogger()
         window.statusBarColor = backgroundColor
         window.navigationBarColor = backgroundColor
         showShell()
+    }
+
+    private fun installCrashLogger() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            runCatching {
+                File(filesDir, "swizy-crash.log").appendText(
+                    "${Date()} ${thread.name}\n${error.stackTraceToString()}\n"
+                )
+            }
+            previous?.uncaughtException(thread, error)
+        }
     }
 
     private class SwipeFrameLayout(
@@ -303,6 +319,27 @@ class MainActivity : Activity() {
     private fun showSettings() {
         pageTitle.text = "Settings"
         content.removeAllViews()
+        content.addView(card("Profiles & backup") {
+            addText(it, "Manual boxes are saved separately for each app profile and screen orientation.")
+            val profiles = Prefs.profiles(this)
+            val profileNames = profiles.map { profile ->
+                "${profile.name} · ${profile.packageName}"
+            }.toTypedArray()
+            val profileList = Spinner(this)
+            profileList.adapter = ArrayAdapter(
+                this, android.R.layout.simple_spinner_dropdown_item, profileNames
+            )
+            it.addView(profileList, LinearLayout.LayoutParams(-1, dp(52)))
+            val create = actionButton("Create new profile")
+            create.setOnClickListener { showCreateProfileDialog() }
+            it.addView(create)
+            val export = actionButton("Export layouts")
+            export.setOnClickListener { exportBackup() }
+            it.addView(export)
+            val import = actionButton("Import layouts")
+            import.setOnClickListener { importBackup() }
+            it.addView(import)
+        })
         content.addView(card("Settings") {
             addText(it, "Control shared behavior for Lowery, Sibha, and Prayers.")
             addText(it, "Prayer calculation method")
@@ -346,6 +383,28 @@ class MainActivity : Activity() {
                 }
             })
             it.addView(mode, LinearLayout.LayoutParams(-1, dp(52)))
+            addText(it, "Mask color")
+            val color = Spinner(this)
+            color.adapter = ArrayAdapter(
+                this,
+                android.R.layout.simple_spinner_dropdown_item,
+                arrayOf("Black (privacy safe)", "Purple", "White")
+            )
+            color.setSelection(Prefs.boxColor(this).ordinal)
+            color.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+                override fun onItemSelected(
+                    parent: AdapterView<*>?, view: View?, position: Int, id: Long
+                ) {
+                    Prefs.setBoxColor(this@MainActivity, Prefs.BoxColor.entries[position])
+                    AvatarService.instance?.refresh()
+                }
+            })
+            it.addView(color, LinearLayout.LayoutParams(-1, dp(52)))
+            addSlider(it, "Mask opacity", 25, 100, Prefs.boxOpacity(this)) {
+                Prefs.setBoxOpacity(this, it)
+                AvatarService.instance?.refresh()
+            }
             addText(it, "Quick Settings action")
             val tileAction = Spinner(this)
             tileAction.adapter = ArrayAdapter(
@@ -363,6 +422,28 @@ class MainActivity : Activity() {
                 }
             })
             it.addView(tileAction, LinearLayout.LayoutParams(-1, dp(52)))
+            val indicator = Switch(this).apply {
+                text = "Show privacy indicator while masking"
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                isChecked = Prefs.privacyIndicator(this@MainActivity)
+                setOnCheckedChangeListener { _, checked ->
+                    Prefs.setPrivacyIndicator(this@MainActivity, checked)
+                    AvatarService.instance?.refresh()
+                }
+            }
+            it.addView(indicator)
+            val performance = Switch(this).apply {
+                text = "Battery saver mode"
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                isChecked = Prefs.performanceMode(this@MainActivity)
+                setOnCheckedChangeListener { _, checked ->
+                    Prefs.setPerformanceMode(this@MainActivity, checked)
+                    AvatarService.instance?.refresh()
+                }
+            }
+            it.addView(performance)
             addSlider(it, "Line thickness", 4, 64, Prefs.lineThicknessDp(this)) {
                 Prefs.setLineThicknessDp(this, it)
                 AvatarService.instance?.refresh()
@@ -396,6 +477,88 @@ class MainActivity : Activity() {
             }
             it.addView(save)
         })
+        content.addView(card("Release") {
+            addText(it, "swizy 1.0.0")
+            addText(it, "Changelog: manual profiles, orientation-aware layouts, undo/redo, backup tools, privacy indicator, and battery saver mode.")
+            addText(it, "Crash logs are stored locally and are never uploaded automatically.")
+        })
+    }
+
+    private fun showCreateProfileDialog() {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), 0, dp(20), 0)
+        }
+        val name = EditText(this).apply {
+            hint = "Profile name"
+            setTextColor(Color.WHITE)
+            setHintTextColor(secondary)
+        }
+        val packages = arrayOf(
+            "com.whatsapp", "org.telegram.messenger", "com.linkedin.android",
+            "Other package"
+        )
+        val packageChoice = Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@MainActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                packages
+            )
+        }
+        box.addView(name)
+        box.addView(packageChoice)
+        AlertDialog.Builder(this)
+            .setTitle("Create profile")
+            .setView(box)
+            .setPositiveButton("Create") { _, _ ->
+                val packageName = packages[packageChoice.selectedItemPosition]
+                Prefs.addProfile(this, name.text.toString(), packageName)
+                showSettings()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun exportBackup() {
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            type = "application/json"
+            putExtra(Intent.EXTRA_TITLE, "swizy-layouts.json")
+        }
+        startActivityForResult(intent, EXPORT_REQUEST)
+    }
+
+    private fun importBackup() {
+        startActivityForResult(
+            Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                type = "application/json"
+                addCategory(Intent.CATEGORY_OPENABLE)
+            },
+            IMPORT_REQUEST
+        )
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode != RESULT_OK || data?.data == null) return
+        runCatching {
+            if (requestCode == EXPORT_REQUEST) {
+                contentResolver.openOutputStream(data.data!!)?.use { stream ->
+                    OutputStreamWriter(stream).use { it.write(Prefs.exportData(this)) }
+                }
+                Toast.makeText(this, "Layouts exported", Toast.LENGTH_SHORT).show()
+            } else if (requestCode == IMPORT_REQUEST) {
+                val json = contentResolver.openInputStream(data.data!!)?.use {
+                    InputStreamReader(it).use { reader -> reader.readText() }
+                } ?: return
+                Prefs.importData(this, json)
+                AvatarService.instance?.refresh()
+                showSettings()
+                Toast.makeText(this, "Layouts imported", Toast.LENGTH_SHORT).show()
+            }
+        }.onFailure {
+            Toast.makeText(this, "Backup failed: ${it.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     @Suppress("DEPRECATION")
@@ -728,5 +891,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val LOCATION_REQUEST = 1001
+        private const val EXPORT_REQUEST = 1002
+        private const val IMPORT_REQUEST = 1003
     }
 }

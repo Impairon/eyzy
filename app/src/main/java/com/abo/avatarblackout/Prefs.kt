@@ -1,6 +1,9 @@
 package com.abo.avatarblackout
 
 import android.content.Context
+import android.graphics.Rect
+import org.json.JSONArray
+import org.json.JSONObject
 
 object Prefs {
     private const val FILE = "avb"
@@ -22,8 +25,15 @@ object Prefs {
     private const val KEY_MANUAL_RECT = "manual_hide_rect"
     private const val KEY_MANUAL_VISIBLE = "manual_hide_visible"
     private const val KEY_TILE_ACTION = "tile_action"
+    private const val KEY_PROFILES = "profiles"
+    private const val KEY_PRIVACY_INDICATOR = "privacy_indicator"
+    private const val KEY_PERFORMANCE_MODE = "performance_mode"
+    private const val KEY_BOX_OPACITY = "box_opacity"
+    private const val KEY_BOX_COLOR = "box_color"
 
     enum class TileAction { START_APP, START_APP_AND_PAW }
+    enum class BoxColor { BLACK, PURPLE, WHITE }
+    data class Profile(val id: String, val name: String, val packageName: String)
 
     fun isEnabled(c: Context) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY, false)
@@ -43,6 +53,100 @@ object Prefs {
     fun setTileAction(c: Context, action: TileAction) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit().putString(KEY_TILE_ACTION, action.name).apply()
+
+    fun privacyIndicator(c: Context) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getBoolean(KEY_PRIVACY_INDICATOR, false)
+
+    fun setPrivacyIndicator(c: Context, enabled: Boolean) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_PRIVACY_INDICATOR, enabled).apply()
+
+    fun performanceMode(c: Context) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getBoolean(KEY_PERFORMANCE_MODE, false)
+
+    fun setPerformanceMode(c: Context, enabled: Boolean) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_PERFORMANCE_MODE, enabled).apply()
+
+    fun boxOpacity(c: Context) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_BOX_OPACITY, 100)
+
+    fun setBoxOpacity(c: Context, value: Int) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit().putInt(KEY_BOX_OPACITY, value.coerceIn(25, 100)).apply()
+
+    fun boxColor(c: Context): BoxColor =
+        runCatching {
+            BoxColor.valueOf(
+                c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                    .getString(KEY_BOX_COLOR, BoxColor.BLACK.name) ?: BoxColor.BLACK.name
+            )
+        }.getOrDefault(BoxColor.BLACK)
+
+    fun setBoxColor(c: Context, color: BoxColor) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit().putString(KEY_BOX_COLOR, color.name).apply()
+
+    fun profiles(c: Context): List<Profile> {
+        val raw = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getString(KEY_PROFILES, null)
+        val parsed = runCatching {
+            JSONArray(raw ?: "[]").let { array ->
+                (0 until array.length()).mapNotNull { index ->
+                    array.optJSONObject(index)?.let {
+                        Profile(
+                            it.optString("id"),
+                            it.optString("name"),
+                            it.optString("packageName")
+                        ).takeIf { profile ->
+                            profile.id.isNotBlank() && profile.name.isNotBlank()
+                        }
+                    }
+                }
+            }
+        }.getOrDefault(emptyList())
+        if (parsed.isNotEmpty()) return parsed
+        val defaults = listOf(
+            Profile("whatsapp", "WhatsApp", "com.whatsapp"),
+            Profile("telegram", "Telegram", "org.telegram.messenger"),
+            Profile("web", "Web apps", "com.linkedin.android")
+        )
+        saveProfiles(c, defaults)
+        return defaults
+    }
+
+    fun addProfile(c: Context, name: String, packageName: String): Profile {
+        val cleanName = name.trim().ifBlank { "New profile" }
+        val id = cleanName.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
+            .ifBlank { "profile" } + "-" + System.currentTimeMillis()
+        val profile = Profile(id, cleanName, packageName.trim())
+        saveProfiles(c, profiles(c) + profile)
+        return profile
+    }
+
+    fun profileForPackage(c: Context, packageName: String): Profile {
+        return profiles(c).firstOrNull { profile ->
+            profile.packageName == packageName ||
+                (profile.id == "whatsapp" && packageName.startsWith("com.whatsapp")) ||
+                (profile.id == "telegram" && packageName.startsWith("org.telegram"))
+        }
+            ?: Profile("package-${packageName.replace('.', '-')}", packageName, packageName)
+    }
+
+    private fun saveProfiles(c: Context, profiles: List<Profile>) {
+        val array = JSONArray()
+        profiles.forEach {
+            array.put(JSONObject().apply {
+                put("id", it.id)
+                put("name", it.name)
+                put("packageName", it.packageName)
+            })
+        }
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putString(KEY_PROFILES, array.toString()).apply()
+    }
 
     fun maskMode(c: Context): MaskMode =
         runCatching {
@@ -183,4 +287,56 @@ object Prefs {
     fun clearManualHide(c: Context) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
             .remove(KEY_MANUAL_RECT).remove(KEY_MANUAL_VISIBLE).apply()
+
+    fun manualHideRects(c: Context, profileId: String, orientation: String): List<Rect> {
+        val key = "manual_hide_rect_${profileId}_${orientation}"
+        val raw = c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(key, null)
+            ?: return emptyList()
+        return raw.split(';').mapNotNull { encoded ->
+            val values = encoded.split(',').mapNotNull { it.toIntOrNull() }
+            if (values.size == 4 && values[2] > values[0] && values[3] > values[1]) {
+                Rect(values[0], values[1], values[2], values[3])
+            } else null
+        }
+    }
+
+    fun saveManualHideRects(
+        c: Context,
+        profileId: String,
+        orientation: String,
+        rects: List<Rect>
+    ) {
+        val key = "manual_hide_rect_${profileId}_${orientation}"
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putString(key, rects.joinToString(";") {
+                "${it.left},${it.top},${it.right},${it.bottom}"
+            }).apply()
+    }
+
+    fun exportData(c: Context): String {
+        val prefs = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        val root = JSONObject()
+        prefs.all.forEach { (key, value) ->
+            when (value) {
+                is String, is Boolean, is Int, is Long, is Float ->
+                    root.put(key, value)
+            }
+        }
+        return root.toString(2)
+    }
+
+    fun importData(c: Context, json: String) {
+        val root = JSONObject(json)
+        val edit = c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        root.keys().forEach { key ->
+            when (val value = root.get(key)) {
+                is Boolean -> edit.putBoolean(key, value)
+                is Int -> edit.putInt(key, value)
+                is Long -> edit.putLong(key, value)
+                is Double -> edit.putFloat(key, value.toFloat())
+                is String -> edit.putString(key, value)
+            }
+        }
+        edit.apply()
+    }
 }
