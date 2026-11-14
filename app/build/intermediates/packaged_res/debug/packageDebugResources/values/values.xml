@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="service_desc">Finds profile pictures in WhatsApp and LinkedIn and covers them with black circles while the Quick Settings tile is on.</string>
+    <color name="icon_background">#14111B</color>
+    <string name="service_desc">Covers avatar pictures in supported apps while Lowery is enabled.</string>
+    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:colorAccent">#8B5CF6</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#14111B</item>
+        <item name="android:navigationBarColor">#14111B</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
 </resources>

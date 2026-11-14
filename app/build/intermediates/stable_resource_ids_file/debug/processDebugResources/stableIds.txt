@@ -1,3 +1,7 @@
-com.abo.avatarblackout:xml/accessibility_config = 0x7f030000
-com.abo.avatarblackout:string/service_desc = 0x7f020000
-com.abo.avatarblackout:drawable/ic_tile = 0x7f010000
+com.abo.avatarblackout:style/AppTheme = 0x7f050000
+com.abo.avatarblackout:string/service_desc = 0x7f040000
+com.abo.avatarblackout:mipmap/ic_launcher = 0x7f030000
+com.abo.avatarblackout:xml/accessibility_config = 0x7f060000
+com.abo.avatarblackout:drawable/ic_tile = 0x7f020001
+com.abo.avatarblackout:drawable/eyes = 0x7f020000
+com.abo.avatarblackout:color/icon_background = 0x7f010000
