@@ -74,6 +74,31 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        if (menu.visibility == View.VISIBLE) {
+            toggleMenu()
+        } else {
+            super.onBackPressed()
+        }
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (menu.visibility == View.VISIBLE && event.actionMasked == MotionEvent.ACTION_DOWN) {
+            val location = IntArray(2)
+            menu.getLocationOnScreen(location)
+            val inside = event.rawX >= location[0] &&
+                event.rawX < location[0] + menu.width &&
+                event.rawY >= location[1] &&
+                event.rawY < location[1] + menu.height
+            if (!inside) {
+                toggleMenu()
+                return true
+            }
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
     private fun installCrashLogger() {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
