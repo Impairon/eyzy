@@ -1,15 +1,32 @@
 package com.abo.avatarblackout
 
 import android.app.Activity
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.View
 import android.view.Gravity
 import android.widget.*
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
     private val purple = Color.rgb(139, 92, 246)
@@ -17,6 +34,14 @@ class MainActivity : Activity() {
     private val panel = Color.rgb(35, 29, 46)
     private val secondary = Color.rgb(177, 166, 194)
     private lateinit var content: LinearLayout
+    private val prayerLabels = linkedMapOf(
+        "Fajr" to "Fajr",
+        "Sunrise" to "Sunrise",
+        "Dhuhr" to "Dhuhr",
+        "Asr" to "Asr",
+        "Maghrib" to "Maghrib",
+        "Isha" to "Isha"
+    )
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -52,8 +77,10 @@ class MainActivity : Activity() {
         }
         val lowery = tabButton("Lowery")
         val sibha = tabButton("Sibha")
+        val prayers = tabButton("Prayers")
         tabs.addView(lowery, LinearLayout.LayoutParams(0, dp(48), 1f))
         tabs.addView(sibha, LinearLayout.LayoutParams(0, dp(48), 1f))
+        tabs.addView(prayers, LinearLayout.LayoutParams(0, dp(48), 1f))
         shell.addView(tabs)
         val scroll = ScrollView(this).apply {
             isFillViewport = true
@@ -65,9 +92,10 @@ class MainActivity : Activity() {
         scroll.addView(content)
         shell.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(shell)
-        lowery.setOnClickListener { selectTab(lowery, sibha); showLowery() }
-        sibha.setOnClickListener { selectTab(sibha, lowery); showSibha() }
-        selectTab(lowery, sibha)
+        lowery.setOnClickListener { selectTab(lowery, sibha, prayers); showLowery() }
+        sibha.setOnClickListener { selectTab(sibha, lowery, prayers); showSibha() }
+        prayers.setOnClickListener { selectTab(prayers, lowery, sibha); showPrayers() }
+        selectTab(lowery, sibha, prayers)
         showLowery()
     }
 
@@ -141,6 +169,204 @@ class MainActivity : Activity() {
         content.addView(card)
     }
 
+    private fun showPrayers() {
+        content.removeAllViews()
+        val date = todayKey()
+        val times = parsePrayerTimes(Prefs.prayerTimes(this))
+        val timesCard = card("Today's prayer times") {
+            val dateText = TextView(this).apply {
+                text = if (Prefs.prayerDate(this@MainActivity) == date) displayDate() else "No current schedule cached"
+                textSize = 14f
+                setTextColor(secondary)
+                setPadding(0, dp(6), 0, dp(10))
+            }
+            it.addView(dateText)
+            if (times.isEmpty()) {
+                addText(it, "Set a location below and refresh. The last saved schedule remains available offline.")
+            } else {
+                times.forEach { (name, value) ->
+                    val row = LinearLayout(this).apply {
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(0, dp(4), 0, dp(4))
+                    }
+                    row.addView(TextView(this).apply {
+                        text = name
+                        textSize = 16f
+                        setTextColor(Color.WHITE)
+                    }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                    row.addView(TextView(this).apply {
+                        text = value
+                        textSize = 17f
+                        typeface = Typeface.DEFAULT_BOLD
+                        setTextColor(purple)
+                    })
+                    it.addView(row)
+                }
+            }
+        }
+        content.addView(timesCard)
+        content.addView(card("Location and updates") {
+            addText(it, "Prayer times are fetched once per day and cached for offline use.")
+            val gps = Switch(this).apply {
+                text = "Use device location"
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                isChecked = Prefs.useGps(this@MainActivity)
+            }
+            it.addView(gps)
+            val latitude = EditText(this).apply {
+                hint = "Latitude, e.g. 30.0444"
+                setText(Prefs.latitude(this@MainActivity))
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                    android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or
+                    android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
+                setTextColor(Color.WHITE)
+                setHintTextColor(secondary)
+            }
+            val longitude = EditText(this).apply {
+                hint = "Longitude, e.g. 31.2357"
+                setText(Prefs.longitude(this@MainActivity))
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                    android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or
+                    android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
+                setTextColor(Color.WHITE)
+                setHintTextColor(secondary)
+            }
+            it.addView(latitude)
+            it.addView(longitude)
+            fun updateLocationInputs() {
+                val manual = !gps.isChecked
+                latitude.visibility = if (manual) View.VISIBLE else View.GONE
+                longitude.visibility = if (manual) View.VISIBLE else View.GONE
+            }
+            gps.setOnCheckedChangeListener { _, checked ->
+                Prefs.setUseGps(this@MainActivity, checked)
+                updateLocationInputs()
+            }
+            updateLocationInputs()
+            val refresh = actionButton("Update prayer times")
+            refresh.setOnClickListener {
+                Prefs.setUseGps(this, gps.isChecked)
+                Prefs.setCoordinates(this, latitude.text.toString().trim(), longitude.text.toString().trim())
+                updatePrayerTimes(gps.isChecked, latitude.text.toString(), longitude.text.toString())
+            }
+            it.addView(refresh)
+        })
+        if (Prefs.prayerDate(this) != date) updatePrayerTimes(Prefs.useGps(this), Prefs.latitude(this), Prefs.longitude(this))
+    }
+
+    private fun updatePrayerTimes(useGps: Boolean, latitudeText: String, longitudeText: String) {
+        if (useGps && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), LOCATION_REQUEST)
+            return
+        }
+        val coordinates = if (useGps) currentLocation() else {
+            val lat = latitudeText.toDoubleOrNull()
+            val lon = longitudeText.toDoubleOrNull()
+            if (lat == null || lon == null || lat !in -90.0..90.0 || lon !in -180.0..180.0) {
+                Toast.makeText(this, "Enter valid latitude and longitude", Toast.LENGTH_LONG).show()
+                return
+            }
+            lat to lon
+        }
+        if (coordinates == null) {
+            requestCurrentLocation()
+            return
+        }
+        fetchPrayerTimesFor(coordinates.first, coordinates.second)
+    }
+
+    private fun fetchPrayerTimesFor(latitude: Double, longitude: Double) {
+        Toast.makeText(this, "Updating prayer times…", Toast.LENGTH_SHORT).show()
+        thread(name = "prayer-update") {
+            val result = fetchPrayerTimes(latitude, longitude)
+            runOnUiThread {
+                if (result != null) {
+                    Prefs.setPrayerCache(this, todayKey(), result.toString())
+                    showPrayers()
+                    Toast.makeText(this, "Prayer times updated", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Could not update. Cached times remain available.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun requestCurrentLocation() {
+                val manager = getSystemService(LOCATION_SERVICE) as LocationManager
+                val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+                    .filter { runCatching { manager.isProviderEnabled(it) }.getOrDefault(false) }
+                if (providers.isEmpty()) {
+                    Toast.makeText(this, "Enable location services or enter coordinates.", Toast.LENGTH_LONG).show()
+                    return
+                }
+                Toast.makeText(this, "Finding your location…", Toast.LENGTH_SHORT).show()
+                var finished = false
+                val listener = object : LocationListener {
+                    override fun onLocationChanged(location: Location) {
+                        if (finished) return
+                        finished = true
+                        runCatching { manager.removeUpdates(this) }
+                        fetchPrayerTimesFor(location.latitude, location.longitude)
+                    }
+                }
+                providers.forEach { provider ->
+                    runCatching { manager.requestLocationUpdates(provider, 0L, 0f, listener, Looper.getMainLooper()) }
+                }
+                Handler(Looper.getMainLooper()).postDelayed({
+                    if (!finished) {
+                        finished = true
+                        runCatching { manager.removeUpdates(listener) }
+                        Toast.makeText(this, "Location unavailable. Enter coordinates instead.", Toast.LENGTH_LONG).show()
+                    }
+                }, 15_000L)
+    }
+
+    private fun currentLocation(): Pair<Double, Double>? {
+        val manager = getSystemService(LOCATION_SERVICE) as LocationManager
+        val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+        return providers.asSequence().mapNotNull { provider ->
+            runCatching { manager.getLastKnownLocation(provider) }.getOrNull()
+        }.maxByOrNull { it.time }?.let { it.latitude to it.longitude }
+    }
+
+    private fun fetchPrayerTimes(latitude: Double, longitude: Double): JSONObject? {
+        val date = SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date())
+        val url = URL("https://api.aladhan.com/v1/timings/$date?latitude=${encode(latitude)}&longitude=${encode(longitude)}&method=3")
+        val connection = url.openConnection() as HttpURLConnection
+        return try {
+            connection.connectTimeout = 12_000
+            connection.readTimeout = 12_000
+            connection.requestMethod = "GET"
+            if (connection.responseCode !in 200..299) return null
+            val body = BufferedReader(InputStreamReader(connection.inputStream)).use { it.readText() }
+            JSONObject(body).getJSONObject("data").getJSONObject("timings")
+        } catch (_: Exception) {
+            null
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun parsePrayerTimes(json: String): Map<String, String> {
+        if (json.isBlank()) return emptyMap()
+        return runCatching {
+            val objectJson = JSONObject(json)
+            prayerLabels.mapNotNull { (key, label) ->
+                objectJson.optString(key).takeIf { it.isNotBlank() }?.let { label to it.substringBefore(" ") }
+            }.toMap()
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun encode(value: Double) = URLEncoder.encode(value.toString(), "UTF-8")
+    private fun todayKey() = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+    private fun displayDate() = SimpleDateFormat("EEEE, d MMMM yyyy", Locale.getDefault()).format(Date())
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, results: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, results)
+        if (requestCode == LOCATION_REQUEST && results.firstOrNull() == PackageManager.PERMISSION_GRANTED) showPrayers()
+    }
+
     private fun card(title: String, body: (LinearLayout) -> Unit): View {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -187,9 +413,9 @@ class MainActivity : Activity() {
         background = rounded(panel, 14)
     }
 
-    private fun selectTab(selected: Button, other: Button) {
+    private fun selectTab(selected: Button, vararg other: Button) {
         selected.background = rounded(purple, 14)
-        other.background = rounded(panel, 14)
+        other.forEach { it.background = rounded(panel, 14) }
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
@@ -199,4 +425,8 @@ class MainActivity : Activity() {
             setColor(color)
             cornerRadius = dp(radiusDp).toFloat()
         }
+
+    companion object {
+        private const val LOCATION_REQUEST = 1001
+    }
 }
