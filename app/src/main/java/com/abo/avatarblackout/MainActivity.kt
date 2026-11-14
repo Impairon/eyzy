@@ -12,15 +12,15 @@ import android.widget.*
 
 class MainActivity : Activity() {
     private val purple = Color.rgb(139, 92, 246)
-    private val background = Color.rgb(20, 17, 27)
+    private val backgroundColor = Color.rgb(20, 17, 27)
     private val panel = Color.rgb(35, 29, 46)
     private val secondary = Color.rgb(177, 166, 194)
     private lateinit var content: LinearLayout
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
-        window.statusBarColor = background
-        window.navigationBarColor = background
+        window.statusBarColor = backgroundColor
+        window.navigationBarColor = backgroundColor
         showShell()
     }
 
@@ -28,7 +28,7 @@ class MainActivity : Activity() {
         val pad = dp(20)
         val shell = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(background)
+            setBackgroundColor(backgroundColor)
         }
         val title = TextView(this).apply {
             text = "eyzy"
