@@ -23,7 +23,7 @@ class BlackoutTile : TileService() {
         }
 
         if (svc == null) {
-            Toast.makeText(this, "Turn on the Avatar Blackout accessibility service first", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Turn on the swizy accessibility service first", Toast.LENGTH_LONG).show()
             openApp()
             return
         }

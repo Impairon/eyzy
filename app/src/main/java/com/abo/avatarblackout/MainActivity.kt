@@ -185,7 +185,7 @@ class MainActivity : Activity() {
         }
         header.addView(menuButton, LinearLayout.LayoutParams(dp(54), dp(48)))
         pageTitle = TextView(this).apply {
-            text = "Lowery"
+            text = "swizy"
             textSize = 18f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
@@ -212,7 +212,7 @@ class MainActivity : Activity() {
             setTextColor(secondary)
             setPadding(dp(6), 0, dp(6), dp(12))
         }, LinearLayout.LayoutParams(-1, dp(34)))
-        addMenuItem("Lowery") { openPage(0) }
+        addMenuItem("swizy") { openPage(0) }
         addMenuItem("Sibha") { openPage(1) }
         addMenuItem("Prayers") { openPage(2) }
         addMenuItem("Settings") { openPage(3) }
@@ -269,10 +269,10 @@ class MainActivity : Activity() {
     }
 
     private fun showLowery() {
-        pageTitle.text = "Lowery"
+        pageTitle.text = "swizy"
         content.removeAllViews()
         content.addView(card("swizy magic ✨") {
-            addText(it, "Hide avatar pictures with a narrow bar while keeping chats, buttons, and the keyboard usable.")
+            addText(it, "swizy protects profile pictures with a narrow bar while keeping chats, buttons, and the keyboard usable.")
             val enabled = Switch(this).apply {
                 text = "swizy is watching"
                 textSize = 16f
@@ -294,7 +294,7 @@ class MainActivity : Activity() {
             manual.setOnClickListener {
                 val service = AvatarService.instance
                 if (service == null || !Prefs.isEnabled(this)) {
-                    Toast.makeText(this, "Enable the blackout service first", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Enable the swizy accessibility service first", Toast.LENGTH_LONG).show()
                 } else {
                     service.summonManualHideControl()
                     Toast.makeText(this, "Use the ball menu, then choose Add", Toast.LENGTH_LONG).show()
@@ -364,9 +364,10 @@ class MainActivity : Activity() {
         content.addView(card("Profiles & backup") {
             addText(it, "Manual boxes are saved separately for each app profile and screen orientation.")
             val profiles = Prefs.profiles(this)
-            val profileNames = profiles.map { profile ->
-                "${profile.name} · ${profile.packageName}"
-            }.toTypedArray()
+            addText(
+                it,
+                "Create profiles from the paw menu: choose Add profile in the target app, draw your boxes, then choose Save profile. swizy will apply that profile automatically whenever the app is open."
+            )
             profiles.forEach { profile ->
                 val row = LinearLayout(this).apply {
                     gravity = Gravity.CENTER_VERTICAL
@@ -392,9 +393,6 @@ class MainActivity : Activity() {
                 row.addView(remove, LinearLayout.LayoutParams(dp(110), dp(52)))
                 it.addView(row)
             }
-            val create = actionButton("Create new profile")
-            create.setOnClickListener { showCreateProfileDialog() }
-            it.addView(create)
             val export = actionButton("Export layouts")
             export.setOnClickListener { exportBackup() }
             it.addView(export)
@@ -403,7 +401,7 @@ class MainActivity : Activity() {
             it.addView(import)
         })
         content.addView(card("Settings") {
-            addText(it, "Control shared behavior for Lowery, Sibha, and Prayers.")
+            addText(it, "Control shared behavior for swizy, Sibha, and Prayers.")
             addText(it, "Prayer calculation method")
             val method = styledSpinner()
             val methodNames = arrayOf(
@@ -427,7 +425,7 @@ class MainActivity : Activity() {
                 }
             })
             it.addView(method, LinearLayout.LayoutParams(-1, dp(52)))
-            addText(it, "Lowery mask mode")
+            addText(it, "swizy mask mode")
             val mode = styledSpinner()
             mode.adapter = ArrayAdapter(
                 this,
@@ -548,41 +546,6 @@ class MainActivity : Activity() {
             addText(it, "Changelog: manual profiles, orientation-aware layouts, undo/redo, backup tools, privacy indicator, and battery saver mode.")
             addText(it, "Crash logs are stored locally and are never uploaded automatically.")
         })
-    }
-
-    private fun showCreateProfileDialog() {
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), 0, dp(20), 0)
-        }
-        val name = EditText(this).apply {
-            hint = "Profile name"
-            setTextColor(Color.WHITE)
-            setHintTextColor(secondary)
-        }
-        val packages = arrayOf(
-            "com.whatsapp", "org.telegram.messenger", "com.linkedin.android",
-            "Other package"
-        )
-        val packageChoice = styledSpinner().apply {
-            adapter = ArrayAdapter(
-                this@MainActivity,
-                android.R.layout.simple_spinner_dropdown_item,
-                packages
-            )
-        }
-        box.addView(name)
-        box.addView(packageChoice)
-        AlertDialog.Builder(this)
-            .setTitle("Create profile")
-            .setView(box)
-            .setPositiveButton("Create") { _, _ ->
-                val packageName = packages[packageChoice.selectedItemPosition]
-                Prefs.addProfile(this, name.text.toString(), packageName)
-                showSettings()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
     }
 
     private fun exportBackup() {
