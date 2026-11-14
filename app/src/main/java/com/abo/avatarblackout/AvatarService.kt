@@ -978,6 +978,7 @@ class AvatarService : AccessibilityService() {
         private var downX = 0f
         private var downY = 0f
         private var dragging = false
+        private var docked = true
         private var menuOriginX = 0
         private var menuOriginY = 0
         private val fade = Runnable { dock() }
@@ -1003,6 +1004,7 @@ class AvatarService : AccessibilityService() {
 
         private fun dock() {
             if (menu) return
+            docked = true
             val lp = layoutParams as? WindowManager.LayoutParams
             val onLeft = (lp?.x ?: 0) < resources.displayMetrics.widthPixels / 2
             animate().translationX(if (onLeft) -dp(20).toFloat() else dp(20).toFloat())
@@ -1040,7 +1042,9 @@ class AvatarService : AccessibilityService() {
                 canvas.drawText("Close", dp(16).toFloat(), dp(420).toFloat(), paint)
             }
             paint.color = purple()
-            canvas.drawCircle(ballX, ballY, dp(26).toFloat(), paint)
+            if (menu || docked) {
+                canvas.drawCircle(ballX, ballY, dp(26).toFloat(), paint)
+            }
             if (icon != null) {
                 canvas.drawBitmap(
                     icon, null,
@@ -1062,6 +1066,7 @@ class AvatarService : AccessibilityService() {
                 }
                 MotionEvent.ACTION_MOVE -> {
                     if (!menu) {
+                        docked = false
                         val lp = layoutParams as WindowManager.LayoutParams
                         val dx = (event.rawX - downX).toInt()
                         val dy = (event.rawY - downY).toInt()

@@ -508,7 +508,7 @@ class MainActivity : Activity() {
             it.addView(save)
         })
         content.addView(card("Release") {
-            addText(it, "swizy 1.0.0")
+            addText(it, "swizy 1.6.0")
             addText(it, "Changelog: manual profiles, orientation-aware layouts, undo/redo, backup tools, privacy indicator, and battery saver mode.")
             addText(it, "Crash logs are stored locally and are never uploaded automatically.")
         })

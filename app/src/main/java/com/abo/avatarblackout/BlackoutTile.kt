@@ -30,7 +30,6 @@ class BlackoutTile : TileService() {
 
         Prefs.set(this, true)
         svc.refresh()
-        openApp()
         if (Prefs.tileAction(this) == Prefs.TileAction.START_APP_AND_PAW) {
             svc.summonManualHideControl()
         }
