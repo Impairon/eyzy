@@ -122,6 +122,7 @@ class AvatarService : AccessibilityService() {
         handler.removeCallbacks(scan)
         handler.removeCallbacks(tick)
         pending = false
+        control?.refreshOpacity()
         if (Prefs.isEnabled(this)) {
             doScan()
             handler.postDelayed(
@@ -922,9 +923,16 @@ class AvatarService : AccessibilityService() {
         private val fade = Runnable { dock() }
 
         init {
-            alpha = 0.24f
+            alpha = idleAlpha()
             postDelayed(fade, 900)
         }
+
+        fun refreshOpacity() {
+            if (!menu) alpha = idleAlpha()
+            invalidate()
+        }
+
+        private fun idleAlpha() = Prefs.controlOpacity(this@AvatarService) / 100f
 
         private fun wake() {
             removeCallbacks(fade)
@@ -938,7 +946,7 @@ class AvatarService : AccessibilityService() {
             val lp = layoutParams as? WindowManager.LayoutParams
             val onLeft = (lp?.x ?: 0) < resources.displayMetrics.widthPixels / 2
             animate().translationX(if (onLeft) -dp(20).toFloat() else dp(20).toFloat())
-                .alpha(0.24f).setDuration(300).start()
+                .alpha(idleAlpha()).setDuration(300).start()
         }
 
         override fun onDraw(canvas: Canvas) {

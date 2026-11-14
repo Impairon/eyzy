@@ -407,8 +407,12 @@ class MainActivity : Activity() {
                 }
             })
             it.addView(color, LinearLayout.LayoutParams(-1, dp(52)))
-            addSlider(it, "Mask opacity", 25, 100, Prefs.boxOpacity(this)) {
+            addSlider(it, "Mask opacity (black boxes)", 25, 100, Prefs.boxOpacity(this)) {
                 Prefs.setBoxOpacity(this, it)
+                AvatarService.instance?.refresh()
+            }
+            addSlider(it, "Paw opacity when idle", 35, 100, Prefs.controlOpacity(this)) {
+                Prefs.setControlOpacity(this, it)
                 AvatarService.instance?.refresh()
             }
             addText(it, "Quick Settings action")

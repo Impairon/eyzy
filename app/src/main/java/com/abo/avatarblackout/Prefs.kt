@@ -29,6 +29,7 @@ object Prefs {
     private const val KEY_PRIVACY_INDICATOR = "privacy_indicator"
     private const val KEY_PERFORMANCE_MODE = "performance_mode"
     private const val KEY_BOX_OPACITY = "box_opacity"
+    private const val KEY_CONTROL_OPACITY = "control_opacity"
     private const val KEY_BOX_COLOR = "box_color"
 
     enum class TileAction { START_APP, START_APP_AND_PAW }
@@ -76,6 +77,14 @@ object Prefs {
     fun setBoxOpacity(c: Context, value: Int) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit().putInt(KEY_BOX_OPACITY, value.coerceIn(25, 100)).apply()
+
+    fun controlOpacity(c: Context) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getInt(KEY_CONTROL_OPACITY, 65)
+
+    fun setControlOpacity(c: Context, value: Int) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit().putInt(KEY_CONTROL_OPACITY, value.coerceIn(35, 100)).apply()
 
     fun boxColor(c: Context): BoxColor =
         runCatching {
