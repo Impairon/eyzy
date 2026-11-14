@@ -4,20 +4,49 @@
             "outputFile": "com.abo.avatarblackout.app-debug-4:/values_values.arsc.flat",
             "map": [
                 {
-                    "source": "/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/res/values/strings.xml",
+                    "source": "/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/res/values/colors.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "49",
+                        "endOffsets": "100"
+                    }
+                },
+                {
+                    "source": "/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/res/values/strings.xml",
                     "from": {
                         "startLines": "1",
                         "startColumns": "4",
                         "startOffsets": "16",
-                        "endColumns": "160",
-                        "endOffsets": "172"
+                        "endColumns": "106",
+                        "endOffsets": "118"
                     },
                     "to": {
+                        "startLines": "3",
+                        "startColumns": "4",
+                        "startOffsets": "105",
+                        "endColumns": "106",
+                        "endOffsets": "207"
+                    }
+                },
+                {
+                    "source": "/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/res/values/themes.xml",
+                    "from": {
                         "startLines": "2",
                         "startColumns": "4",
                         "startOffsets": "55",
-                        "endColumns": "160",
-                        "endOffsets": "211"
+                        "endLines": "10",
+                        "endColumns": "12",
+                        "endOffsets": "567"
+                    },
+                    "to": {
+                        "startLines": "4",
+                        "startColumns": "4",
+                        "startOffsets": "212",
+                        "endLines": "12",
+                        "endColumns": "12",
+                        "endOffsets": "724"
                     }
                 }
             ]
