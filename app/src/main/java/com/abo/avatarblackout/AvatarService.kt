@@ -194,6 +194,13 @@ class AvatarService : AccessibilityService() {
     private fun removeAllManualAreas() {
         if (manualRects().isEmpty()) return
         rememberManualChange()
+        if (manualSessionProfileId != null &&
+            Prefs.profiles(this).any { it.id == manualSessionProfileId }
+        ) {
+            Prefs.setManualHideVisible(this, false)
+            doScan()
+            return
+        }
         Prefs.clearManualHide(this)
         saveManualRects(emptyList())
         Prefs.setManualHideVisible(this, true)
