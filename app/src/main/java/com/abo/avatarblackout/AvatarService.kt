@@ -467,27 +467,34 @@ class AvatarService : AccessibilityService() {
 
     private fun Rect.area() = width() * height()
 
+    private fun foregroundPackage(): String? {
+        return windows.asSequence()
+            .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+            .sortedByDescending { it.layer }
+            .mapNotNull { window ->
+                runCatching {
+                    val root = if (Build.VERSION.SDK_INT >= 33) {
+                        window.getRoot(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
+                    } else {
+                        window.root
+                    }
+                    root?.packageName?.toString()
+                }.getOrNull()
+            }
+            .firstOrNull { it != packageName && it != "com.android.systemui" }
+    }
+
     private fun doScan() {
         try {
             ensureOverlay()
-            val detectedPackage = windows.asSequence()
-                .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
-                .mapNotNull { window ->
-                    runCatching {
-                        val root = if (Build.VERSION.SDK_INT >= 33) {
-                            window.getRoot(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
-                        } else {
-                            window.root
-                        }
-                        root?.packageName?.toString()
-                    }.getOrNull()
-                }
-                .firstOrNull() ?: activePackage
+            val detectedPackage = foregroundPackage() ?: activePackage
             if (detectedPackage != activePackage) {
                 activePackage = detectedPackage
-                if (Prefs.hasProfileForPackage(this, activePackage)) {
-                    Prefs.setManualHideVisible(this, true)
-                }
+                Prefs.setManualHideVisible(
+                    this,
+                    manualSessionActive || Prefs.hasProfileForPackage(this, activePackage)
+                )
+                Log.d(TAG, "foreground package changed to $activePackage")
             }
             val out = ArrayList<Item>()
             val hasActiveProfile = Prefs.hasProfileForPackage(this, activePackage)
