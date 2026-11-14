@@ -43,7 +43,7 @@ object Prefs {
 
     fun setLineThicknessDp(c: Context, value: Int) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
-            .putInt(KEY_LINE_THICKNESS, value.coerceIn(4, 32)).apply()
+            .putInt(KEY_LINE_THICKNESS, value.coerceIn(4, 64)).apply()
 
     fun circleSizeDp(c: Context) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_CIRCLE_SIZE, 42)

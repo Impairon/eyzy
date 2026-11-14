@@ -44,9 +44,11 @@ class AvatarService : AccessibilityService() {
     /** Everything found in one app window. Telegram guesses are kept apart so they can be dropped or replaced. */
     private class Scan {
         val items = ArrayList<Item>()
+        val avatarRects = ArrayList<Rect>()
         val tgRows = ArrayList<Item>()   // chat-list avatar guesses
         val msgRows = ArrayList<Rect>()  // message rows inside a chat
         var listRect: Rect? = null
+        var scrollRect: Rect? = null
         var hasInput = false
     }
 
@@ -148,9 +150,17 @@ class AvatarService : AccessibilityService() {
                 if (packageName in TARGETS) {
                     val sc = Scan()
                     walk(root, sc, 0)
-                    out.addAll(sc.items)
-                    if (packageName in TELEGRAM) {
+                    if (Prefs.maskMode(this) == Prefs.MaskMode.SIMPLE) {
+                        if (packageName in TELEGRAM) {
+                            if (!sc.hasInput) tgListLine(sc, out) else tgChat(sc, out)
+                        } else {
+                            lineFor(sc)?.let { out.add(it) }
+                        }
+                    } else {
+                        out.addAll(sc.items)
+                        if (packageName in TELEGRAM) {
                         if (!sc.hasInput) out.addAll(sc.tgRows) else tgChat(sc, out)
+                        }
                     }
                 }
             }
@@ -174,7 +184,22 @@ class AvatarService : AccessibilityService() {
     private fun walk(n: AccessibilityNodeInfo, sc: Scan, depth: Int) {
         if (depth > 45) return
         if (n.className?.contains("EditText") == true) sc.hasInput = true
-        if (n.isVisibleToUser) avatarItem(n)?.let { sc.items.add(it) }
+        val bounds = Rect().also { n.getBoundsInScreen(it) }
+        val cls = n.className?.toString() ?: ""
+        if (n.isVisibleToUser) {
+            avatarItem(n)?.let {
+                sc.items.add(it)
+                sc.avatarRects.add(Rect(bounds))
+            }
+        }
+        if (n.isVisibleToUser &&
+            (n.isScrollable || cls.contains("RecyclerView") ||
+                cls.contains("ListView") || cls.contains("ScrollView"))
+        ) {
+            if (sc.scrollRect == null || bounds.area() > sc.scrollRect!!.area()) {
+                sc.scrollRect = bounds
+            }
+        }
         // Telegram draws avatars itself and exposes no avatar nodes, so we work from its list rows
         val telegramList = n.packageName?.toString() in TELEGRAM &&
             n.className?.contains("RecyclerView") == true
@@ -217,6 +242,44 @@ class AvatarService : AccessibilityService() {
             return Item(maskFor(full), r)
         }
         return null
+    }
+
+    private fun lineFor(sc: Scan): Item? {
+        if (sc.avatarRects.isEmpty()) return null
+        val dp = resources.displayMetrics.density
+        val clusters = sc.avatarRects.groupBy { it.centerX() / (12 * dp).toInt() }
+        val column = clusters.values.maxByOrNull { it.size } ?: return null
+        val center = column.map { it.centerX() }.average().toInt()
+        val scroll = sc.scrollRect
+        val top = max(
+            (93 * dp).toInt(),
+            column.minOf { it.top }
+        )
+        val bottom = (scroll?.bottom ?: column.maxOf { it.bottom })
+            .coerceAtMost(column.maxOf { it.bottom })
+            .coerceAtMost(resources.displayMetrics.heightPixels)
+        if (bottom <= top) return null
+        val width = (Prefs.lineThicknessDp(this) * dp).toInt()
+        return Item(
+            Rect(center - width / 2, top, center + width / 2, bottom),
+            Rect(0, top, resources.displayMetrics.widthPixels, bottom)
+        )
+    }
+
+    private fun tgListLine(sc: Scan, out: MutableList<Item>) {
+        val row = sc.tgRows.firstOrNull() ?: return
+        val list = sc.listRect ?: row.clip ?: return
+        val dp = resources.displayMetrics.density
+        val width = (Prefs.lineThicknessDp(this) * dp).toInt()
+        val center = row.rect.centerX()
+        val top = max((93 * dp).toInt(), list.top)
+        val bottom = list.bottom.coerceAtMost(resources.displayMetrics.heightPixels)
+        if (bottom > top) {
+            out.add(Item(
+                Rect(center - width / 2, top, center + width / 2, bottom),
+                Rect(list.left, top, list.right, bottom)
+            ))
+        }
     }
 
     /** Telegram chat-list row (full width, ~72dp tall): the avatar is a 54dp circle at the left. */

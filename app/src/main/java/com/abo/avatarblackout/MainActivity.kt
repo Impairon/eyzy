@@ -332,7 +332,7 @@ class MainActivity : Activity() {
                 }
             })
             it.addView(mode, LinearLayout.LayoutParams(-1, dp(52)))
-            addSlider(it, "Line thickness", 4, 32, Prefs.lineThicknessDp(this)) {
+            addSlider(it, "Line thickness", 4, 64, Prefs.lineThicknessDp(this)) {
                 Prefs.setLineThicknessDp(this, it)
                 AvatarService.instance?.refresh()
             }
