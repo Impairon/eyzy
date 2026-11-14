@@ -85,11 +85,20 @@ class MainActivity : Activity() {
             access.setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
             it.addView(access)
         })
-        content.addView(card("Mask style by app") {
-            addText(it, "Edge mask is lightweight for side-by-side chats. Dynamic detection is used where content can sit beneath an avatar.")
-            modeRow(it, "Telegram", "org.telegram.messenger")
-            modeRow(it, "WhatsApp", "com.whatsapp")
-            modeRow(it, "LinkedIn", "com.linkedin.android")
+        content.addView(card("Mask style") {
+            addText(it, "Automatic uses a fast edge mask for side-by-side chat avatars and dynamic detection for layouts where content sits beneath an avatar.")
+            val spinner = Spinner(this)
+            val values = arrayOf("Automatic", "Edge mask", "Dynamic detection", "Off")
+            spinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, values)
+            spinner.setSelection(Prefs.mode(this).ordinal)
+            spinner.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    Prefs.setMode(this@MainActivity, Prefs.MaskMode.entries[position])
+                    AvatarService.instance?.refresh()
+                }
+            })
+            it.addView(spinner, LinearLayout.LayoutParams(-1, dp(56)))
         })
         content.addView(card("Quick Settings") {
             addText(it, "Add the Hide avatars tile to toggle Lowery from the notification shade.")
@@ -137,28 +146,6 @@ class MainActivity : Activity() {
         card.addView(bead, LinearLayout.LayoutParams(-1, dp(56)))
         card.addView(reset)
         content.addView(card)
-    }
-
-    private fun modeRow(parent: LinearLayout, label: String, packageName: String) {
-        val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        row.addView(TextView(this).apply {
-            text = label
-            textSize = 16f
-            setTextColor(Color.WHITE)
-        }, LinearLayout.LayoutParams(0, dp(56), 1f))
-        val spinner = Spinner(this)
-        val values = arrayOf("Edge mask", "Dynamic", "Off")
-        spinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, values)
-        spinner.setSelection(Prefs.mode(this, packageName).ordinal)
-        spinner.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
-            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                Prefs.setMode(this@MainActivity, packageName, Prefs.MaskMode.entries[position])
-                AvatarService.instance?.refresh()
-            }
-        })
-        row.addView(spinner, LinearLayout.LayoutParams(dp(140), dp(56)))
-        parent.addView(row)
     }
 
     private fun card(title: String, body: (LinearLayout) -> Unit): View {

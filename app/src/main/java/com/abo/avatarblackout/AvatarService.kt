@@ -51,7 +51,11 @@ class AvatarService : AccessibilityService() {
     }
 
     /** One black circle: where to draw it, and an optional area it must not leave (for half-visible rows). */
-    private class Item(val rect: Rect, val clip: Rect? = null)
+    private class Item(
+        val rect: Rect,
+        val clip: Rect? = null,
+        val edgeMask: Boolean = false
+    )
 
     /** Everything found in one app window. Telegram guesses are kept apart so they can be dropped or replaced. */
     private class Scan {
@@ -165,7 +169,7 @@ class AvatarService : AccessibilityService() {
                     w.getRoot(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
                 else w.root) ?: continue
                 val packageName = root.packageName?.toString() ?: continue
-                if (packageName in TARGETS && Prefs.mode(this, packageName) != Prefs.MaskMode.OFF) {
+                if (packageName in TARGETS && Prefs.mode(this) != Prefs.MaskMode.OFF) {
                     val sc = Scan()
                     walk(root, sc, 0)
                     out.addAll(sc.items)
@@ -285,6 +289,21 @@ class AvatarService : AccessibilityService() {
         // skip date pills / service lines (too short for an avatar) and rows cut off at the bottom
         val rows = sc.msgRows.filter { it.height() >= 44 * dp && it.bottom < list.bottom - 2 }
         if (rows.isEmpty()) return
+        val edge = isEdgeLayout(packageName)
+        if (edge) {
+            val toolbarBottom = (93 * dp).toInt()
+            for (r in rows) {
+                val avatar = slot(r, dp)
+                val clip = Rect(
+                    r.left,
+                    max(r.top, toolbarBottom),
+                    r.left + (54 * dp).toInt(),
+                    r.bottom
+                )
+                out.add(Item(avatar, clip, edgeMask = true))
+            }
+            return
+        }
         val dec = tgDecisions
 
         // all rows move together when scrolling: find the most common vertical shift since the last look
@@ -304,16 +323,21 @@ class AvatarService : AccessibilityService() {
             if (m == null) { needLook = true; continue }
             if (m.avatar) {
                 val avatar = slot(r, dp)
-                val clip = if (Prefs.mode(this, packageName) == Prefs.MaskMode.EDGE) {
-                    // Keep the side mask inside the avatar column; never paint over the message bubble.
-                    Rect(r.left, max(r.top, toolbarBottom), r.left + (54 * dp).toInt(), r.bottom)
-                } else {
-                    Rect(r.left, max(r.top, toolbarBottom), r.right, r.bottom)
-                }
+                val clip = Rect(r.left, max(r.top, toolbarBottom), r.right, r.bottom)
                 out.add(Item(avatar, clip))
             }
         }
-        if (needLook) requestShot(rows)
+        if (needLook && !edge) requestShot(rows)
+    }
+
+    private fun isEdgeLayout(packageName: String): Boolean {
+        return when (Prefs.mode(this)) {
+            Prefs.MaskMode.EDGE -> true
+            Prefs.MaskMode.DYNAMIC -> false
+            Prefs.MaskMode.AUTO -> packageName.startsWith("org.telegram") ||
+                packageName.startsWith("com.whatsapp")
+            Prefs.MaskMode.OFF -> false
+        }
     }
 
     private fun requestShot(rows: List<Rect>) {
@@ -438,12 +462,20 @@ class AvatarService : AccessibilityService() {
                     )
                 }
                 val r = it.rect
-                canvas.drawOval(
-                    RectF(
-                        (r.left - dx).toFloat(), (r.top - dy).toFloat(),
-                        (r.right - dx).toFloat(), (r.bottom - dy).toFloat()
-                    ), paint
-                )
+                val left = (r.left - dx).toFloat()
+                val top = (r.top - dy).toFloat()
+                val right = (r.right - dx).toFloat()
+                val bottom = (r.bottom - dy).toFloat()
+                if (it.edgeMask) {
+                    canvas.drawRoundRect(
+                        RectF(left, top, right, bottom),
+                        (r.width() / 2f).coerceAtLeast(8f),
+                        (r.height() / 2f).coerceAtLeast(8f),
+                        paint
+                    )
+                } else {
+                    canvas.drawOval(RectF(left, top, right, bottom), paint)
+                }
                 canvas.restore()
             }
         }
