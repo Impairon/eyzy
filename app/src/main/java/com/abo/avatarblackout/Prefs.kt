@@ -18,6 +18,7 @@ object Prefs {
     private const val KEY_LONGITUDE = "prayer_longitude"
     private const val KEY_PRAYER_DATE = "prayer_date"
     private const val KEY_PRAYER_TIMES = "prayer_times"
+    private const val KEY_PRAYER_METHOD = "prayer_method"
 
     fun isEnabled(c: Context) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY, false)
@@ -71,6 +72,13 @@ object Prefs {
     fun setPrayer24Hour(c: Context, enabled: Boolean) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_24_HOUR, enabled).apply()
+
+    fun prayerMethod(c: Context) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_PRAYER_METHOD, 5)
+
+    fun setPrayerMethod(c: Context, method: Int) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putInt(KEY_PRAYER_METHOD, method).remove(KEY_PRAYER_DATE).apply()
 
     fun useGps(c: Context) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_USE_GPS, true)

@@ -11,11 +11,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.media.AudioManager
-import android.media.ToneGenerator
 import android.os.Bundle
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -69,7 +65,7 @@ class MainActivity : Activity() {
             setBackgroundColor(backgroundColor)
         }
         val title = TextView(this).apply {
-            text = "suizy"
+            text = "swizy"
             textSize = 30f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
@@ -229,6 +225,29 @@ class MainActivity : Activity() {
         content.removeAllViews()
         content.addView(card("Settings") {
             addText(it, "Control shared behavior for Lowery, Sibha, and Prayers.")
+            addText(it, "Prayer calculation method")
+            val method = Spinner(this)
+            val methodNames = arrayOf(
+                "Egyptian General Authority",
+                "Muslim World League",
+                "Umm Al-Qura",
+                "Karachi",
+                "ISNA"
+            )
+            val methodValues = intArrayOf(5, 3, 4, 1, 2)
+            method.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, methodNames)
+            method.setSelection(methodValues.indexOf(Prefs.prayerMethod(this)).coerceAtLeast(0))
+            method.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+                override fun onItemSelected(
+                    parent: AdapterView<*>?, view: View?, position: Int, id: Long
+                ) {
+                    if (Prefs.prayerMethod(this@MainActivity) != methodValues[position]) {
+                        Prefs.setPrayerMethod(this@MainActivity, methodValues[position])
+                    }
+                }
+            })
+            it.addView(method, LinearLayout.LayoutParams(-1, dp(52)))
             addText(it, "Lowery mask mode")
             val mode = Spinner(this)
             mode.adapter = ArrayAdapter(
@@ -285,12 +304,10 @@ class MainActivity : Activity() {
     private fun peepIfNeeded(count: Int) {
         val every = Prefs.sibhaPeepEvery(this)
         if (every <= 0 || count % every != 0) return
-        val tone = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80)
-        tone.startTone(ToneGenerator.TONE_PROP_BEEP, 100)
-        Handler(Looper.getMainLooper()).postDelayed({ tone.release() }, 150)
-        val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
-        if (Build.VERSION.SDK_INT >= 26) vibrator.vibrate(VibrationEffect.createOneShot(45, VibrationEffect.DEFAULT_AMPLITUDE))
-        else @Suppress("DEPRECATION") vibrator.vibrate(45)
+        runCatching {
+            (getSystemService(AUDIO_SERVICE) as AudioManager)
+                .playSoundEffect(AudioManager.FX_KEYPRESS_STANDARD)
+        }
     }
 
     private fun showPrayers() {
@@ -457,7 +474,10 @@ class MainActivity : Activity() {
 
     private fun fetchPrayerTimes(latitude: Double, longitude: Double): JSONObject? {
         val date = SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date())
-        val url = URL("https://api.aladhan.com/v1/timings/$date?latitude=${encode(latitude)}&longitude=${encode(longitude)}&method=3")
+        val url = URL(
+            "https://api.aladhan.com/v1/timings/$date?latitude=${encode(latitude)}" +
+                "&longitude=${encode(longitude)}&method=${Prefs.prayerMethod(this)}"
+        )
         val connection = url.openConnection() as HttpURLConnection
         return try {
             connection.connectTimeout = 12_000
