@@ -147,7 +147,10 @@ object Prefs {
         saveProfiles(c, profiles(c).filterNot { it.id == id })
         prefs.edit().apply {
             prefs.all.keys
-                .filter { it.startsWith("manual_hide_rect_${id}_") }
+                .filter {
+                    it.startsWith("manual_hide_rect_${id}_") ||
+                        it.startsWith("profile_hide_rect_${id}_")
+                }
                 .forEach { remove(it) }
         }.apply()
     }
@@ -336,6 +339,31 @@ object Prefs {
     fun hasManualHideRects(c: Context, profileId: String, orientation: String): Boolean {
         return c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .contains("manual_hide_rect_${profileId}_${orientation}")
+    }
+
+    fun profileHideRects(c: Context, profileId: String, orientation: String): List<Rect> {
+        val key = "profile_hide_rect_${profileId}_${orientation}"
+        val raw = c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(key, null)
+            ?: return emptyList()
+        return raw.split(';').mapNotNull { encoded ->
+            val values = encoded.split(',').mapNotNull { it.toIntOrNull() }
+            if (values.size == 4 && values[2] > values[0] && values[3] > values[1]) {
+                Rect(values[0], values[1], values[2], values[3])
+            } else null
+        }
+    }
+
+    fun saveProfileHideRects(
+        c: Context,
+        profileId: String,
+        orientation: String,
+        rects: List<Rect>
+    ) {
+        val key = "profile_hide_rect_${profileId}_${orientation}"
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putString(key, rects.joinToString(";") {
+                "${it.left},${it.top},${it.right},${it.bottom}"
+            }).apply()
     }
 
     fun saveManualHideRects(

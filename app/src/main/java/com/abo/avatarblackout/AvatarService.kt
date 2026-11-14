@@ -177,7 +177,11 @@ class AvatarService : AccessibilityService() {
             return
         }
         rememberManualChange()
-        saveManualRects(manualRects() + rect)
+        if (profileCreationId != null) {
+            saveProfileRects(profileRects() + rect)
+        } else {
+            saveManualRects(manualRects() + rect)
+        }
         Prefs.setManualHideVisible(this, true)
         overlay?.setSelectionMode(false)
         setOverlayTouchable(false)
@@ -192,7 +196,7 @@ class AvatarService : AccessibilityService() {
     }
 
     private fun removeAllManualAreas() {
-        if (manualRects().isEmpty()) return
+        if (manualRects().isEmpty() && profileRects().isEmpty()) return
         rememberManualChange()
         if (manualSessionProfileId != null &&
             Prefs.profiles(this).any { it.id == manualSessionProfileId }
@@ -372,8 +376,14 @@ class AvatarService : AccessibilityService() {
         return Prefs.manualHideRects(this, profileId(), orientationKey())
     }
 
+    private fun profileRects(): List<Rect> =
+        Prefs.profileHideRects(this, profileId(), orientationKey())
+
     private fun saveManualRects(rects: List<Rect>) =
         Prefs.saveManualHideRects(this, profileId(), orientationKey(), rects)
+
+    private fun saveProfileRects(rects: List<Rect>) =
+        Prefs.saveProfileHideRects(this, profileId(), orientationKey(), rects)
 
     private fun keyboardTop(): Int? {
         return windows.asSequence()
@@ -414,7 +424,7 @@ class AvatarService : AccessibilityService() {
         )
         profileCreationId = profile.id
         manualSessionProfileId = profile.id
-        saveManualRects(emptyList())
+        saveProfileRects(emptyList())
         removeControl()
         addControl()
         control?.invalidate()
@@ -505,14 +515,24 @@ class AvatarService : AccessibilityService() {
             }
             val out = ArrayList<Item>()
             val hasActiveProfile = Prefs.hasProfileForPackage(this, activePackage)
+            if (hasActiveProfile && profileRects().isEmpty() && manualRects().isNotEmpty()) {
+                saveProfileRects(manualRects())
+                saveManualRects(emptyList())
+            }
             val manualItems = if (
-                Prefs.manualHideVisible(this) &&
-                (manualSessionActive || hasActiveProfile) &&
-                manualRects().isNotEmpty()
+                Prefs.manualHideVisible(this) && manualRects().isNotEmpty()
             ) {
                 manualRects().map { Item(manualDisplayRect(it), forceRect = true) }
             } else emptyList()
+            val profileItems = if (
+                Prefs.manualHideVisible(this) &&
+                (hasActiveProfile || profileCreationId != null) &&
+                profileRects().isNotEmpty()
+            ) {
+                profileRects().map { Item(manualDisplayRect(it), forceRect = true) }
+            } else emptyList()
             out.addAll(manualItems)
+            out.addAll(profileItems)
             for (w in windows) {
                 if (w.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
                 val root = (if (Build.VERSION.SDK_INT >= 33)
