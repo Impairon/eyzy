@@ -525,9 +525,13 @@ class AvatarService : AccessibilityService() {
                 val start = selectionStart
                 val end = selectionEnd
                 if (start != null && end != null) {
+                    val localDx = dx.toFloat()
+                    val localDy = dy.toFloat()
                     val r = RectF(
-                        minOf(start.first, end.first) - dx, minOf(start.second, end.second) - dy,
-                        maxOf(start.first, end.first) - dx, maxOf(start.second, end.second) - dy
+                        minOf(start.first, end.first) - localDx,
+                        minOf(start.second, end.second) - localDy,
+                        maxOf(start.first, end.first) - localDx,
+                        maxOf(start.second, end.second) - localDy
                     )
                     canvas.drawRect(r, guidePaint)
                 }
