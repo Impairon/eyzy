@@ -74,6 +74,7 @@ class AvatarService : AccessibilityService() {
     private var resizingTouchOffset: Pair<Float, Float>? = null
     private var resizingPreview: Rect? = null
     private var profileCreationId: String? = null
+    private var manualSessionProfileId: String? = null
     private var activePackage = ""
     private val undoStack = ArrayDeque<List<Rect>>()
     private val redoStack = ArrayDeque<List<Rect>>()
@@ -151,7 +152,11 @@ class AvatarService : AccessibilityService() {
 
     fun summonManualHideControl() {
         if (!Prefs.isEnabled(this)) return
+        doScan()
         manualSessionActive = true
+        if (manualSessionProfileId == null) {
+            manualSessionProfileId = Prefs.profileForPackage(this, activePackage).id
+        }
         addControl()
         doScan()
     }
@@ -308,6 +313,7 @@ class AvatarService : AccessibilityService() {
     private fun closeManualSession() {
         cancelProfileCreation()
         manualSessionActive = false
+        manualSessionProfileId = null
         Prefs.setManualHideVisible(this, false)
         removeControl()
         doScan()
@@ -353,7 +359,7 @@ class AvatarService : AccessibilityService() {
         }
 
     private fun profileId() =
-        profileCreationId ?: Prefs.profileForPackage(this, activePackage).id
+        profileCreationId ?: manualSessionProfileId ?: Prefs.profileForPackage(this, activePackage).id
 
     private fun manualRects(): List<Rect> {
         return Prefs.manualHideRects(this, profileId(), orientationKey())
@@ -361,6 +367,35 @@ class AvatarService : AccessibilityService() {
 
     private fun saveManualRects(rects: List<Rect>) =
         Prefs.saveManualHideRects(this, profileId(), orientationKey(), rects)
+
+    private fun keyboardTop(): Int? {
+        return windows.asSequence()
+            .filter { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+            .mapNotNull { window ->
+                Rect().also { bounds ->
+                    runCatching { window.getBoundsInScreen(bounds) }.getOrNull()
+                }
+            }
+            .map { it.top }
+            .filter { it > 0 }
+            .minOrNull()
+    }
+
+    private fun manualDisplayRect(rect: Rect): Rect {
+        val top = keyboardTop() ?: return Rect(rect)
+        val screenHeight = resources.displayMetrics.heightPixels
+        val keyboardHeight = (screenHeight - top).coerceAtLeast(0)
+        if (keyboardHeight == 0) return Rect(rect)
+        if (rect.bottom <= top) return Rect(rect)
+
+        val shift = if (rect.top >= top) keyboardHeight else rect.bottom - top
+        val shiftedTop = rect.top - shift
+        val shiftedBottom = rect.bottom - shift
+        val visibleTop = shiftedTop.coerceAtLeast(0)
+        val visibleBottom = shiftedBottom.coerceAtMost(top)
+        if (visibleBottom <= visibleTop) return Rect(visibleTop, visibleTop, visibleTop, visibleTop)
+        return Rect(rect.left, visibleTop, rect.right, visibleBottom)
+    }
 
     private fun beginProfileCreation() {
         if (!Prefs.isEnabled(this) || !manualSessionActive) return
@@ -371,6 +406,7 @@ class AvatarService : AccessibilityService() {
             packageName
         )
         profileCreationId = profile.id
+        manualSessionProfileId = profile.id
         saveManualRects(emptyList())
         removeControl()
         addControl()
@@ -460,7 +496,7 @@ class AvatarService : AccessibilityService() {
                 (manualSessionActive || hasActiveProfile) &&
                 manualRects().isNotEmpty()
             ) {
-                manualRects().map { Item(it, forceRect = true) }
+                manualRects().map { Item(manualDisplayRect(it), forceRect = true) }
             } else emptyList()
             out.addAll(manualItems)
             for (w in windows) {
