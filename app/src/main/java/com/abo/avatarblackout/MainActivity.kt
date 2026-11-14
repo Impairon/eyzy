@@ -43,6 +43,8 @@ class MainActivity : Activity() {
     private val purple = Color.rgb(139, 92, 246)
     private val backgroundColor = Color.rgb(20, 17, 27)
     private val panel = Color.rgb(35, 29, 46)
+    private val panelRaised = Color.rgb(45, 37, 59)
+    private val border = Color.rgb(79, 64, 99)
     private val secondary = Color.rgb(177, 166, 194)
     private lateinit var content: LinearLayout
     private lateinit var menu: LinearLayout
@@ -152,7 +154,8 @@ class MainActivity : Activity() {
             text = "☰"
             textSize = 25f
             setTextColor(Color.WHITE)
-            background = rounded(panel, 14)
+            isAllCaps = false
+            background = outlined(panelRaised, purple, 14)
             setOnClickListener { toggleMenu() }
         }
         header.addView(menuButton, LinearLayout.LayoutParams(dp(54), dp(48)))
@@ -167,8 +170,8 @@ class MainActivity : Activity() {
         shell.addView(header)
         menu = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(pad, 0, pad, dp(8))
-            background = rounded(panel, 16)
+            setPadding(pad, dp(18), pad, dp(14))
+            background = outlined(Color.rgb(28, 23, 38), border, 20)
             visibility = View.GONE
         }
         val drawerParams = FrameLayout.LayoutParams(dp(292), -1).apply {
@@ -176,6 +179,14 @@ class MainActivity : Activity() {
         }
         root.addView(shell, FrameLayout.LayoutParams(-1, -1))
         root.addView(menu, drawerParams)
+        menu.addView(TextView(this).apply {
+            text = "swizy menu"
+            textSize = 13f
+            letterSpacing = .12f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(secondary)
+            setPadding(dp(6), 0, dp(6), dp(12))
+        }, LinearLayout.LayoutParams(-1, dp(34)))
         addMenuItem("Lowery") { openPage(0) }
         addMenuItem("Sibha") { openPage(1) }
         addMenuItem("Prayers") { openPage(2) }
@@ -369,7 +380,7 @@ class MainActivity : Activity() {
         content.addView(card("Settings") {
             addText(it, "Control shared behavior for Lowery, Sibha, and Prayers.")
             addText(it, "Prayer calculation method")
-            val method = Spinner(this)
+            val method = styledSpinner()
             val methodNames = arrayOf(
                 "Egyptian General Authority",
                 "Muslim World League",
@@ -392,7 +403,7 @@ class MainActivity : Activity() {
             })
             it.addView(method, LinearLayout.LayoutParams(-1, dp(52)))
             addText(it, "Lowery mask mode")
-            val mode = Spinner(this)
+            val mode = styledSpinner()
             mode.adapter = ArrayAdapter(
                 this,
                 android.R.layout.simple_spinner_dropdown_item,
@@ -410,7 +421,7 @@ class MainActivity : Activity() {
             })
             it.addView(mode, LinearLayout.LayoutParams(-1, dp(52)))
             addText(it, "Mask color")
-            val color = Spinner(this)
+            val color = styledSpinner()
             color.adapter = ArrayAdapter(
                 this,
                 android.R.layout.simple_spinner_dropdown_item,
@@ -436,7 +447,7 @@ class MainActivity : Activity() {
                 AvatarService.instance?.refresh()
             }
             addText(it, "Quick Settings action")
-            val tileAction = Spinner(this)
+            val tileAction = styledSpinner()
             tileAction.adapter = ArrayAdapter(
                 this,
                 android.R.layout.simple_spinner_dropdown_item,
@@ -528,7 +539,7 @@ class MainActivity : Activity() {
             "com.whatsapp", "org.telegram.messenger", "com.linkedin.android",
             "Other package"
         )
-        val packageChoice = Spinner(this).apply {
+        val packageChoice = styledSpinner().apply {
             adapter = ArrayAdapter(
                 this@MainActivity,
                 android.R.layout.simple_spinner_dropdown_item,
@@ -833,13 +844,15 @@ class MainActivity : Activity() {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(14), dp(16), dp(14))
-            background = rounded(panel, 16)
+            background = outlined(panel, border, 16)
+            elevation = dp(2).toFloat()
         }
         box.addView(TextView(this).apply {
             text = title
             textSize = 18f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
+            setPadding(0, 0, 0, dp(4))
         })
         body(box)
         val wrapper = LinearLayout(this).apply {
@@ -855,6 +868,7 @@ class MainActivity : Activity() {
             textSize = 14f
             setTextColor(secondary)
             setPadding(0, dp(8), 0, dp(8))
+            setLineSpacing(dp(2).toFloat(), 1f)
         })
     }
 
@@ -871,7 +885,7 @@ class MainActivity : Activity() {
             setTextColor(secondary)
         }
         fun update(number: Int) {
-            value.text = "$label: ${number}dp"
+            value.text = "$label: ${number}${if (label.contains("opacity", true)) "%" else " dp"}"
             onChanged(number)
         }
         val slider = SeekBar(this).apply {
@@ -894,8 +908,13 @@ class MainActivity : Activity() {
         this.text = text
         isAllCaps = false
         minHeight = dp(48)
+        setPadding(dp(14), 0, dp(14), 0)
         setTextColor(Color.WHITE)
-        background = rounded(purple, 14)
+        typeface = Typeface.DEFAULT_BOLD
+        background = outlined(purple, Color.rgb(188, 162, 255), 14)
+        layoutParams = LinearLayout.LayoutParams(-1, dp(48)).apply {
+            setMargins(0, dp(5), 0, dp(5))
+        }
     }
 
     private fun addMenuItem(text: String, action: () -> Unit) {
@@ -906,9 +925,17 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             isAllCaps = false
             gravity = Gravity.START or Gravity.CENTER_VERTICAL
-            background = rounded(panel, 12)
+            setPadding(dp(16), 0, dp(12), 0)
+            background = outlined(panelRaised, border, 12)
             setOnClickListener { action() }
-        }, LinearLayout.LayoutParams(-1, dp(48)))
+        }, LinearLayout.LayoutParams(-1, dp(52)).apply {
+            setMargins(0, dp(4), 0, dp(4))
+        })
+    }
+
+    private fun styledSpinner() = Spinner(this).apply {
+        background = outlined(panelRaised, border, 12)
+        setPadding(dp(12), 0, dp(12), 0)
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
@@ -917,6 +944,13 @@ class MainActivity : Activity() {
         GradientDrawable().apply {
             setColor(color)
             cornerRadius = dp(radiusDp).toFloat()
+        }
+
+    private fun outlined(color: Int, strokeColor: Int, radiusDp: Int) =
+        GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = dp(radiusDp).toFloat()
+            setStroke(dp(1), strokeColor)
         }
 
     companion object {
