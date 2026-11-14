@@ -488,7 +488,11 @@ class AvatarService : AccessibilityService() {
     private fun foregroundPackage(): String? {
         return windows.asSequence()
             .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
-            .sortedByDescending { it.layer }
+            .sortedWith(
+                compareByDescending<AccessibilityWindowInfo> { it.isFocused }
+                    .thenByDescending { it.isActive }
+                    .thenByDescending { it.layer }
+            )
             .mapNotNull { window ->
                 runCatching {
                     val root = if (Build.VERSION.SDK_INT >= 33) {
@@ -499,13 +503,14 @@ class AvatarService : AccessibilityService() {
                     root?.packageName?.toString()
                 }.getOrNull()
             }
-            .firstOrNull { it != packageName && it != "com.android.systemui" }
+            .firstOrNull()
+            ?.takeUnless { it == packageName || it == "com.android.systemui" }
     }
 
     private fun doScan() {
         try {
             ensureOverlay()
-            val detectedPackage = foregroundPackage() ?: activePackage
+            val detectedPackage = foregroundPackage() ?: ""
             if (detectedPackage != activePackage) {
                 activePackage = detectedPackage
                 Prefs.setManualHideVisible(
