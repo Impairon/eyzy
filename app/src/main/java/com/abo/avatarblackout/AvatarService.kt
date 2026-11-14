@@ -63,6 +63,8 @@ class AvatarService : AccessibilityService() {
     private var control: ControlView? = null
     private var manualSessionActive = false
     private var selectionStart: Pair<Float, Float>? = null
+    private var movingAreaIndex = -1
+    private var movingAreaStart: Pair<Float, Float>? = null
     private val handler = Handler(Looper.getMainLooper())
     private var pending = false
     private val scan = Runnable { pending = false; doScan() }
@@ -97,6 +99,7 @@ class AvatarService : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
+        if (Prefs.maskMode(this) == Prefs.MaskMode.NONE) return
         if (Prefs.maskMode(this) == Prefs.MaskMode.SIMPLE &&
             e?.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
         ) return
@@ -155,6 +158,38 @@ class AvatarService : AccessibilityService() {
 
     private fun toggleManualAreas() {
         Prefs.setManualHideVisible(this, !Prefs.manualHideVisible(this))
+        doScan()
+    }
+
+    private fun beginManualAreaMove() {
+        if (!Prefs.isEnabled(this) || !manualSessionActive) return
+        movingAreaIndex = -1
+        movingAreaStart = null
+        removeControl()
+        overlay?.setMoveMode(true)
+        setOverlayTouchable(true)
+    }
+
+    private fun finishManualAreaMove(index: Int, start: Pair<Float, Float>, end: Pair<Float, Float>) {
+        val areas = Prefs.manualHideRects(this)
+        if (index in areas.indices) {
+            val old = areas[index]
+            val dx = (end.first - start.first).toInt()
+            val dy = (end.second - start.second).toInt()
+            val moved = Rect(old).apply { offset(dx, dy) }
+            val screenW = resources.displayMetrics.widthPixels
+            val screenH = resources.displayMetrics.heightPixels
+            moved.offset(
+                (0 - moved.left).coerceAtMost(0) + (screenW - moved.right).coerceAtMost(0),
+                (0 - moved.top).coerceAtMost(0) + (screenH - moved.bottom).coerceAtMost(0)
+            )
+            Prefs.replaceManualHideRect(this, index, moved)
+        }
+        movingAreaIndex = -1
+        movingAreaStart = null
+        overlay?.setMoveMode(false)
+        setOverlayTouchable(false)
+        addControl()
         doScan()
     }
 
@@ -248,13 +283,13 @@ class AvatarService : AccessibilityService() {
                     w.getRoot(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
                 else w.root) ?: continue
                 val packageName = root.packageName?.toString() ?: continue
-                if (packageName in TARGETS) {
+                if (packageName in TARGETS && Prefs.maskMode(this) != Prefs.MaskMode.NONE) {
                     val sc = Scan()
                     walk(root, sc, 0)
                     if (Prefs.maskMode(this) == Prefs.MaskMode.SIMPLE) {
                         if (packageName in TELEGRAM) {
                             if (!sc.hasInput) tgListLine(sc, out) else tgChat(sc, out)
-                        } else {
+                        } else if (Prefs.maskMode(this) == Prefs.MaskMode.DYNAMIC) {
                             lineFor(sc)?.let { out.add(it) }
                         }
                     } else {
@@ -487,6 +522,7 @@ class AvatarService : AccessibilityService() {
         }
         private var items: List<Item> = emptyList()
         private var selection = false
+        private var moveMode = false
         private var selectionEnd: Pair<Float, Float>? = null
         private val loc = IntArray(2)
 
@@ -496,9 +532,40 @@ class AvatarService : AccessibilityService() {
             selectionEnd = null
             invalidate()
         }
+        fun setMoveMode(enabled: Boolean) {
+            moveMode = enabled
+            movingAreaIndex = -1
+            movingAreaStart = null
+            invalidate()
+        }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
-            if (!selection) return false
+            if (!selection && !moveMode) return false
+            if (moveMode) {
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        val areas = Prefs.manualHideRects(this@AvatarService)
+                        movingAreaIndex = areas.indexOfLast { it.contains(event.rawX.toInt(), event.rawY.toInt()) }
+                        if (movingAreaIndex >= 0) {
+                            movingAreaStart = event.rawX to event.rawY
+                            invalidate()
+                        }
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        val start = movingAreaStart
+                        if (movingAreaIndex >= 0 && start != null) {
+                            finishManualAreaMove(
+                                movingAreaIndex, start, event.rawX to event.rawY
+                            )
+                        } else {
+                            setMoveMode(false)
+                            setOverlayTouchable(false)
+                            addControl()
+                        }
+                    }
+                }
+                return true
+            }
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     selectionStart = event.rawX to event.rawY
@@ -564,6 +631,9 @@ class AvatarService : AccessibilityService() {
                 }
                 canvas.drawText("Drag over the area to hide", dp(16).toFloat(), dp(48).toFloat(), textPaint)
             }
+            if (moveMode) {
+                canvas.drawText("Drag a black box to move it", dp(16).toFloat(), dp(48).toFloat(), textPaint)
+            }
         }
     }
 
@@ -573,16 +643,25 @@ class AvatarService : AccessibilityService() {
         private var menu = false
         private var downX = 0f
         private var downY = 0f
-        private val fade = Runnable { animate().alpha(0.12f).setDuration(350).start() }
+        private val fade = Runnable { dock() }
 
         init {
-            alpha = 0.12f
+            alpha = 0.35f
+            postDelayed(fade, 900)
         }
 
         private fun wake() {
             removeCallbacks(fade)
-            animate().alpha(1f).setDuration(120).start()
+            animate().translationX(0f).alpha(1f).setDuration(120).start()
             postDelayed(fade, 2200)
+        }
+
+        private fun dock() {
+            if (menu) return
+            val lp = layoutParams as? WindowManager.LayoutParams
+            val onLeft = (lp?.x ?: 0) < resources.displayMetrics.widthPixels / 2
+            animate().translationX(if (onLeft) -dp(20).toFloat() else dp(20).toFloat())
+                .alpha(0.35f).setDuration(300).start()
         }
 
         override fun onDraw(canvas: Canvas) {
@@ -604,7 +683,8 @@ class AvatarService : AccessibilityService() {
                     else "Show all black boxes",
                     dp(16).toFloat(), dp(126).toFloat(), paint
                 )
-                canvas.drawText("Close", dp(16).toFloat(), dp(168).toFloat(), paint)
+                canvas.drawText("Move black boxes", dp(16).toFloat(), dp(168).toFloat(), paint)
+                canvas.drawText("Close", dp(16).toFloat(), dp(210).toFloat(), paint)
             }
             paint.color = purple()
             canvas.drawCircle(ballX, ballY, dp(26).toFloat(), paint)
@@ -625,6 +705,23 @@ class AvatarService : AccessibilityService() {
                     downY = event.rawY
                     return true
                 }
+                MotionEvent.ACTION_MOVE -> {
+                    if (!menu) {
+                        val lp = layoutParams as WindowManager.LayoutParams
+                        val dx = (event.rawX - downX).toInt()
+                        val dy = (event.rawY - downY).toInt()
+                        lp.x = (lp.x + dx).coerceIn(
+                            0, resources.displayMetrics.widthPixels - width
+                        )
+                        lp.y = (lp.y + dy).coerceIn(
+                            0, resources.displayMetrics.heightPixels - height
+                        )
+                        wm.updateViewLayout(this, lp)
+                        downX = event.rawX
+                        downY = event.rawY
+                    }
+                    return true
+                }
                 MotionEvent.ACTION_UP -> {
                     val moved = kotlin.math.abs(event.rawX - downX) > dp(12) ||
                         kotlin.math.abs(event.rawY - downY) > dp(12)
@@ -639,7 +736,7 @@ class AvatarService : AccessibilityService() {
                         menu = true
                         val lp = layoutParams as WindowManager.LayoutParams
                         lp.width = dp(250)
-                        lp.height = dp(205)
+                        lp.height = dp(247)
                         lp.x = (lp.x - dp(192)).coerceAtLeast(0)
                         wm.updateViewLayout(this, lp)
                         invalidate()
@@ -649,6 +746,7 @@ class AvatarService : AccessibilityService() {
                             y < dp(58) -> beginManualHideSelection()
                             y < dp(102) -> removeLastManualArea()
                             y < dp(148) -> toggleManualAreas()
+                            y < dp(192) -> beginManualAreaMove()
                             else -> closeManualSession()
                         }
                         if (control != null && manualSessionActive) {

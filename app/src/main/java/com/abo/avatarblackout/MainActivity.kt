@@ -333,7 +333,7 @@ class MainActivity : Activity() {
             mode.adapter = ArrayAdapter(
                 this,
                 android.R.layout.simple_spinner_dropdown_item,
-                arrayOf("Simple line", "Dynamic circle")
+                arrayOf("Simple line", "Dynamic circle", "Do nothing (manual only)")
             )
             mode.setSelection(Prefs.maskMode(this).ordinal)
             mode.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {

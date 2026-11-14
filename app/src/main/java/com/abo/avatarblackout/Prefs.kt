@@ -12,7 +12,7 @@ object Prefs {
     private const val KEY_CIRCLE_SIZE = "circle_size_dp"
     private const val KEY_24_HOUR = "prayer_24_hour"
 
-    enum class MaskMode { SIMPLE, DYNAMIC }
+    enum class MaskMode { SIMPLE, DYNAMIC, NONE }
     private const val KEY_USE_GPS = "prayer_use_gps"
     private const val KEY_LATITUDE = "prayer_latitude"
     private const val KEY_LONGITUDE = "prayer_longitude"
@@ -145,6 +145,16 @@ object Prefs {
                 "${it.left},${it.top},${it.right},${it.bottom}"
             })
         }.apply()
+    }
+
+    fun replaceManualHideRect(c: Context, index: Int, rect: android.graphics.Rect) {
+        val all = manualHideRects(c).toMutableList()
+        if (index !in all.indices) return
+        all[index] = rect
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putString(KEY_MANUAL_RECT, all.joinToString(";") {
+                "${it.left},${it.top},${it.right},${it.bottom}"
+            }).apply()
     }
 
     fun manualHideVisible(c: Context) =
