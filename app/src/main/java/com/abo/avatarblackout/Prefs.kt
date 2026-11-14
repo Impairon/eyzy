@@ -8,6 +8,8 @@ object Prefs {
     private const val KEY_SIBHA_COUNT = "sibha_count"
     private const val KEY_SIBHA_PEEP_EVERY = "sibha_peep_every"
     private const val KEY_MASK_MODE = "mask_mode"
+    private const val KEY_LINE_THICKNESS = "line_thickness_dp"
+    private const val KEY_CIRCLE_SIZE = "circle_size_dp"
     private const val KEY_24_HOUR = "prayer_24_hour"
 
     enum class MaskMode { SIMPLE, DYNAMIC }
@@ -34,6 +36,20 @@ object Prefs {
     fun setMaskMode(c: Context, mode: MaskMode) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit().putString(KEY_MASK_MODE, mode.name).apply()
+
+    fun lineThicknessDp(c: Context) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_LINE_THICKNESS, 10)
+
+    fun setLineThicknessDp(c: Context, value: Int) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putInt(KEY_LINE_THICKNESS, value.coerceIn(4, 32)).apply()
+
+    fun circleSizeDp(c: Context) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_CIRCLE_SIZE, 42)
+
+    fun setCircleSizeDp(c: Context, value: Int) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putInt(KEY_CIRCLE_SIZE, value.coerceIn(24, 96)).apply()
 
     fun sibhaCount(c: Context) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_SIBHA_COUNT, 0)

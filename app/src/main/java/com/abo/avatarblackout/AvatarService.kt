@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.graphics.RectF
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -203,14 +204,14 @@ class AvatarService : AccessibilityService() {
         val bySize = isImage && n.packageName?.toString() == LINKEDIN && w >= 28 * dp && w <= 110 * dp
         if (!byId && !bySize) return null
         val ratio = w.toFloat() / h
-        if (ratio >= 0.8f && ratio <= 1.25f) return Item(barFor(r))
+        if (ratio >= 0.8f && ratio <= 1.25f) return Item(maskFor(r))
         // Half scrolled off the top or bottom edge: rebuild the whole circle and clip it to what is visible
         val textOnly = cls.contains("TextView") && !id.contains("initials")
         if (byId && !textOnly && h >= 0.25f * w && h < 0.8f * w) {
             val atBottom = (r.top + r.bottom) / 2 > resources.displayMetrics.heightPixels / 2
             val full = if (atBottom) Rect(r.left, r.top, r.right, r.top + w)
                        else Rect(r.left, r.bottom - w, r.right, r.bottom)
-            return Item(barFor(full), r)
+            return Item(maskFor(full), r)
         }
         return null
     }
@@ -267,11 +268,10 @@ class AvatarService : AccessibilityService() {
         val rows = sc.msgRows.filter { it.height() >= 44 * dp && it.bottom < list.bottom - 2 }
         if (rows.isEmpty()) return
         val toolbarBottom = (93 * dp).toInt()
-        val dynamic = Prefs.maskMode(this) == Prefs.MaskMode.DYNAMIC
         for (r in rows) {
-            val avatar = if (dynamic) dynamicSlot(r, dp) else slot(r, dp)
+            val avatar = if (Prefs.maskMode(this) == Prefs.MaskMode.DYNAMIC) dynamicSlot(r, dp) else slot(r, dp)
             val clip = Rect(r.left, max(r.top, toolbarBottom), r.left + (54 * dp).toInt(), r.bottom)
-            out.add(Item(barFor(avatar), clip))
+            out.add(Item(maskFor(avatar), clip))
         }
     }
 
@@ -282,10 +282,22 @@ class AvatarService : AccessibilityService() {
         return Rect(left, bottom - size, left + size, bottom)
     }
 
+    private fun maskFor(r: Rect): Rect {
+        return if (Prefs.maskMode(this) == Prefs.MaskMode.DYNAMIC) circleFor(r) else barFor(r)
+    }
+
     private fun barFor(r: Rect): Rect {
-        val width = (r.width() * 0.24f).toInt().coerceAtLeast((8 * resources.displayMetrics.density).toInt())
+        val width = (Prefs.lineThicknessDp(this) * resources.displayMetrics.density).toInt()
         val center = (r.left + r.right) / 2
         return Rect(center - width / 2, r.top, center + width / 2, r.bottom)
+    }
+
+    private fun circleFor(r: Rect): Rect {
+        val size = (Prefs.circleSizeDp(this) * resources.displayMetrics.density).toInt()
+        val actual = minOf(size, r.width(), r.height())
+        val cx = (r.left + r.right) / 2
+        val cy = (r.top + r.bottom) / 2
+        return Rect(cx - actual / 2, cy - actual / 2, cx + actual / 2, cy + actual / 2)
     }
 
     private class OverlayView(c: Context) : View(c) {
@@ -307,10 +319,15 @@ class AvatarService : AccessibilityService() {
                     )
                 }
                 val r = it.rect
-                canvas.drawRect(
-                    (r.left - dx).toFloat(), (r.top - dy).toFloat(),
-                    (r.right - dx).toFloat(), (r.bottom - dy).toFloat(), paint
-                )
+                val left = (r.left - dx).toFloat()
+                val top = (r.top - dy).toFloat()
+                val right = (r.right - dx).toFloat()
+                val bottom = (r.bottom - dy).toFloat()
+                if (Prefs.maskMode(context) == Prefs.MaskMode.DYNAMIC) {
+                    canvas.drawOval(RectF(left, top, right, bottom), paint)
+                } else {
+                    canvas.drawRect(left, top, right, bottom, paint)
+                }
                 canvas.restore()
             }
         }

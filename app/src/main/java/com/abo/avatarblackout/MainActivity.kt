@@ -137,24 +137,7 @@ class MainActivity : Activity() {
             it.addView(access)
         })
         content.addView(card("Mask shape") {
-            addText(it, "Simple line is recommended: a thick, straight bar clipped to the avatar area. Dynamic follows changing avatar bounds when an app layout needs it.")
-            val mode = Spinner(this)
-            mode.adapter = ArrayAdapter(
-                this,
-                android.R.layout.simple_spinner_dropdown_item,
-                arrayOf("Simple line", "Dynamic")
-            )
-            mode.setSelection(Prefs.maskMode(this).ordinal)
-            mode.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
-                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-                override fun onItemSelected(
-                    parent: AdapterView<*>?, view: View?, position: Int, id: Long
-                ) {
-                    Prefs.setMaskMode(this@MainActivity, Prefs.MaskMode.entries[position])
-                    AvatarService.instance?.refresh()
-                }
-            })
-            it.addView(mode, LinearLayout.LayoutParams(-1, dp(52)))
+            addText(it, "Simple line is the default straight vertical bar. Dynamic circle mode and both size controls are available in Settings.")
         })
         content.addView(card("Quick Settings") {
             addText(it, "Add the Hide avatars tile to toggle Lowery quickly from the notification shade.")
@@ -214,6 +197,32 @@ class MainActivity : Activity() {
         content.removeAllViews()
         content.addView(card("Settings") {
             addText(it, "Control shared behavior for Lowery, Sibha, and Prayers.")
+            addText(it, "Lowery mask mode")
+            val mode = Spinner(this)
+            mode.adapter = ArrayAdapter(
+                this,
+                android.R.layout.simple_spinner_dropdown_item,
+                arrayOf("Simple line", "Dynamic circle")
+            )
+            mode.setSelection(Prefs.maskMode(this).ordinal)
+            mode.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+                override fun onItemSelected(
+                    parent: AdapterView<*>?, view: View?, position: Int, id: Long
+                ) {
+                    Prefs.setMaskMode(this@MainActivity, Prefs.MaskMode.entries[position])
+                    AvatarService.instance?.refresh()
+                }
+            })
+            it.addView(mode, LinearLayout.LayoutParams(-1, dp(52)))
+            addSlider(it, "Line thickness", 4, 32, Prefs.lineThicknessDp(this)) {
+                Prefs.setLineThicknessDp(this, it)
+                AvatarService.instance?.refresh()
+            }
+            addSlider(it, "Dynamic circle size", 24, 96, Prefs.circleSizeDp(this)) {
+                Prefs.setCircleSizeDp(this, it)
+                AvatarService.instance?.refresh()
+            }
             val format = Switch(this).apply {
                 text = "Use 24-hour prayer times"
                 textSize = 16f
@@ -489,6 +498,38 @@ class MainActivity : Activity() {
             setTextColor(secondary)
             setPadding(0, dp(8), 0, dp(8))
         })
+    }
+
+    private fun addSlider(
+        parent: LinearLayout,
+        label: String,
+        min: Int,
+        max: Int,
+        initial: Int,
+        onChanged: (Int) -> Unit
+    ) {
+        val value = TextView(this).apply {
+            textSize = 14f
+            setTextColor(secondary)
+        }
+        fun update(number: Int) {
+            value.text = "$label: ${number}dp"
+            onChanged(number)
+        }
+        val slider = SeekBar(this).apply {
+            this.max = max - min
+            progress = initial.coerceIn(min, max) - min
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    update(min + progress)
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+                override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+            })
+        }
+        update(initial.coerceIn(min, max))
+        parent.addView(value)
+        parent.addView(slider, LinearLayout.LayoutParams(-1, dp(42)))
     }
 
     private fun actionButton(text: String) = Button(this).apply {
