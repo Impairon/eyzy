@@ -771,13 +771,20 @@ class AvatarService : AccessibilityService() {
                 }
             }
             if (resizeMode) {
-                Prefs.manualHideRects(context).forEach { area ->
+                val activeIndex = resizingAreaIndex
+                val activePreview = resizingPreview
+                Prefs.manualHideRects(context).forEachIndexed { index, area ->
+                    val handleArea = if (index == activeIndex && activePreview != null) {
+                        activePreview
+                    } else {
+                        area
+                    }
                     val handle = dp(18).toFloat()
                     canvas.drawRoundRect(
-                        area.right - handle - dx,
-                        area.bottom - handle - dy,
-                        area.right.toFloat() - dx,
-                        area.bottom.toFloat() - dy,
+                        handleArea.right - handle - dx,
+                        handleArea.bottom - handle - dy,
+                        handleArea.right.toFloat() - dx,
+                        handleArea.bottom.toFloat() - dy,
                         dp(4).toFloat(),
                         dp(4).toFloat(),
                         resizeHandlePaint
@@ -830,6 +837,7 @@ class AvatarService : AccessibilityService() {
 
         private fun wake() {
             removeCallbacks(fade)
+            animate().cancel()
             animate().translationX(0f).alpha(1f).setDuration(120).start()
             postDelayed(fade, 2200)
         }
@@ -880,6 +888,7 @@ class AvatarService : AccessibilityService() {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     wake()
+                    animate().cancel()
                     downX = event.rawX
                     downY = event.rawY
                     dragging = false
