@@ -1,0 +1,3 @@
+<resources>
+    <string name="service_desc">Finds profile pictures in WhatsApp and LinkedIn and covers them with black circles while the Quick Settings tile is on.</string>
+</resources>

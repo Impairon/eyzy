@@ -1,0 +1,14 @@
+[
+    {
+        "merged": "com.abo.avatarblackout.app-debug-4:/xml_accessibility_config.xml.flat",
+        "source": "com.abo.avatarblackout.app-main-6:/xml/accessibility_config.xml"
+    },
+    {
+        "merged": "/home/aboayman/.gradle/daemon/8.7/com.abo.avatarblackout.app-debug-4:/drawable_ic_tile.xml.flat",
+        "source": "/home/aboayman/.gradle/daemon/8.7/com.abo.avatarblackout.app-main-6:/drawable/ic_tile.xml"
+    },
+    {
+        "merged": "/home/aboayman/.gradle/daemon/8.7/com.abo.avatarblackout.app-debug-4:/xml_accessibility_config.xml.flat",
+        "source": "/home/aboayman/.gradle/daemon/8.7/com.abo.avatarblackout.app-main-6:/xml/accessibility_config.xml"
+    }
+]

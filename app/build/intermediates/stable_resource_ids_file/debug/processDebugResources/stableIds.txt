@@ -1,0 +1,3 @@
+com.abo.avatarblackout:xml/accessibility_config = 0x7f030000
+com.abo.avatarblackout:string/service_desc = 0x7f020000
+com.abo.avatarblackout:drawable/ic_tile = 0x7f010000

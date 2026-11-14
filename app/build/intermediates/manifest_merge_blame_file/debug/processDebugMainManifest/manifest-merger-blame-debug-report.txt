@@ -1,0 +1,82 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.abo.avatarblackout"
+4    android:versionCode="1"
+5    android:versionName="1.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="24"
+9        android:targetSdkVersion="34" />
+10
+11    <application
+11-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:4:5-38:19
+12        android:allowBackup="false"
+12-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:6:9-36
+13        android:debuggable="true"
+14        android:extractNativeLibs="false"
+15        android:label="Avatar Blackout" >
+15-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:5:9-40
+16        <activity
+16-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:8:9-13:20
+17            android:name="com.abo.avatarblackout.MainActivity"
+17-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:8:19-47
+18            android:exported="true" >
+18-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:8:48-71
+19            <intent-filter>
+19-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:9:13-12:29
+20                <action android:name="android.intent.action.MAIN" />
+20-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:10:17-69
+20-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:10:25-66
+21
+22                <category android:name="android.intent.category.LAUNCHER" />
+22-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:11:17-77
+22-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:11:27-74
+23            </intent-filter>
+24        </activity>
+25
+26        <service
+26-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:15:9-26:19
+27            android:name="com.abo.avatarblackout.AvatarService"
+27-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:16:13-42
+28            android:exported="true"
+28-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:17:13-36
+29            android:label="Avatar Blackout"
+29-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:18:13-44
+30            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" >
+30-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:19:13-79
+31            <intent-filter>
+31-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:20:13-22:29
+32                <action android:name="android.accessibilityservice.AccessibilityService" />
+32-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:21:17-92
+32-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:21:25-89
+33            </intent-filter>
+34
+35            <meta-data
+35-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:23:13-25:64
+36                android:name="android.accessibilityservice"
+36-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:24:17-60
+37                android:resource="@xml/accessibility_config" />
+37-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:25:17-61
+38        </service>
+39        <service
+39-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:28:9-37:19
+40            android:name="com.abo.avatarblackout.BlackoutTile"
+40-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:29:13-41
+41            android:exported="true"
+41-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:30:13-36
+42            android:icon="@drawable/ic_tile"
+42-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:31:13-45
+43            android:label="Hide avatars"
+43-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:32:13-41
+44            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE" >
+44-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:33:13-77
+45            <intent-filter>
+45-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:34:13-36:29
+46                <action android:name="android.service.quicksettings.action.QS_TILE" />
+46-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:35:17-87
+46-->/home/aboayman/blackopsy/avatar-blackout/android/app/src/main/AndroidManifest.xml:35:25-84
+47            </intent-filter>
+48        </service>
+49    </application>
+50
+51</manifest>
