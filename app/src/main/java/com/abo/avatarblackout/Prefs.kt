@@ -6,7 +6,9 @@ object Prefs {
     private const val FILE = "avb"
     private const val KEY = "enabled"
     private const val KEY_SIBHA_COUNT = "sibha_count"
+    private const val KEY_SIBHA_PEEP_EVERY = "sibha_peep_every"
     private const val KEY_MASK_MODE = "mask_mode"
+    private const val KEY_24_HOUR = "prayer_24_hour"
 
     enum class MaskMode { SIMPLE, DYNAMIC }
     private const val KEY_USE_GPS = "prayer_use_gps"
@@ -39,6 +41,20 @@ object Prefs {
     fun setSibhaCount(c: Context, count: Int) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
             .putInt(KEY_SIBHA_COUNT, count.coerceAtLeast(0)).apply()
+
+    fun sibhaPeepEvery(c: Context) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_SIBHA_PEEP_EVERY, 0)
+
+    fun setSibhaPeepEvery(c: Context, count: Int) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putInt(KEY_SIBHA_PEEP_EVERY, count.coerceAtLeast(0)).apply()
+
+    fun prayer24Hour(c: Context) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_24_HOUR, false)
+
+    fun setPrayer24Hour(c: Context, enabled: Boolean) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_24_HOUR, enabled).apply()
 
     fun useGps(c: Context) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_USE_GPS, true)

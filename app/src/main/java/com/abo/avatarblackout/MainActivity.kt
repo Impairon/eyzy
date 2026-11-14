@@ -10,7 +10,12 @@ import android.graphics.drawable.GradientDrawable
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -34,6 +39,8 @@ class MainActivity : Activity() {
     private val panel = Color.rgb(35, 29, 46)
     private val secondary = Color.rgb(177, 166, 194)
     private lateinit var content: LinearLayout
+    private lateinit var menu: LinearLayout
+    private lateinit var pageTitle: TextView
     private val prayerLabels = linkedMapOf(
         "Fajr" to "Fajr",
         "Sunrise" to "Sunrise",
@@ -64,17 +71,38 @@ class MainActivity : Activity() {
             setPadding(pad, dp(18), pad, dp(4))
         }
         shell.addView(title)
-        val tabs = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+        val header = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
             setPadding(pad, 0, pad, dp(8))
         }
-        val lowery = tabButton("Lowery")
-        val sibha = tabButton("Sibha")
-        val prayers = tabButton("Prayers")
-        tabs.addView(lowery, LinearLayout.LayoutParams(0, dp(48), 1f))
-        tabs.addView(sibha, LinearLayout.LayoutParams(0, dp(48), 1f))
-        tabs.addView(prayers, LinearLayout.LayoutParams(0, dp(48), 1f))
-        shell.addView(tabs)
+        val menuButton = Button(this).apply {
+            text = "☰"
+            textSize = 25f
+            setTextColor(Color.WHITE)
+            background = rounded(panel, 14)
+            setOnClickListener { menu.visibility = if (menu.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
+        }
+        header.addView(menuButton, LinearLayout.LayoutParams(dp(54), dp(48)))
+        pageTitle = TextView(this).apply {
+            text = "Lowery"
+            textSize = 18f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            setPadding(dp(14), 0, 0, 0)
+        }
+        header.addView(pageTitle, LinearLayout.LayoutParams(0, dp(48), 1f))
+        shell.addView(header)
+        menu = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, 0, pad, dp(8))
+            background = rounded(panel, 16)
+            visibility = View.GONE
+        }
+        shell.addView(menu)
+        addMenuItem("Lowery") { showLowery(); menu.visibility = View.GONE }
+        addMenuItem("Sibha") { showSibha(); menu.visibility = View.GONE }
+        addMenuItem("Prayers") { showPrayers(); menu.visibility = View.GONE }
+        addMenuItem("Settings") { showSettings(); menu.visibility = View.GONE }
         val scroll = ScrollView(this).apply {
             isFillViewport = true
         }
@@ -85,14 +113,11 @@ class MainActivity : Activity() {
         scroll.addView(content)
         shell.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(shell)
-        lowery.setOnClickListener { selectTab(lowery, sibha, prayers); showLowery() }
-        sibha.setOnClickListener { selectTab(sibha, lowery, prayers); showSibha() }
-        prayers.setOnClickListener { selectTab(prayers, lowery, sibha); showPrayers() }
-        selectTab(lowery, sibha, prayers)
         showLowery()
     }
 
     private fun showLowery() {
+        pageTitle.text = "Lowery"
         content.removeAllViews()
         content.addView(card("Avatar blackout") {
             addText(it, "Hide avatar pictures with a narrow bar while keeping chats, buttons, and the keyboard usable.")
@@ -137,6 +162,7 @@ class MainActivity : Activity() {
     }
 
     private fun showSibha() {
+        pageTitle.text = "Sibha"
         content.removeAllViews()
         val wood = Color.rgb(82, 52, 35)
         val card = LinearLayout(this).apply {
@@ -161,12 +187,15 @@ class MainActivity : Activity() {
         fun update() { count.text = Prefs.sibhaCount(this).toString() }
         update()
         val bead = Button(this).apply {
-            text = "Count"
-            textSize = 18f
+            text = "Tap to count"
+            textSize = 24f
+            minHeight = dp(180)
             setTextColor(Color.WHITE)
-            background = rounded(purple, 14)
+            background = rounded(purple, 28)
             setOnClickListener {
-                Prefs.setSibhaCount(this@MainActivity, Prefs.sibhaCount(this@MainActivity) + 1)
+                val next = Prefs.sibhaCount(this@MainActivity) + 1
+                Prefs.setSibhaCount(this@MainActivity, next)
+                peepIfNeeded(next)
                 update()
             }
         }
@@ -174,12 +203,57 @@ class MainActivity : Activity() {
         reset.setOnClickListener { Prefs.setSibhaCount(this, 0); update() }
         card.addView(label)
         card.addView(count)
-        card.addView(bead, LinearLayout.LayoutParams(-1, dp(56)))
-        card.addView(reset)
+        card.addView(bead, LinearLayout.LayoutParams(-1, dp(180)))
         content.addView(card)
+        content.addView(Space(this), LinearLayout.LayoutParams(1, dp(18)))
+        content.addView(reset, LinearLayout.LayoutParams(-1, dp(52)))
+    }
+
+    private fun showSettings() {
+        pageTitle.text = "Settings"
+        content.removeAllViews()
+        content.addView(card("Settings") {
+            addText(it, "Control shared behavior for Lowery, Sibha, and Prayers.")
+            val format = Switch(this).apply {
+                text = "Use 24-hour prayer times"
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                isChecked = Prefs.prayer24Hour(this@MainActivity)
+                setOnCheckedChangeListener { _, checked ->
+                    Prefs.setPrayer24Hour(this@MainActivity, checked)
+                }
+            }
+            it.addView(format)
+            val peep = EditText(this).apply {
+                hint = "Peep every N counts (0 disables)"
+                setText(Prefs.sibhaPeepEvery(this@MainActivity).takeIf { it > 0 }?.toString() ?: "")
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                setTextColor(Color.WHITE)
+                setHintTextColor(secondary)
+            }
+            it.addView(peep)
+            val save = actionButton("Save Sibha reminder")
+            save.setOnClickListener {
+                Prefs.setSibhaPeepEvery(this@MainActivity, peep.text.toString().toIntOrNull() ?: 0)
+                Toast.makeText(this, "Sibha reminder saved", Toast.LENGTH_SHORT).show()
+            }
+            it.addView(save)
+        })
+    }
+
+    private fun peepIfNeeded(count: Int) {
+        val every = Prefs.sibhaPeepEvery(this)
+        if (every <= 0 || count % every != 0) return
+        val tone = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80)
+        tone.startTone(ToneGenerator.TONE_PROP_BEEP, 100)
+        Handler(Looper.getMainLooper()).postDelayed({ tone.release() }, 150)
+        val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
+        if (Build.VERSION.SDK_INT >= 26) vibrator.vibrate(VibrationEffect.createOneShot(45, VibrationEffect.DEFAULT_AMPLITUDE))
+        else @Suppress("DEPRECATION") vibrator.vibrate(45)
     }
 
     private fun showPrayers() {
+        pageTitle.text = "Prayers"
         content.removeAllViews()
         val date = todayKey()
         val times = parsePrayerTimes(Prefs.prayerTimes(this))
@@ -363,7 +437,9 @@ class MainActivity : Activity() {
         return runCatching {
             val objectJson = JSONObject(json)
             prayerLabels.mapNotNull { (key, label) ->
-                objectJson.optString(key).takeIf { it.isNotBlank() }?.let { label to it.substringBefore(" ") }
+                objectJson.optString(key).takeIf { it.isNotBlank() }?.let {
+                    label to formatPrayerTime(it.substringBefore(" "))
+                }
             }.toMap()
         }.getOrDefault(emptyMap())
     }
@@ -371,6 +447,15 @@ class MainActivity : Activity() {
     private fun encode(value: Double) = URLEncoder.encode(value.toString(), "UTF-8")
     private fun todayKey() = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
     private fun displayDate() = SimpleDateFormat("EEEE, d MMMM yyyy", Locale.getDefault()).format(Date())
+
+    private fun formatPrayerTime(value: String): String {
+        if (Prefs.prayer24Hour(this)) return value
+        return runCatching {
+            val input = SimpleDateFormat("HH:mm", Locale.US)
+            val output = SimpleDateFormat("h:mm a", Locale.getDefault())
+            output.format(input.parse(value)!!)
+        }.getOrDefault(value)
+    }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, results: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, results)
@@ -414,18 +499,17 @@ class MainActivity : Activity() {
         background = rounded(purple, 14)
     }
 
-    private fun tabButton(text: String) = Button(this).apply {
-        this.text = text
-        textSize = 15f
-        minHeight = dp(48)
-        setTextColor(Color.WHITE)
-        isAllCaps = false
-        background = rounded(panel, 14)
-    }
-
-    private fun selectTab(selected: Button, vararg other: Button) {
-        selected.background = rounded(purple, 14)
-        other.forEach { it.background = rounded(panel, 14) }
+    private fun addMenuItem(text: String, action: () -> Unit) {
+        menu.addView(Button(this).apply {
+            this.text = text
+            textSize = 16f
+            minHeight = dp(48)
+            setTextColor(Color.WHITE)
+            isAllCaps = false
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            background = rounded(panel, 12)
+            setOnClickListener { action() }
+        }, LinearLayout.LayoutParams(-1, dp(48)))
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
