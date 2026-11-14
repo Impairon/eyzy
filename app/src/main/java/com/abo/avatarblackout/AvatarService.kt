@@ -67,6 +67,9 @@ class AvatarService : AccessibilityService() {
     private var movingAreaStart: Pair<Float, Float>? = null
     private var movingTouchOffset: Pair<Float, Float>? = null
     private var movingPreview: Rect? = null
+    private var resizingAreaIndex = -1
+    private var resizingTouchOffset: Pair<Float, Float>? = null
+    private var resizingPreview: Rect? = null
     private val handler = Handler(Looper.getMainLooper())
     private var pending = false
     private val scan = Runnable { pending = false; doScan() }
@@ -174,6 +177,16 @@ class AvatarService : AccessibilityService() {
         setOverlayTouchable(true)
     }
 
+    private fun beginManualAreaResize() {
+        if (!Prefs.isEnabled(this) || !manualSessionActive) return
+        resizingAreaIndex = -1
+        resizingTouchOffset = null
+        resizingPreview = null
+        removeControl()
+        overlay?.setResizeMode(true)
+        setOverlayTouchable(true)
+    }
+
     private fun finishManualAreaMove(index: Int, start: Pair<Float, Float>, end: Pair<Float, Float>) {
         val areas = Prefs.manualHideRects(this)
         if (index in areas.indices) {
@@ -210,6 +223,28 @@ class AvatarService : AccessibilityService() {
         val top = (y - offset.second).toInt()
             .coerceIn(0, (screenH - old.height()).coerceAtLeast(0))
         return Rect(left, top, left + old.width(), top + old.height())
+    }
+
+    private fun resizedArea(old: Rect, x: Float, y: Float, offset: Pair<Float, Float>): Rect {
+        val screenW = resources.displayMetrics.widthPixels
+        val screenH = resources.displayMetrics.heightPixels
+        val right = (x - offset.first).toInt().coerceIn(old.left + dp(12), screenW)
+        val bottom = (y - offset.second).toInt().coerceIn(old.top + dp(12), screenH)
+        return Rect(old.left, old.top, right, bottom)
+    }
+
+    private fun finishManualAreaResize() {
+        val areas = Prefs.manualHideRects(this)
+        if (resizingAreaIndex in areas.indices && resizingPreview != null) {
+            Prefs.replaceManualHideRect(this, resizingAreaIndex, resizingPreview!!)
+        }
+        resizingAreaIndex = -1
+        resizingTouchOffset = null
+        resizingPreview = null
+        overlay?.setResizeMode(false)
+        setOverlayTouchable(false)
+        addControl()
+        doScan()
     }
 
     private fun closeManualSession() {
@@ -542,6 +577,7 @@ class AvatarService : AccessibilityService() {
         private var items: List<Item> = emptyList()
         private var selection = false
         private var moveMode = false
+        private var resizeMode = false
         private var selectionEnd: Pair<Float, Float>? = null
         private val loc = IntArray(2)
 
@@ -559,9 +595,16 @@ class AvatarService : AccessibilityService() {
             movingPreview = null
             invalidate()
         }
+        fun setResizeMode(enabled: Boolean) {
+            resizeMode = enabled
+            resizingAreaIndex = -1
+            resizingTouchOffset = null
+            resizingPreview = null
+            invalidate()
+        }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
-            if (!selection && !moveMode) return false
+            if (!selection && !moveMode && !resizeMode) return false
             getLocationOnScreen(loc)
             val screenX = event.x + loc[0]
             val screenY = event.y + loc[1]
@@ -601,6 +644,49 @@ class AvatarService : AccessibilityService() {
                             )
                         } else {
                             setMoveMode(false)
+                            setOverlayTouchable(false)
+                            addControl()
+                        }
+                    }
+                }
+                return true
+            }
+            if (resizeMode) {
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        val areas = Prefs.manualHideRects(this@AvatarService)
+                        val handle = dp(48)
+                        resizingAreaIndex = areas.indexOfLast {
+                            screenX >= it.right - handle && screenX <= it.right &&
+                                screenY >= it.bottom - handle && screenY <= it.bottom
+                        }
+                        if (resizingAreaIndex >= 0) {
+                            val area = areas[resizingAreaIndex]
+                            resizingTouchOffset = (
+                                screenX - area.right.toFloat()
+                            ) to (
+                                screenY - area.bottom.toFloat()
+                            )
+                            resizingPreview = Rect(area)
+                            invalidate()
+                        }
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val index = resizingAreaIndex
+                        val offset = resizingTouchOffset
+                        if (index >= 0 && offset != null) {
+                            resizingPreview = resizedArea(
+                                Prefs.manualHideRects(this@AvatarService)[index],
+                                screenX, screenY, offset
+                            )
+                            invalidate()
+                        }
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        if (resizingAreaIndex >= 0) {
+                            finishManualAreaResize()
+                        } else {
+                            setResizeMode(false)
                             setOverlayTouchable(false)
                             addControl()
                         }
@@ -650,6 +736,10 @@ class AvatarService : AccessibilityService() {
                     val manualIndex = Prefs.manualHideRects(context).indexOfFirst { area -> area == r }
                     if (manualIndex == movingAreaIndex) continue
                 }
+                if (it.forceRect && resizingAreaIndex >= 0 && resizingPreview != null) {
+                    val manualIndex = Prefs.manualHideRects(context).indexOfFirst { area -> area == r }
+                    if (manualIndex == resizingAreaIndex) continue
+                }
                 val left = (r.left - dx).toFloat()
                 val top = (r.top - dy).toFloat()
                 val right = (r.right - dx).toFloat()
@@ -663,6 +753,14 @@ class AvatarService : AccessibilityService() {
             }
             movingPreview?.let { preview ->
                 if (movingAreaIndex >= 0) {
+                    canvas.drawRect(
+                        preview.left - dx.toFloat(), preview.top - dy.toFloat(),
+                        preview.right - dx.toFloat(), preview.bottom - dy.toFloat(), paint
+                    )
+                }
+            }
+            resizingPreview?.let { preview ->
+                if (resizingAreaIndex >= 0) {
                     canvas.drawRect(
                         preview.left - dx.toFloat(), preview.top - dy.toFloat(),
                         preview.right - dx.toFloat(), preview.bottom - dy.toFloat(), paint
@@ -687,6 +785,12 @@ class AvatarService : AccessibilityService() {
             }
             if (moveMode) {
                 canvas.drawText("Drag a black box to move it", dp(16).toFloat(), dp(48).toFloat(), textPaint)
+            }
+            if (resizeMode) {
+                canvas.drawText(
+                    "Drag the lower-right corner to resize",
+                    dp(16).toFloat(), dp(48).toFloat(), textPaint
+                )
             }
         }
     }
@@ -740,7 +844,8 @@ class AvatarService : AccessibilityService() {
                     dp(16).toFloat(), dp(126).toFloat(), paint
                 )
                 canvas.drawText("Move black boxes", dp(16).toFloat(), dp(168).toFloat(), paint)
-                canvas.drawText("Close", dp(16).toFloat(), dp(210).toFloat(), paint)
+                canvas.drawText("Resize black boxes", dp(16).toFloat(), dp(210).toFloat(), paint)
+                canvas.drawText("Close", dp(16).toFloat(), dp(252).toFloat(), paint)
             }
             paint.color = purple()
             canvas.drawCircle(ballX, ballY, dp(26).toFloat(), paint)
@@ -791,34 +896,47 @@ class AvatarService : AccessibilityService() {
                         val lp = layoutParams as WindowManager.LayoutParams
                         menuOriginX = lp.x
                         lp.width = dp(250)
-                        lp.height = dp(247)
+                        lp.height = dp(289)
                         lp.x = (lp.x - dp(192)).coerceAtLeast(0)
                         translationX = 0f
                         wm.updateViewLayout(this, lp)
                         invalidate()
                     } else {
+                        if (event.x >= width - dp(58)) {
+                            collapseMenu()
+                            wake()
+                            return true
+                        }
                         val y = event.y
                         when {
                             y < dp(58) -> beginManualHideSelection()
                             y < dp(102) -> removeLastManualArea()
                             y < dp(148) -> toggleManualAreas()
                             y < dp(192) -> beginManualAreaMove()
+                            y < dp(236) -> beginManualAreaResize()
                             else -> closeManualSession()
                         }
                         if (control != null && manualSessionActive) {
-                            menu = false
-                            val lp = layoutParams as WindowManager.LayoutParams
-                            lp.width = dp(58)
-                            lp.x = menuOriginX.coerceIn(0, resources.displayMetrics.widthPixels - dp(58))
-                            wm.updateViewLayout(this, lp)
-                            invalidate()
+                            collapseMenu()
                         }
                         wake()
                     }
+
                     return true
                 }
             }
             return true
+        }
+
+        private fun collapseMenu() {
+            menu = false
+            val lp = layoutParams as WindowManager.LayoutParams
+            lp.width = dp(58)
+            lp.height = dp(58)
+            lp.x = menuOriginX.coerceIn(0, resources.displayMetrics.widthPixels - dp(58))
+            translationX = 0f
+            wm.updateViewLayout(this, lp)
+            invalidate()
         }
 
         private fun purple() = Color.rgb(139, 92, 246)
