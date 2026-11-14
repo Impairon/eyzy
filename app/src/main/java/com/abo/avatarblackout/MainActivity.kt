@@ -60,10 +60,16 @@ class MainActivity : Activity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        instance = this
         installCrashLogger()
         window.statusBarColor = backgroundColor
         window.navigationBarColor = backgroundColor
         showShell()
+    }
+
+    override fun onDestroy() {
+        if (instance === this) instance = null
+        super.onDestroy()
     }
 
     private fun installCrashLogger() {
@@ -890,6 +896,7 @@ class MainActivity : Activity() {
         }
 
     companion object {
+        @Volatile var instance: MainActivity? = null
         private const val LOCATION_REQUEST = 1001
         private const val EXPORT_REQUEST = 1002
         private const val IMPORT_REQUEST = 1003

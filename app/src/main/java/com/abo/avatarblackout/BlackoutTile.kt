@@ -12,6 +12,10 @@ class BlackoutTile : TileService() {
     override fun onStartListening() = update()
 
     override fun onClick() {
+        MainActivity.instance?.let {
+            it.finish()
+            return
+        }
         val svc = AvatarService.instance
         if (svc == null) {
             Toast.makeText(this, "Turn on the Avatar Blackout accessibility service first", Toast.LENGTH_LONG).show()
