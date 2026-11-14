@@ -72,6 +72,7 @@ class AvatarService : AccessibilityService() {
     private var resizingAreaIndex = -1
     private var resizingTouchOffset: Pair<Float, Float>? = null
     private var resizingPreview: Rect? = null
+    private var profileCreationId: String? = null
     private var activePackage = "com.whatsapp"
     private val undoStack = ArrayDeque<List<Rect>>()
     private val redoStack = ArrayDeque<List<Rect>>()
@@ -335,11 +336,13 @@ class AvatarService : AccessibilityService() {
             "portrait"
         }
 
-    private fun profileId() = Prefs.profileForPackage(this, activePackage).id
+    private fun profileId() =
+        profileCreationId ?: Prefs.profileForPackage(this, activePackage).id
 
     private fun manualRects(): List<Rect> {
         val scoped = Prefs.manualHideRects(this, profileId(), orientationKey())
         if (scoped.isNotEmpty()) return scoped
+        if (profileCreationId != null) return emptyList()
         val legacy = Prefs.manualHideRects(this)
         if (legacy.isNotEmpty()) {
             saveManualRects(legacy)
@@ -349,6 +352,31 @@ class AvatarService : AccessibilityService() {
 
     private fun saveManualRects(rects: List<Rect>) =
         Prefs.saveManualHideRects(this, profileId(), orientationKey(), rects)
+
+    private fun beginProfileCreation() {
+        if (!Prefs.isEnabled(this) || !manualSessionActive) return
+        val packageName = activePackage
+        val profile = Prefs.addProfile(
+            this,
+            "Profile ${packageName.substringAfterLast('.')}",
+            packageName
+        )
+        profileCreationId = profile.id
+        saveManualRects(emptyList())
+        removeControl()
+        addControl()
+        control?.invalidate()
+        doScan()
+    }
+
+    private fun saveProfileCreation() {
+        val id = profileCreationId ?: return
+        val packageName = activePackage
+        Prefs.renameProfile(this, id, packageName.substringAfterLast('.').ifBlank { "Profile" })
+        profileCreationId = null
+        control?.invalidate()
+        doScan()
+    }
 
     private fun removeControl() {
         control?.let { try { wm.removeView(it) } catch (_: Exception) {} }
@@ -404,9 +432,9 @@ class AvatarService : AccessibilityService() {
                         root?.packageName?.toString()
                     }.getOrNull()
                 }
-                .firstOrNull { it in TARGETS } ?: activePackage
+                .firstOrNull() ?: activePackage
             val out = ArrayList<Item>()
-            val manualItems = if (manualSessionActive && Prefs.manualHideVisible(this)) {
+            val manualItems = if (Prefs.manualHideVisible(this) && manualRects().isNotEmpty()) {
                 manualRects().map { Item(it, forceRect = true) }
             } else emptyList()
             out.addAll(manualItems)
@@ -970,18 +998,22 @@ class AvatarService : AccessibilityService() {
                 paint.textAlign = Paint.Align.LEFT
                 paint.textSize = dp(14).toFloat()
                 canvas.drawText("Add", dp(16).toFloat(), dp(42).toFloat(), paint)
-                canvas.drawText("Remove last added area", dp(16).toFloat(), dp(84).toFloat(), paint)
-                canvas.drawText("Remove all black boxes", dp(16).toFloat(), dp(126).toFloat(), paint)
-                canvas.drawText("Undo", dp(16).toFloat(), dp(168).toFloat(), paint)
-                canvas.drawText("Redo", dp(16).toFloat(), dp(210).toFloat(), paint)
+                canvas.drawText(
+                    if (profileCreationId != null) "Save profile" else "Add profile",
+                    dp(16).toFloat(), dp(84).toFloat(), paint
+                )
+                canvas.drawText("Remove last added area", dp(16).toFloat(), dp(126).toFloat(), paint)
+                canvas.drawText("Remove all black boxes", dp(16).toFloat(), dp(168).toFloat(), paint)
+                canvas.drawText("Undo", dp(16).toFloat(), dp(210).toFloat(), paint)
+                canvas.drawText("Redo", dp(16).toFloat(), dp(252).toFloat(), paint)
                 canvas.drawText(
                     if (Prefs.manualHideVisible(this@AvatarService)) "Hide all black boxes"
                     else "Show all black boxes",
-                    dp(16).toFloat(), dp(252).toFloat(), paint
+                    dp(16).toFloat(), dp(294).toFloat(), paint
                 )
-                canvas.drawText("Move black boxes", dp(16).toFloat(), dp(294).toFloat(), paint)
-                canvas.drawText("Resize black boxes", dp(16).toFloat(), dp(336).toFloat(), paint)
-                canvas.drawText("Close", dp(16).toFloat(), dp(378).toFloat(), paint)
+                canvas.drawText("Move black boxes", dp(16).toFloat(), dp(336).toFloat(), paint)
+                canvas.drawText("Resize black boxes", dp(16).toFloat(), dp(378).toFloat(), paint)
+                canvas.drawText("Close", dp(16).toFloat(), dp(420).toFloat(), paint)
             }
             paint.color = purple()
             canvas.drawCircle(ballX, ballY, dp(26).toFloat(), paint)
@@ -1034,7 +1066,7 @@ class AvatarService : AccessibilityService() {
                         menuOriginX = lp.x
                         menuOriginY = lp.y
                         lp.width = dp(250)
-                        lp.height = dp(415)
+                        lp.height = dp(457)
                         lp.x = (lp.x - dp(192)).coerceAtLeast(0)
                         lp.y = (menuOriginY - (lp.height - dp(58)) / 2).coerceIn(
                             0, resources.displayMetrics.heightPixels - lp.height
@@ -1051,13 +1083,17 @@ class AvatarService : AccessibilityService() {
                         val y = event.y
                         when {
                             y < dp(58) -> beginManualHideSelection()
-                            y < dp(102) -> removeLastManualArea()
-                            y < dp(148) -> removeAllManualAreas()
-                            y < dp(190) -> undoManualChange()
-                            y < dp(232) -> redoManualChange()
-                            y < dp(274) -> toggleManualAreas()
-                            y < dp(316) -> beginManualAreaMove()
-                            y < dp(358) -> beginManualAreaResize()
+                            y < dp(100) -> {
+                                if (profileCreationId != null) saveProfileCreation()
+                                else beginProfileCreation()
+                            }
+                            y < dp(142) -> removeLastManualArea()
+                            y < dp(184) -> removeAllManualAreas()
+                            y < dp(226) -> undoManualChange()
+                            y < dp(268) -> redoManualChange()
+                            y < dp(310) -> toggleManualAreas()
+                            y < dp(352) -> beginManualAreaMove()
+                            y < dp(394) -> beginManualAreaResize()
                             else -> closeManualSession()
                         }
                         if (control != null && manualSessionActive) {

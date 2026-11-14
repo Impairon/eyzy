@@ -135,8 +135,15 @@ object Prefs {
         return profile
     }
 
+    fun renameProfile(c: Context, id: String, name: String) {
+        val cleanName = name.trim().ifBlank { "Profile" }
+        saveProfiles(c, profiles(c).map {
+            if (it.id == id) it.copy(name = cleanName) else it
+        })
+    }
+
     fun profileForPackage(c: Context, packageName: String): Profile {
-        return profiles(c).firstOrNull { profile ->
+        return profiles(c).lastOrNull { profile ->
             profile.packageName == packageName ||
                 (profile.id == "whatsapp" && packageName.startsWith("com.whatsapp")) ||
                 (profile.id == "telegram" && packageName.startsWith("org.telegram"))
