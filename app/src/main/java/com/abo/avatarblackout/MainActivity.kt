@@ -230,12 +230,9 @@ class MainActivity : Activity() {
             access.setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
             it.addView(access)
         })
-        content.addView(card("Mask shape") {
-            addText(it, "Simple line is the default straight vertical bar. Dynamic circle mode and both size controls are available in Settings.")
-        })
         content.addView(card("Hide an area manually") {
             addText(it, "Choose any part of WhatsApp or another supported app and keep it completely black. The small side control can hide or restore it, choose a new area, or remove it.")
-            val manual = actionButton("Summon manual-hide ball")
+            val manual = actionButton("Summon the paw")
             manual.setOnClickListener {
                 val service = AvatarService.instance
                 if (service == null || !Prefs.isEnabled(this)) {
@@ -246,6 +243,9 @@ class MainActivity : Activity() {
                 }
             }
             it.addView(manual)
+        })
+        content.addView(card("Mask shape") {
+            addText(it, "Simple line is the default straight vertical bar. Dynamic circle mode and both size controls are available in Settings.")
         })
         content.addView(card("Quick Settings") {
             addText(it, "Add the Hide avatars tile to toggle Lowery quickly from the notification shade.")
@@ -346,6 +346,23 @@ class MainActivity : Activity() {
                 }
             })
             it.addView(mode, LinearLayout.LayoutParams(-1, dp(52)))
+            addText(it, "Quick Settings action")
+            val tileAction = Spinner(this)
+            tileAction.adapter = ArrayAdapter(
+                this,
+                android.R.layout.simple_spinner_dropdown_item,
+                arrayOf("Start app", "Start app and summon the paw")
+            )
+            tileAction.setSelection(Prefs.tileAction(this).ordinal)
+            tileAction.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+                override fun onItemSelected(
+                    parent: AdapterView<*>?, view: View?, position: Int, id: Long
+                ) {
+                    Prefs.setTileAction(this@MainActivity, Prefs.TileAction.entries[position])
+                }
+            })
+            it.addView(tileAction, LinearLayout.LayoutParams(-1, dp(52)))
             addSlider(it, "Line thickness", 4, 64, Prefs.lineThicknessDp(this)) {
                 Prefs.setLineThicknessDp(this, it)
                 AvatarService.instance?.refresh()

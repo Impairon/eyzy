@@ -21,12 +21,28 @@ object Prefs {
     private const val KEY_PRAYER_METHOD = "prayer_method"
     private const val KEY_MANUAL_RECT = "manual_hide_rect"
     private const val KEY_MANUAL_VISIBLE = "manual_hide_visible"
+    private const val KEY_TILE_ACTION = "tile_action"
+
+    enum class TileAction { START_APP, START_APP_AND_PAW }
 
     fun isEnabled(c: Context) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY, false)
 
     fun set(c: Context, on: Boolean) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(KEY, on).apply()
+
+    fun tileAction(c: Context): TileAction =
+        runCatching {
+            TileAction.valueOf(
+                c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                    .getString(KEY_TILE_ACTION, TileAction.START_APP.name)
+                    ?: TileAction.START_APP.name
+            )
+        }.getOrDefault(TileAction.START_APP)
+
+    fun setTileAction(c: Context, action: TileAction) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit().putString(KEY_TILE_ACTION, action.name).apply()
 
     fun maskMode(c: Context): MaskMode =
         runCatching {

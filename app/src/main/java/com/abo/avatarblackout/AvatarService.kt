@@ -571,18 +571,21 @@ class AvatarService : AccessibilityService() {
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             if (!selection && !moveMode) return false
+            getLocationOnScreen(loc)
+            val screenX = event.x + loc[0]
+            val screenY = event.y + loc[1]
             if (moveMode) {
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         val areas = Prefs.manualHideRects(this@AvatarService)
-                        movingAreaIndex = areas.indexOfLast { it.contains(event.rawX.toInt(), event.rawY.toInt()) }
+                        movingAreaIndex = areas.indexOfLast { it.contains(screenX.toInt(), screenY.toInt()) }
                         if (movingAreaIndex >= 0) {
-                            movingAreaStart = event.rawX to event.rawY
+                            movingAreaStart = screenX to screenY
                             val area = areas[movingAreaIndex]
                             movingTouchOffset = (
-                                event.rawX - area.left.toFloat()
+                                screenX - area.left.toFloat()
                             ) to (
-                                event.rawY - area.top.toFloat()
+                                screenY - area.top.toFloat()
                             )
                             movingPreview = Rect(areas[movingAreaIndex])
                             invalidate()
@@ -594,7 +597,7 @@ class AvatarService : AccessibilityService() {
                         if (index >= 0 && offset != null) {
                             movingPreview = areaAtTouch(
                                 Prefs.manualHideRects(this@AvatarService)[index],
-                                event.rawX, event.rawY, offset
+                                screenX, screenY, offset
                             )
                             invalidate()
                         }
@@ -603,7 +606,7 @@ class AvatarService : AccessibilityService() {
                         val start = movingAreaStart
                         if (movingAreaIndex >= 0 && start != null) {
                             finishManualAreaMove(
-                                movingAreaIndex, start, event.rawX to event.rawY
+                                movingAreaIndex, start, screenX to screenY
                             )
                         } else {
                             setMoveMode(false)
@@ -616,22 +619,22 @@ class AvatarService : AccessibilityService() {
             }
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    selectionStart = event.rawX to event.rawY
+                    selectionStart = screenX to screenY
                     invalidate()
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    selectionEnd = event.rawX to event.rawY
+                    selectionEnd = screenX to screenY
                     invalidate()
                 }
                 MotionEvent.ACTION_UP -> {
                     val start = selectionStart
                     if (start != null) {
-                        selectionEnd = event.rawX to event.rawY
+                        selectionEnd = screenX to screenY
                         finishManualSelection(Rect(
-                            minOf(start.first, event.rawX).toInt(),
-                            minOf(start.second, event.rawY).toInt(),
-                            maxOf(start.first, event.rawX).toInt(),
-                            maxOf(start.second, event.rawY).toInt()
+                            minOf(start.first, screenX).toInt(),
+                            minOf(start.second, screenY).toInt(),
+                            maxOf(start.first, screenX).toInt(),
+                            maxOf(start.second, screenY).toInt()
                         ))
                     }
                     selectionStart = null

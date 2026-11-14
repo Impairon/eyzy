@@ -25,9 +25,20 @@ class BlackoutTile : TileService() {
             }
             return
         }
-        Prefs.set(this, !Prefs.isEnabled(this))
-        svc.refresh()
-        update()
+        val intent = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        if (Build.VERSION.SDK_INT >= 34) {
+            startActivityAndCollapse(
+                PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+            )
+        } else {
+            @Suppress("DEPRECATION") startActivityAndCollapse(intent)
+        }
+        if (Prefs.tileAction(this) == Prefs.TileAction.START_APP_AND_PAW &&
+            Prefs.isEnabled(this)
+        ) {
+            svc.summonManualHideControl()
+        }
     }
 
     private fun update() {
