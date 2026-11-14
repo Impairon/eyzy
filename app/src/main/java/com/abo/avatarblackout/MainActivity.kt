@@ -279,10 +279,10 @@ class MainActivity : Activity() {
     private fun showLowery() {
         pageTitle.text = "swizy"
         content.removeAllViews()
-        content.addView(card("swizy magic ✨") {
+        content.addView(card("swizy's touch ✨") {
             addText(it, "swizy protects profile pictures with a narrow bar while keeping chats, buttons, and the keyboard usable.")
             val enabled = Switch(this).apply {
-                text = "swizy is watching"
+                text = "swizy is patrol"
                 textSize = 16f
                 setTextColor(Color.WHITE)
                 isChecked = Prefs.isEnabled(this@MainActivity)
@@ -310,13 +310,6 @@ class MainActivity : Activity() {
             }
             it.addView(manual)
         })
-        content.addView(card("Mask shape") {
-            addText(it, "Simple line is the default straight vertical bar. Dynamic circle mode and both size controls are available in Settings.")
-        })
-        content.addView(card("Quick Settings") {
-            addText(it, "Add the swizy tile to start or close swizy from the notification shade.")
-        })
-    }
 
     private fun showSibha() {
         pageTitle.text = "Sibha"

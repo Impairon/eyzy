@@ -1,8 +1,8 @@
 1<?xml version="1.0" encoding="utf-8"?>
 2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
 3    package="com.abo.avatarblackout"
-4    android:versionCode="1"
-5    android:versionName="1.0" >
+4    android:versionCode="2"
+5    android:versionName="1.6.0" >
 6
 7    <uses-sdk
 8        android:minSdkVersion="24"
@@ -11,88 +11,101 @@
 11    <uses-permission android:name="android.permission.INTERNET" />
 11-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:4:5-67
 11-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:4:22-64
-12    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-12-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:5:5-81
-12-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:5:22-78
-13    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-13-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:6:5-79
-13-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:6:22-76
-14
-15    <application
-15-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:8:5-45:19
-16        android:allowBackup="false"
-16-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:13:9-36
-17        android:debuggable="true"
-18        android:extractNativeLibs="false"
-19        android:icon="@mipmap/ic_launcher"
-19-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:10:9-43
-20        android:label="swizy"
-20-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:9:9-30
-21        android:roundIcon="@mipmap/ic_launcher"
-21-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:11:9-48
-22        android:theme="@style/AppTheme" >
-22-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:12:9-40
-23        <activity
-23-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:15:9-20:20
-24            android:name="com.abo.avatarblackout.MainActivity"
-24-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:15:19-47
-25            android:exported="true" >
-25-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:15:48-71
-26            <intent-filter>
-26-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:16:13-19:29
-27                <action android:name="android.intent.action.MAIN" />
-27-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:17:17-69
-27-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:17:25-66
-28
-29                <category android:name="android.intent.category.LAUNCHER" />
-29-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:18:17-77
-29-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:18:27-74
-30            </intent-filter>
-31        </activity>
-32
-33        <service
-33-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:22:9-33:19
-34            android:name="com.abo.avatarblackout.AvatarService"
-34-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:23:13-42
-35            android:exported="true"
-35-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:24:13-36
-36            android:label="swizy"
-36-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:25:13-34
-37            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" >
-37-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:26:13-79
-38            <intent-filter>
-38-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:27:13-29:29
-39                <action android:name="android.accessibilityservice.AccessibilityService" />
-39-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:28:17-92
-39-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:28:25-89
-40            </intent-filter>
-41
-42            <meta-data
-42-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:30:13-32:64
-43                android:name="android.accessibilityservice"
-43-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:31:17-60
-44                android:resource="@xml/accessibility_config" />
-44-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:32:17-61
-45        </service>
-46        <service
-46-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:35:9-44:19
-47            android:name="com.abo.avatarblackout.BlackoutTile"
-47-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:36:13-41
-48            android:exported="true"
-48-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:37:13-36
-49            android:icon="@drawable/ic_tile"
-49-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:38:13-45
-50            android:label="Hide avatars"
-50-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:39:13-41
-51            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE" >
-51-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:40:13-77
-52            <intent-filter>
-52-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:41:13-43:29
-53                <action android:name="android.service.quicksettings.action.QS_TILE" />
-53-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:42:17-87
-53-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:42:25-84
-54            </intent-filter>
-55        </service>
-56    </application>
-57
-58</manifest>
+12    <uses-permission android:name="android.permission.VIBRATE" />
+12-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:5:5-66
+12-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:5:22-63
+13    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+13-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:6:5-81
+13-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:6:22-78
+14    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+14-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:7:5-79
+14-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:7:22-76
+15
+16    <queries>
+16-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:9:5-13:15
+17        <intent>
+17-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:10:9-12:18
+18            <action android:name="android.intent.action.TTS_SERVICE" />
+18-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:11:13-72
+18-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:11:21-69
+19        </intent>
+20    </queries>
+21
+22    <application
+22-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:15:5-52:19
+23        android:allowBackup="false"
+23-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:20:9-36
+24        android:debuggable="true"
+25        android:extractNativeLibs="false"
+26        android:icon="@mipmap/ic_launcher"
+26-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:17:9-43
+27        android:label="swizy"
+27-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:16:9-30
+28        android:roundIcon="@mipmap/ic_launcher"
+28-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:18:9-48
+29        android:theme="@style/AppTheme" >
+29-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:19:9-40
+30        <activity
+30-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:22:9-27:20
+31            android:name="com.abo.avatarblackout.MainActivity"
+31-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:22:19-47
+32            android:exported="true" >
+32-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:22:48-71
+33            <intent-filter>
+33-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:23:13-26:29
+34                <action android:name="android.intent.action.MAIN" />
+34-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:24:17-69
+34-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:24:25-66
+35
+36                <category android:name="android.intent.category.LAUNCHER" />
+36-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:25:17-77
+36-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:25:27-74
+37            </intent-filter>
+38        </activity>
+39
+40        <service
+40-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:29:9-40:19
+41            android:name="com.abo.avatarblackout.AvatarService"
+41-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:30:13-42
+42            android:exported="true"
+42-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:31:13-36
+43            android:label="swizy"
+43-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:32:13-34
+44            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" >
+44-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:33:13-79
+45            <intent-filter>
+45-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:34:13-36:29
+46                <action android:name="android.accessibilityservice.AccessibilityService" />
+46-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:35:17-92
+46-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:35:25-89
+47            </intent-filter>
+48
+49            <meta-data
+49-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:37:13-39:64
+50                android:name="android.accessibilityservice"
+50-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:38:17-60
+51                android:resource="@xml/accessibility_config" />
+51-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:39:17-61
+52        </service>
+53        <service
+53-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:42:9-51:19
+54            android:name="com.abo.avatarblackout.BlackoutTile"
+54-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:43:13-41
+55            android:exported="true"
+55-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:44:13-36
+56            android:icon="@drawable/ic_tile"
+56-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:45:13-45
+57            android:label="swizy"
+57-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:46:13-34
+58            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE" >
+58-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:47:13-77
+59            <intent-filter>
+59-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:48:13-50:29
+60                <action android:name="android.service.quicksettings.action.QS_TILE" />
+60-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:49:17-87
+60-->/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/AndroidManifest.xml:49:25-84
+61            </intent-filter>
+62        </service>
+63    </application>
+64
+65</manifest>
