@@ -57,20 +57,13 @@ class MainActivity : Activity() {
             setBackgroundColor(backgroundColor)
         }
         val title = TextView(this).apply {
-            text = "eyzy"
+            text = "suizy"
             textSize = 30f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
             setPadding(pad, dp(18), pad, dp(4))
         }
         shell.addView(title)
-        val subtitle = TextView(this).apply {
-            text = "Privacy tools, kept simple"
-            textSize = 14f
-            setTextColor(secondary)
-            setPadding(pad, 0, pad, dp(16))
-        }
-        shell.addView(subtitle)
         val tabs = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(pad, 0, pad, dp(8))
@@ -119,7 +112,24 @@ class MainActivity : Activity() {
             it.addView(access)
         })
         content.addView(card("Mask shape") {
-            addText(it, "Lowery draws a narrow vertical black bar over each detected avatar. It does not cover message text, controls, or the keyboard.")
+            addText(it, "Simple line is recommended: a thick, straight bar clipped to the avatar area. Dynamic follows changing avatar bounds when an app layout needs it.")
+            val mode = Spinner(this)
+            mode.adapter = ArrayAdapter(
+                this,
+                android.R.layout.simple_spinner_dropdown_item,
+                arrayOf("Simple line", "Dynamic")
+            )
+            mode.setSelection(Prefs.maskMode(this).ordinal)
+            mode.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+                override fun onItemSelected(
+                    parent: AdapterView<*>?, view: View?, position: Int, id: Long
+                ) {
+                    Prefs.setMaskMode(this@MainActivity, Prefs.MaskMode.entries[position])
+                    AvatarService.instance?.refresh()
+                }
+            })
+            it.addView(mode, LinearLayout.LayoutParams(-1, dp(52)))
         })
         content.addView(card("Quick Settings") {
             addText(it, "Add the Hide avatars tile to toggle Lowery quickly from the notification shade.")

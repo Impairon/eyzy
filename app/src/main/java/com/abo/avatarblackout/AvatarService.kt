@@ -8,7 +8,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.Rect
-import android.graphics.RectF
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -268,11 +267,19 @@ class AvatarService : AccessibilityService() {
         val rows = sc.msgRows.filter { it.height() >= 44 * dp && it.bottom < list.bottom - 2 }
         if (rows.isEmpty()) return
         val toolbarBottom = (93 * dp).toInt()
+        val dynamic = Prefs.maskMode(this) == Prefs.MaskMode.DYNAMIC
         for (r in rows) {
-            val avatar = slot(r, dp)
+            val avatar = if (dynamic) dynamicSlot(r, dp) else slot(r, dp)
             val clip = Rect(r.left, max(r.top, toolbarBottom), r.left + (54 * dp).toInt(), r.bottom)
             out.add(Item(barFor(avatar), clip))
         }
+    }
+
+    private fun dynamicSlot(r: Rect, dp: Float): Rect {
+        val size = (42 * dp).toInt()
+        val left = (r.left + 6 * dp).toInt()
+        val bottom = r.bottom - (2.3f * dp).toInt()
+        return Rect(left, bottom - size, left + size, bottom)
     }
 
     private fun barFor(r: Rect): Rect {
