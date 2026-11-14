@@ -83,6 +83,9 @@ class AvatarService : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
+        if (Prefs.maskMode(this) == Prefs.MaskMode.SIMPLE &&
+            e?.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
+        ) return
         if (!Prefs.isEnabled(this) || pending) return
         pending = true
         handler.post(scan)

@@ -11,9 +11,14 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Bundle
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.Settings
 import android.view.View
 import android.view.Gravity
@@ -366,8 +371,22 @@ class MainActivity : Activity() {
         val every = Prefs.sibhaPeepEvery(this)
         if (every <= 0 || count % every != 0) return
         runCatching {
-            (getSystemService(AUDIO_SERVICE) as AudioManager)
-                .playSoundEffect(AudioManager.FX_KEYPRESS_STANDARD)
+            val tone = ToneGenerator(AudioManager.STREAM_MUSIC, 90)
+            tone.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
+            Handler(Looper.getMainLooper()).postDelayed(
+                { runCatching { tone.release() } }, 300
+            )
+        }
+        runCatching {
+            val effect = VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE)
+            if (Build.VERSION.SDK_INT >= 31) {
+                getSystemService(VibratorManager::class.java).defaultVibrator.vibrate(effect)
+            } else if (Build.VERSION.SDK_INT >= 26) {
+                (getSystemService(VIBRATOR_SERVICE) as Vibrator).vibrate(effect)
+            } else {
+                @Suppress("DEPRECATION")
+                (getSystemService(VIBRATOR_SERVICE) as Vibrator).vibrate(60)
+            }
         }
     }
 
