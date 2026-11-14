@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
@@ -100,7 +101,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(dp(20), dp(28), dp(20), dp(28))
-            setBackgroundColor(wood)
+            background = rounded(wood, 18)
         }
         val label = TextView(this).apply {
             text = "SIBHA"
@@ -121,7 +122,7 @@ class MainActivity : Activity() {
             text = "Count"
             textSize = 18f
             setTextColor(Color.WHITE)
-            setBackgroundColor(purple)
+            background = rounded(purple, 14)
             setOnClickListener {
                 Prefs.setSibhaCount(this@MainActivity, Prefs.sibhaCount(this@MainActivity) + 1)
                 update()
@@ -140,7 +141,7 @@ class MainActivity : Activity() {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(14), dp(16), dp(14))
-            setBackgroundColor(panel)
+            background = rounded(panel, 16)
         }
         box.addView(TextView(this).apply {
             text = title
@@ -168,7 +169,7 @@ class MainActivity : Activity() {
     private fun actionButton(text: String) = Button(this).apply {
         this.text = text
         setTextColor(Color.WHITE)
-        setBackgroundColor(purple)
+        background = rounded(purple, 14)
     }
 
     private fun tabButton(text: String) = Button(this).apply {
@@ -176,12 +177,19 @@ class MainActivity : Activity() {
         textSize = 15f
         setTextColor(Color.WHITE)
         isAllCaps = false
+        background = rounded(panel, 14)
     }
 
     private fun selectTab(selected: Button, other: Button) {
-        selected.setBackgroundColor(purple)
-        other.setBackgroundColor(panel)
+        selected.background = rounded(purple, 14)
+        other.background = rounded(panel, 14)
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+
+    private fun rounded(color: Int, radiusDp: Int) =
+        GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = dp(radiusDp).toFloat()
+        }
 }
