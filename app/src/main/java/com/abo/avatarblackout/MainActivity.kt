@@ -917,7 +917,7 @@ class MainActivity : Activity() {
 
     private fun styledSpinner() = Spinner(this).apply {
         background = outlined(panelRaised, border, 12)
-        popupBackground = outlined(Color.rgb(28, 23, 38), border, 12)
+        setPopupBackgroundDrawable(outlined(Color.rgb(28, 23, 38), border, 12))
         setPadding(dp(12), 0, dp(12), 0)
     }
 
