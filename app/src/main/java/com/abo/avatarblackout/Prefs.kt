@@ -390,6 +390,11 @@ object Prefs {
             }).apply()
     }
 
+    fun clearManualHideRects(c: Context, profileId: String, orientation: String) {
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+                .remove("manual_hide_rect_${profileId}_${orientation}").apply()
+    }
+
     fun exportData(c: Context): String {
         val prefs = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
         val root = JSONObject()

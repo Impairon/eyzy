@@ -325,7 +325,6 @@ class AvatarService : AccessibilityService() {
         cancelProfileCreation()
         manualSessionActive = false
         manualSessionProfileId = null
-        Prefs.setManualHideVisible(this, false)
         removeControl()
         doScan()
     }
@@ -370,17 +369,19 @@ class AvatarService : AccessibilityService() {
         }
 
     private fun profileId() =
-        profileCreationId ?: manualSessionProfileId ?: Prefs.profileForPackage(this, activePackage).id
+        profileCreationId ?: Prefs.profileForPackage(this, activePackage).id
+
+    private fun manualLayoutId() = "manual"
 
     private fun manualRects(): List<Rect> {
-        return Prefs.manualHideRects(this, profileId(), orientationKey())
+        return Prefs.manualHideRects(this, manualLayoutId(), orientationKey())
     }
 
     private fun profileRects(): List<Rect> =
         Prefs.profileHideRects(this, profileId(), orientationKey())
 
     private fun saveManualRects(rects: List<Rect>) =
-        Prefs.saveManualHideRects(this, profileId(), orientationKey(), rects)
+        Prefs.saveManualHideRects(this, manualLayoutId(), orientationKey(), rects)
 
     private fun saveProfileRects(rects: List<Rect>) =
         Prefs.saveProfileHideRects(this, profileId(), orientationKey(), rects)
@@ -521,9 +522,14 @@ class AvatarService : AccessibilityService() {
             }
             val out = ArrayList<Item>()
             val hasActiveProfile = Prefs.hasProfileForPackage(this, activePackage)
-            if (hasActiveProfile && profileRects().isEmpty() && manualRects().isNotEmpty()) {
-                saveProfileRects(manualRects())
-                saveManualRects(emptyList())
+            val legacyProfileRects = if (hasActiveProfile) {
+                Prefs.manualHideRects(this, profileId(), orientationKey())
+            } else {
+                emptyList()
+            }
+            if (hasActiveProfile && profileRects().isEmpty() && legacyProfileRects.isNotEmpty()) {
+                saveProfileRects(legacyProfileRects)
+                Prefs.clearManualHideRects(this, profileId(), orientationKey())
             }
             val manualItems = if (
                 Prefs.manualHideVisible(this) && manualRects().isNotEmpty()
