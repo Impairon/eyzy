@@ -15,6 +15,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.MotionEvent
@@ -978,7 +979,6 @@ class AvatarService : AccessibilityService() {
         private var downX = 0f
         private var downY = 0f
         private var dragging = false
-        private var docked = true
         private var menuOriginX = 0
         private var menuOriginY = 0
         private val fade = Runnable { dock() }
@@ -1004,7 +1004,6 @@ class AvatarService : AccessibilityService() {
 
         private fun dock() {
             if (menu) return
-            docked = true
             val lp = layoutParams as? WindowManager.LayoutParams
             val onLeft = (lp?.x ?: 0) < resources.displayMetrics.widthPixels / 2
             animate().translationX(if (onLeft) -dp(20).toFloat() else dp(20).toFloat())
@@ -1042,9 +1041,7 @@ class AvatarService : AccessibilityService() {
                 canvas.drawText("Close", dp(16).toFloat(), dp(420).toFloat(), paint)
             }
             paint.color = purple()
-            if (menu || docked) {
-                canvas.drawCircle(ballX, ballY, dp(26).toFloat(), paint)
-            }
+            canvas.drawCircle(ballX, ballY, dp(26).toFloat(), paint)
             if (icon != null) {
                 canvas.drawBitmap(
                     icon, null,
@@ -1055,6 +1052,11 @@ class AvatarService : AccessibilityService() {
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
+            if (event.actionMasked == MotionEvent.ACTION_OUTSIDE && menu) {
+                collapseMenu()
+                wake()
+                return true
+            }
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     wake()
@@ -1066,7 +1068,6 @@ class AvatarService : AccessibilityService() {
                 }
                 MotionEvent.ACTION_MOVE -> {
                     if (!menu) {
-                        docked = false
                         val lp = layoutParams as WindowManager.LayoutParams
                         val dx = (event.rawX - downX).toInt()
                         val dy = (event.rawY - downY).toInt()
@@ -1101,7 +1102,11 @@ class AvatarService : AccessibilityService() {
                             0, resources.displayMetrics.heightPixels - lp.height
                         )
                         translationX = 0f
+                        lp.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
                         wm.updateViewLayout(this, lp)
+                        isFocusableInTouchMode = true
+                        requestFocus()
                         invalidate()
                     } else {
                         if (event.x >= width - dp(58)) {
@@ -1144,9 +1149,22 @@ class AvatarService : AccessibilityService() {
             lp.height = dp(58)
             lp.x = menuOriginX.coerceIn(0, resources.displayMetrics.widthPixels - dp(58))
             lp.y = menuOriginY.coerceIn(0, resources.displayMetrics.heightPixels - dp(58))
+            lp.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
             translationX = 0f
             wm.updateViewLayout(this, lp)
+            clearFocus()
             invalidate()
+        }
+
+        override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+            if (menu && event.keyCode == KeyEvent.KEYCODE_BACK) {
+                if (event.action == KeyEvent.ACTION_UP) {
+                    collapseMenu()
+                    wake()
+                }
+                return true
+            }
+            return super.dispatchKeyEvent(event)
         }
 
         private fun purple() = Color.rgb(139, 92, 246)
