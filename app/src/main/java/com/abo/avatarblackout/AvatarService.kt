@@ -547,8 +547,8 @@ class AvatarService : AccessibilityService() {
         private var downY = 0f
 
         override fun onDraw(canvas: Canvas) {
-            val ballX = if (menu) width - dp(29) else width / 2f
-            val ballY = if (menu) height / 2f else height / 2f
+            val ballX: Float = if (menu) (width - dp(29)).toFloat() else width / 2f
+            val ballY: Float = height / 2f
             if (menu) {
                 paint.color = Color.argb(235, 35, 29, 46)
                 canvas.drawRoundRect(
