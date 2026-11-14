@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.Rect
@@ -60,6 +61,7 @@ class AvatarService : AccessibilityService() {
     private lateinit var wm: WindowManager
     private var overlay: OverlayView? = null
     private var control: ControlView? = null
+    private var manualSessionActive = false
     private var selectionStart: Pair<Float, Float>? = null
     private val handler = Handler(Looper.getMainLooper())
     private var pending = false
@@ -88,6 +90,7 @@ class AvatarService : AccessibilityService() {
         overlay = null
         control?.let { try { wm.removeView(it) } catch (_: Exception) {} }
         control = null
+        manualSessionActive = false
         return super.onUnbind(intent)
     }
 
@@ -109,15 +112,21 @@ class AvatarService : AccessibilityService() {
         if (Prefs.isEnabled(this)) {
             doScan()
             handler.postDelayed(tick, 1000)
-            if (Prefs.manualHideRect(this) != null) addControl()
         } else {
             overlay?.setItems(emptyList())
             removeControl()
         }
     }
 
-    fun beginManualHideSelection() {
+    fun summonManualHideControl() {
         if (!Prefs.isEnabled(this)) return
+        manualSessionActive = true
+        addControl()
+        doScan()
+    }
+
+    private fun beginManualHideSelection() {
+        if (!Prefs.isEnabled(this) || !manualSessionActive) return
         selectionStart = null
         removeControl()
         overlay?.setSelectionMode(true)
@@ -131,11 +140,27 @@ class AvatarService : AccessibilityService() {
             addControl()
             return
         }
-        Prefs.setManualHideRect(this, rect)
+        Prefs.addManualHideRect(this, rect)
         Prefs.setManualHideVisible(this, true)
         overlay?.setSelectionMode(false)
         setOverlayTouchable(false)
         addControl()
+        doScan()
+    }
+
+    private fun removeLastManualArea() {
+        Prefs.removeLastManualHideRect(this)
+        doScan()
+    }
+
+    private fun toggleManualAreas() {
+        Prefs.setManualHideVisible(this, !Prefs.manualHideVisible(this))
+        doScan()
+    }
+
+    private fun closeManualSession() {
+        manualSessionActive = false
+        removeControl()
         doScan()
     }
 
@@ -155,15 +180,16 @@ class AvatarService : AccessibilityService() {
     }
 
     private fun addControl() {
-        if (control != null || Prefs.manualHideRect(this) == null) return
+        if (control != null || !manualSessionActive) return
         val v = ControlView(this)
         val lp = WindowManager.LayoutParams(
             dp(58), dp(58), WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            x = dp(10)
+            gravity = Gravity.TOP or Gravity.START
+            x = resources.displayMetrics.widthPixels - dp(70)
+            y = resources.displayMetrics.heightPixels / 2
         }
         wm.addView(v, lp)
         control = v
@@ -212,9 +238,10 @@ class AvatarService : AccessibilityService() {
         try {
             ensureOverlay()
             val out = ArrayList<Item>()
-            val manual = if (Prefs.manualHideVisible(this)) {
-                Prefs.manualHideRect(this)?.let { Item(it, forceRect = true) }
-            } else null
+            val manualItems = if (manualSessionActive && Prefs.manualHideVisible(this)) {
+                Prefs.manualHideRects(this).map { Item(it, forceRect = true) }
+            } else emptyList()
+            out.addAll(manualItems)
             for (w in windows) {
                 if (w.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
                 val root = (if (Build.VERSION.SDK_INT >= 33)
@@ -248,8 +275,8 @@ class AvatarService : AccessibilityService() {
             val uniqueItems = finalItems.distinctBy {
                 "${it.rect.left},${it.rect.top},${it.rect.right},${it.rect.bottom}"
             }.toMutableList()
-            if (manual != null && uniqueItems.none { it.rect == manual.rect }) {
-                uniqueItems.add(0, manual)
+            manualItems.asReversed().forEach { manual ->
+                if (uniqueItems.none { it.rect == manual.rect }) uniqueItems.add(0, manual)
             }
             Log.d(TAG, "rendering ${uniqueItems.size} avatar bars")
             overlay?.setItems(uniqueItems)
@@ -542,9 +569,21 @@ class AvatarService : AccessibilityService() {
 
     private inner class ControlView(c: Context) : View(c) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val icon = BitmapFactory.decodeResource(resources, R.drawable.eyes)
         private var menu = false
         private var downX = 0f
         private var downY = 0f
+        private val fade = Runnable { animate().alpha(0.12f).setDuration(350).start() }
+
+        init {
+            alpha = 0.12f
+        }
+
+        private fun wake() {
+            removeCallbacks(fade)
+            animate().alpha(1f).setDuration(120).start()
+            postDelayed(fade, 2200)
+        }
 
         override fun onDraw(canvas: Canvas) {
             val ballX: Float = if (menu) (width - dp(29)).toFloat() else width / 2f
@@ -558,57 +597,71 @@ class AvatarService : AccessibilityService() {
                 paint.color = Color.WHITE
                 paint.textAlign = Paint.Align.LEFT
                 paint.textSize = dp(14).toFloat()
-                canvas.drawText("Hide / show", dp(16).toFloat(), dp(54).toFloat(), paint)
-                canvas.drawText("Highlight another area", dp(16).toFloat(), dp(110).toFloat(), paint)
-                canvas.drawText("Remove manual hide", dp(16).toFloat(), dp(166).toFloat(), paint)
+                canvas.drawText("Add", dp(16).toFloat(), dp(42).toFloat(), paint)
+                canvas.drawText("Remove last added area", dp(16).toFloat(), dp(84).toFloat(), paint)
+                canvas.drawText(
+                    if (Prefs.manualHideVisible(this@AvatarService)) "Hide all black boxes"
+                    else "Show all black boxes",
+                    dp(16).toFloat(), dp(126).toFloat(), paint
+                )
+                canvas.drawText("Close", dp(16).toFloat(), dp(168).toFloat(), paint)
             }
             paint.color = purple()
             canvas.drawCircle(ballX, ballY, dp(26).toFloat(), paint)
-            paint.color = Color.WHITE
-            paint.textAlign = Paint.Align.CENTER
-            paint.textSize = dp(24).toFloat()
-            canvas.drawText("▰", ballX, ballY + dp(8), paint)
+            if (icon != null) {
+                canvas.drawBitmap(
+                    icon, null,
+                    RectF(ballX - dp(15), ballY - dp(15), ballX + dp(15), ballY + dp(15)),
+                    paint
+                )
+            }
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    wake()
                     downX = event.rawX
                     downY = event.rawY
                     return true
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (kotlin.math.abs(event.rawY - downY) > dp(12) && !menu) {
+                    val moved = kotlin.math.abs(event.rawX - downX) > dp(12) ||
+                        kotlin.math.abs(event.rawY - downY) > dp(12)
+                    if (moved && !menu) {
                         val lp = layoutParams as WindowManager.LayoutParams
-                        lp.y = (lp.y + (event.rawY - downY).toInt()).coerceAtLeast(dp(10))
+                        lp.x = (lp.x + (event.rawX - downX).toInt())
+                            .coerceIn(0, resources.displayMetrics.widthPixels - width)
+                        lp.y = (lp.y + (event.rawY - downY).toInt())
+                            .coerceIn(0, resources.displayMetrics.heightPixels - height)
                         wm.updateViewLayout(this, lp)
                     } else if (!menu) {
                         menu = true
                         val lp = layoutParams as WindowManager.LayoutParams
                         lp.width = dp(250)
-                        lp.height = dp(220)
-                        lp.x = dp(10)
+                        lp.height = dp(205)
+                        lp.x = (lp.x - dp(192)).coerceAtLeast(0)
                         wm.updateViewLayout(this, lp)
                         invalidate()
                     } else {
                         val y = event.y
                         when {
-                            y < dp(75) -> Prefs.setManualHideVisible(this@AvatarService, !Prefs.manualHideVisible(this@AvatarService))
-                            y < dp(135) -> beginManualHideSelection()
-                            else -> {
-                                Prefs.clearManualHide(this@AvatarService)
-                                removeControl()
-                            }
+                            y < dp(58) -> beginManualHideSelection()
+                            y < dp(102) -> removeLastManualArea()
+                            y < dp(148) -> toggleManualAreas()
+                            else -> closeManualSession()
                         }
-                        menu = false
-                        if (control != null) {
+                        if (control != null && manualSessionActive) {
+                            menu = false
                             val lp = layoutParams as WindowManager.LayoutParams
                             lp.width = dp(58)
-                            lp.x = dp(10)
+                            lp.x = (lp.x + dp(192)).coerceIn(
+                                0, resources.displayMetrics.widthPixels - dp(58)
+                            )
                             wm.updateViewLayout(this, lp)
                             invalidate()
                         }
-                        doScan()
+                        wake()
                     }
                     return true
                 }

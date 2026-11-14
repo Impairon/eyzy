@@ -109,18 +109,43 @@ object Prefs {
             .putString(KEY_PRAYER_DATE, date).putString(KEY_PRAYER_TIMES, timesJson).apply()
 
     fun manualHideRect(c: Context): android.graphics.Rect? {
-        val raw = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
-            .getString(KEY_MANUAL_RECT, null) ?: return null
-        val values = raw.split(',').mapNotNull { it.toIntOrNull() }
-        return if (values.size == 4 && values[2] > values[0] && values[3] > values[1]) {
-            android.graphics.Rect(values[0], values[1], values[2], values[3])
-        } else null
+        return manualHideRects(c).lastOrNull()
     }
 
     fun setManualHideRect(c: Context, rect: android.graphics.Rect) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
             .putString(KEY_MANUAL_RECT, "${rect.left},${rect.top},${rect.right},${rect.bottom}")
             .putBoolean(KEY_MANUAL_VISIBLE, true).apply()
+
+    fun manualHideRects(c: Context): List<android.graphics.Rect> {
+        val raw = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getString(KEY_MANUAL_RECT, null) ?: return emptyList()
+        return raw.split(';').mapNotNull { encoded ->
+            val values = encoded.split(',').mapNotNull { it.toIntOrNull() }
+            if (values.size == 4 && values[2] > values[0] && values[3] > values[1]) {
+                android.graphics.Rect(values[0], values[1], values[2], values[3])
+            } else null
+        }
+    }
+
+    fun addManualHideRect(c: Context, rect: android.graphics.Rect) {
+        val all = manualHideRects(c) + rect
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+            .putString(KEY_MANUAL_RECT, all.joinToString(";") {
+                "${it.left},${it.top},${it.right},${it.bottom}"
+            })
+            .putBoolean(KEY_MANUAL_VISIBLE, true).apply()
+    }
+
+    fun removeLastManualHideRect(c: Context) {
+        val all = manualHideRects(c).dropLast(1)
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().apply {
+            if (all.isEmpty()) remove(KEY_MANUAL_RECT)
+            else putString(KEY_MANUAL_RECT, all.joinToString(";") {
+                "${it.left},${it.top},${it.right},${it.bottom}"
+            })
+        }.apply()
+    }
 
     fun manualHideVisible(c: Context) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_MANUAL_VISIBLE, true)

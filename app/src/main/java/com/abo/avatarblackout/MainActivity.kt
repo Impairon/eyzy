@@ -235,14 +235,14 @@ class MainActivity : Activity() {
         })
         content.addView(card("Hide an area manually") {
             addText(it, "Choose any part of WhatsApp or another supported app and keep it completely black. The small side control can hide or restore it, choose a new area, or remove it.")
-            val manual = actionButton("Highlight an area to hide")
+            val manual = actionButton("Summon manual-hide ball")
             manual.setOnClickListener {
                 val service = AvatarService.instance
                 if (service == null || !Prefs.isEnabled(this)) {
                     Toast.makeText(this, "Enable the blackout service first", Toast.LENGTH_LONG).show()
                 } else {
-                    Toast.makeText(this, "Drag over the area you want to hide", Toast.LENGTH_LONG).show()
-                    service.beginManualHideSelection()
+                    service.summonManualHideControl()
+                    Toast.makeText(this, "Use the ball menu, then choose Add", Toast.LENGTH_LONG).show()
                 }
             }
             it.addView(manual)
