@@ -908,7 +908,7 @@ class AvatarService : AccessibilityService() {
                     )
                 }
             }
-            if (Prefs.privacyIndicator(context)) {
+            if (Prefs.isEnabled(context) && Prefs.privacyIndicator(context)) {
                 val indicatorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = Color.argb(220, 35, 29, 46)
                 }
