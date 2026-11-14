@@ -164,13 +164,14 @@ class AvatarService : AccessibilityService() {
                 val root = (if (Build.VERSION.SDK_INT >= 33)
                     w.getRoot(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
                 else w.root) ?: continue
-                if (root.packageName?.toString() in TARGETS) {
+                val packageName = root.packageName?.toString() ?: continue
+                if (packageName in TARGETS && Prefs.mode(this, packageName) != Prefs.MaskMode.OFF) {
                     val sc = Scan()
                     walk(root, sc, 0)
                     out.addAll(sc.items)
                     // Telegram: no message box on screen = chat list (position guess);
                     // message box on screen = inside a chat (pixel check)
-                    if (!sc.hasInput) out.addAll(sc.tgRows) else tgChat(sc, out)
+                    if (!sc.hasInput) out.addAll(sc.tgRows) else tgChat(sc, out, packageName)
                 }
             }
             // if a big container and a bigger-than-half child both matched, keep the child
@@ -278,7 +279,7 @@ class AvatarService : AccessibilityService() {
         return Rect(left, bottom - size, left + size, bottom)
     }
 
-    private fun tgChat(sc: Scan, out: MutableList<Item>) {
+    private fun tgChat(sc: Scan, out: MutableList<Item>, packageName: String) {
         val list = sc.listRect ?: return
         val dp = resources.displayMetrics.density
         // skip date pills / service lines (too short for an avatar) and rows cut off at the bottom
@@ -302,7 +303,14 @@ class AvatarService : AccessibilityService() {
             val m = dec.firstOrNull { it.h == r.height() && it.top + shift == r.top }
             if (m == null) { needLook = true; continue }
             if (m.avatar) {
-                out.add(Item(slot(r, dp), Rect(r.left, max(r.top, toolbarBottom), r.right, r.bottom)))
+                val avatar = slot(r, dp)
+                val clip = if (Prefs.mode(this, packageName) == Prefs.MaskMode.EDGE) {
+                    // Keep the side mask inside the avatar column; never paint over the message bubble.
+                    Rect(r.left, max(r.top, toolbarBottom), r.left + (54 * dp).toInt(), r.bottom)
+                } else {
+                    Rect(r.left, max(r.top, toolbarBottom), r.right, r.bottom)
+                }
+                out.add(Item(avatar, clip))
             }
         }
         if (needLook) requestShot(rows)

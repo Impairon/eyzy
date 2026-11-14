@@ -3,6 +3,7 @@
 
     <application
         android:label="Avatar Blackout"
+        android:icon="@drawable/eyes"
         android:allowBackup="false">
 
         <activity android:name=".MainActivity" android:exported="true">
