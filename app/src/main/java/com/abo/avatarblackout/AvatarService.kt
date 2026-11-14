@@ -403,13 +403,14 @@ class AvatarService : AccessibilityService() {
         val screenHeight = resources.displayMetrics.heightPixels
         val keyboardHeight = (screenHeight - top).coerceAtLeast(0)
         if (keyboardHeight == 0) return Rect(rect)
-        if (rect.bottom <= top) return Rect(rect)
+        val safeBottom = (top - dp(56)).coerceAtLeast(0)
+        if (rect.bottom <= safeBottom) return Rect(rect)
 
-        val shift = if (rect.top >= top) keyboardHeight else rect.bottom - top
+        val shift = (rect.bottom - safeBottom).coerceAtLeast(0)
         val shiftedTop = rect.top - shift
         val shiftedBottom = rect.bottom - shift
         val visibleTop = shiftedTop.coerceAtLeast(0)
-        val visibleBottom = shiftedBottom.coerceAtMost(top)
+        val visibleBottom = shiftedBottom.coerceAtMost(safeBottom)
         if (visibleBottom <= visibleTop) return Rect(visibleTop, visibleTop, visibleTop, visibleTop)
         return Rect(rect.left, visibleTop, rect.right, visibleBottom)
     }
