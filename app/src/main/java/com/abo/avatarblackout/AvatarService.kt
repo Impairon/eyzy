@@ -14,6 +14,7 @@ import android.graphics.RectF
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.speech.tts.TextToSpeech
+import android.speech.tts.Voice
 import android.text.format.DateFormat
 import android.os.Build
 import android.os.Handler
@@ -49,6 +50,27 @@ class AvatarService : AccessibilityService() {
         // view-id fragments that mark a profile picture
         private val AVATAR_ID = Regex("photo|avatar|picture|profile|portrait|headshot|actor_image|initials|group_image")
 
+        private fun isMaleVoice(voice: Voice): Boolean {
+            val name = voice.name.lowercase(Locale.ROOT)
+            return !name.contains("female") &&
+                (name.contains("#male") ||
+                    name.contains("_male") ||
+                    name.contains("-male") ||
+                    name.contains("en-us-x-iol") ||
+                    name.contains("en-us-x-iob") ||
+                    listOf("david", "daniel", "george", "james", "john", "mark", "michael", "tom")
+                        .any(name::contains))
+        }
+
+        fun hasMaleVoice(context: Context, result: (Boolean) -> Unit) {
+            lateinit var probe: TextToSpeech
+            probe = TextToSpeech(context.applicationContext) { status ->
+                val available = status == TextToSpeech.SUCCESS &&
+                    probe.voices.orEmpty().any(::isMaleVoice)
+                probe.shutdown()
+                result(available)
+            }
+        }
     }
 
     /** One black circle: where to draw it, and an optional area it must not leave (for half-visible rows). */
@@ -275,7 +297,7 @@ class AvatarService : AccessibilityService() {
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 tts.setLanguage(Locale.ENGLISH)
             }
-            selectMaleVoice(tts)
+            selectConfiguredVoice(tts)
             tts.setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -296,37 +318,23 @@ class AvatarService : AccessibilityService() {
         }
     }
 
-    private fun selectMaleVoice(tts: TextToSpeech) {
+    private fun selectConfiguredVoice(tts: TextToSpeech) {
         val language = Locale.getDefault().language
         val voices = tts.voices ?: return
         val languageVoices = voices
             .filter { it.locale.language == language || it.locale.language == Locale.ENGLISH.language }
-        val maleVoice = languageVoices
-            .sortedByDescending { voice ->
+        val selected = when (Prefs.headsetVoiceGender(this)) {
+            Prefs.VoiceGender.MALE -> languageVoices.firstOrNull(::isMaleVoice)
+            Prefs.VoiceGender.FEMALE -> languageVoices.firstOrNull { voice ->
                 val name = voice.name.lowercase(Locale.ROOT)
-                when {
-                    name.contains("#male") || name.contains("_male") ||
-                        name.contains("-male") -> 3
-                    name.contains("en-us-x-iol") || name.contains("en-us-x-iob") -> 2
-                    listOf("david", "daniel", "george", "james", "john", "mark", "michael", "tom")
-                        .any(name::contains) -> 1
-                    else -> 0
-                }
+                name.contains("female") || name.contains("woman")
             }
-            .firstOrNull { voice ->
-                val name = voice.name.lowercase(Locale.ROOT)
-                !name.contains("female") &&
-                    (name.contains("male") ||
-                        name.contains("en-us-x-iol") ||
-                        name.contains("en-us-x-iob") ||
-                        listOf("david", "daniel", "george", "james", "john", "mark", "michael", "tom")
-                            .any(name::contains))
-            }
-        if (maleVoice != null) {
-            tts.voice = maleVoice
-            Log.d(TAG, "selected TTS voice ${maleVoice.name}")
+        }
+        if (selected != null) {
+            tts.voice = selected
+            Log.d(TAG, "selected ${Prefs.headsetVoiceGender(this).name.lowercase()} TTS voice ${selected.name}")
         } else {
-            Log.w(TAG, "no known male TTS voice is installed; available=${languageVoices.map { it.name }}")
+            Log.w(TAG, "requested ${Prefs.headsetVoiceGender(this)} TTS voice is not installed; available=${languageVoices.map { it.name }}")
         }
     }
 

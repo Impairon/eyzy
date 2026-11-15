@@ -509,17 +509,32 @@ class MainActivity : Activity() {
                 }
             }
             it.addView(performance)
+            var updatingHeadsetSwitch = false
             val headsetTime = Switch(this).apply {
                 text = "Speak the time on long-press headset button"
                 textSize = 16f
                 setTextColor(Color.WHITE)
                 isChecked = Prefs.headsetTime(this@MainActivity)
                 setOnCheckedChangeListener { _, checked ->
-                    Prefs.setHeadsetTime(this@MainActivity, checked)
-                    AvatarService.instance?.refresh()
+                    if (updatingHeadsetSwitch) return@setOnCheckedChangeListener
+                    if (checked && Prefs.headsetTime(this@MainActivity)) return@setOnCheckedChangeListener
+                    if (checked) {
+                        updatingHeadsetSwitch = true
+                        isChecked = false
+                        updatingHeadsetSwitch = false
+                        chooseHeadsetVoice(this)
+                    } else {
+                        Prefs.setHeadsetTime(this@MainActivity, false)
+                        AvatarService.instance?.refresh()
+                    }
                 }
             }
             it.addView(headsetTime)
+            val chooseVoice = actionButton(
+                "Voice: ${Prefs.headsetVoiceGender(this).name.lowercase().replaceFirstChar { it.uppercase() }}"
+            )
+            chooseVoice.setOnClickListener { chooseHeadsetVoice(headsetTime) }
+            it.addView(chooseVoice)
             val testTime = actionButton("Say the time now")
             testTime.setOnClickListener {
                 val service = AvatarService.instance
@@ -544,6 +559,7 @@ class MainActivity : Activity() {
                     Prefs.setPrayer24Hour(this@MainActivity, checked)
                 }
             }
+
             it.addView(format)
             val peep = EditText(this).apply {
                 hint = "Peep every N counts (0 disables)"
@@ -565,6 +581,56 @@ class MainActivity : Activity() {
             addText(it, "Changelog: manual profiles, orientation-aware layouts, undo/redo, backup tools, privacy indicator, and battery saver mode.")
             addText(it, "Crash logs are stored locally and are never uploaded automatically.")
         })
+    }
+
+    private fun chooseHeadsetVoice(headsetSwitch: Switch) {
+        val options = arrayOf("Male", "Female")
+        val selected = if (Prefs.headsetVoiceGender(this) == Prefs.VoiceGender.MALE) 0 else 1
+        AlertDialog.Builder(this)
+            .setTitle("Choose announcement voice")
+            .setSingleChoiceItems(options, selected) { dialog, which ->
+                if (which == 0) {
+                    AvatarService.hasMaleVoice(this) { available ->
+                        runOnUiThread {
+                            if (available) {
+                                Prefs.setHeadsetVoiceGender(this, Prefs.VoiceGender.MALE)
+                                Prefs.setHeadsetTime(this, true)
+                                headsetSwitch.isChecked = true
+                                AvatarService.instance?.refresh()
+                                dialog.dismiss()
+                            } else {
+                                Prefs.setHeadsetTime(this, false)
+                                headsetSwitch.isChecked = false
+                                dialog.dismiss()
+                                showMissingMaleVoiceInstructions()
+                            }
+                        }
+                    }
+                } else {
+                    Prefs.setHeadsetVoiceGender(this, Prefs.VoiceGender.FEMALE)
+                    Prefs.setHeadsetTime(this, true)
+                    headsetSwitch.isChecked = true
+                    AvatarService.instance?.refresh()
+                    dialog.dismiss()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showMissingMaleVoiceInstructions() {
+        AlertDialog.Builder(this)
+            .setTitle("Male voice not installed")
+            .setMessage(
+                "Install a male voice in Android Text-to-speech settings, then return to swizy " +
+                    "and choose Male again.\n\nOpen Settings → Accessibility or System → " +
+                    "Text-to-speech output → Voice data."
+            )
+            .setPositiveButton("Open TTS settings") { _, _ ->
+                startActivity(Intent(Settings.ACTION_TTS_SETTINGS))
+            }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     private fun exportBackup() {

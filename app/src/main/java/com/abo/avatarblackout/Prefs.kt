@@ -32,9 +32,11 @@ object Prefs {
     private const val KEY_CONTROL_OPACITY = "control_opacity"
     private const val KEY_BOX_COLOR = "box_color"
     private const val KEY_HEADSET_TIME = "headset_time"
+    private const val KEY_HEADSET_VOICE_GENDER = "headset_voice_gender"
 
     enum class TileAction { START_APP, START_APP_AND_PAW }
     enum class BoxColor { BLACK, PURPLE, WHITE }
+    enum class VoiceGender { MALE, FEMALE }
     data class Profile(val id: String, val name: String, val packageName: String)
 
     fun isEnabled(c: Context) =
@@ -79,6 +81,19 @@ object Prefs {
     fun setHeadsetTime(c: Context, enabled: Boolean) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_HEADSET_TIME, enabled).apply()
+
+    fun headsetVoiceGender(c: Context): VoiceGender =
+        runCatching {
+            VoiceGender.valueOf(
+                c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                    .getString(KEY_HEADSET_VOICE_GENDER, VoiceGender.FEMALE.name)
+                    ?: VoiceGender.FEMALE.name
+            )
+        }.getOrDefault(VoiceGender.FEMALE)
+
+    fun setHeadsetVoiceGender(c: Context, gender: VoiceGender) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit().putString(KEY_HEADSET_VOICE_GENDER, gender.name).apply()
 
     fun boxOpacity(c: Context) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_BOX_OPACITY, 100)
