@@ -622,9 +622,10 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Male voice not installed")
             .setMessage(
-                "Install a male voice in Android Text-to-speech settings, then return to swizy " +
-                    "and choose Male again.\n\nOpen Settings → Accessibility or System → " +
-                    "Text-to-speech output → Voice data."
+                "Android is not currently using a recognized male voice. In Text-to-speech " +
+                    "settings, choose your TTS engine, set the language to English (United States), " +
+                    "download a male voice under Voice data, select it as the active voice, then " +
+                    "return to swizy and choose Male again."
             )
             .setPositiveButton("Open TTS settings") { _, _ ->
                 startActivity(Intent(Settings.ACTION_TTS_SETTINGS))

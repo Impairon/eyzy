@@ -65,8 +65,10 @@ class AvatarService : AccessibilityService() {
         fun hasMaleVoice(context: Context, result: (Boolean) -> Unit) {
             lateinit var probe: TextToSpeech
             probe = TextToSpeech(context.applicationContext) { status ->
+                val configured = probe.voice ?: probe.defaultVoice
                 val available = status == TextToSpeech.SUCCESS &&
-                    probe.voices.orEmpty().any(::isMaleVoice)
+                    configured != null &&
+                    isMaleVoice(configured)
                 probe.shutdown()
                 result(available)
             }
@@ -110,6 +112,7 @@ class AvatarService : AccessibilityService() {
     private var activePackage = ""
     private var timeSpeaker: TextToSpeech? = null
     private var timeSpeakerReady = false
+    private var configuredTtsLocale: Locale? = null
     private var pendingTimeText: String? = null
     private val speechTimeout = Runnable { finishTimeAnnouncement() }
     private var headsetKeyDown = false
@@ -159,6 +162,7 @@ class AvatarService : AccessibilityService() {
         timeSpeaker?.shutdown()
         timeSpeaker = null
         timeSpeakerReady = false
+        configuredTtsLocale = null
         pendingTimeText = null
         speakingTime = false
         manualSessionActive = false
@@ -262,7 +266,7 @@ class AvatarService : AccessibilityService() {
     /** Says the time out loud. Also used by the "Say the time now" button in Settings. */
     fun announceCurrentTime() {
         if (speakingTime) return
-        val locale = Locale.getDefault()
+        val locale = configuredTtsLocale ?: Locale.US
         val pattern = if (DateFormat.is24HourFormat(this)) "H:mm" else "h:mm a"
         val time = SimpleDateFormat(pattern, locale).format(Date())
         val text = if (locale.language == "en") "The time is $time" else time
@@ -293,10 +297,6 @@ class AvatarService : AccessibilityService() {
                 finishTimeAnnouncement()
                 return@TextToSpeech
             }
-            val result = tts.setLanguage(Locale.getDefault())
-            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                tts.setLanguage(Locale.ENGLISH)
-            }
             selectConfiguredVoice(tts)
             tts.setAudioAttributes(
                 AudioAttributes.Builder()
@@ -319,23 +319,24 @@ class AvatarService : AccessibilityService() {
     }
 
     private fun selectConfiguredVoice(tts: TextToSpeech) {
-        val language = Locale.getDefault().language
-        val voices = tts.voices ?: return
-        val languageVoices = voices
-            .filter { it.locale.language == language || it.locale.language == Locale.ENGLISH.language }
-        val selected = when (Prefs.headsetVoiceGender(this)) {
-            Prefs.VoiceGender.MALE -> languageVoices.firstOrNull(::isMaleVoice)
-            Prefs.VoiceGender.FEMALE -> languageVoices.firstOrNull { voice ->
-                val name = voice.name.lowercase(Locale.ROOT)
-                name.contains("female") || name.contains("woman")
-            }
+        val selected = tts.voice ?: tts.defaultVoice
+        if (selected == null) {
+            Log.w(TAG, "Android has no configured TTS voice")
+            return
         }
-        if (selected != null) {
-            tts.voice = selected
-            Log.d(TAG, "selected ${Prefs.headsetVoiceGender(this).name.lowercase()} TTS voice ${selected.name}")
-        } else {
-            Log.w(TAG, "requested ${Prefs.headsetVoiceGender(this)} TTS voice is not installed; available=${languageVoices.map { it.name }}")
+        configuredTtsLocale = selected.locale
+        val result = tts.setLanguage(selected.locale)
+        if (result == TextToSpeech.LANG_MISSING_DATA ||
+            result == TextToSpeech.LANG_NOT_SUPPORTED
+        ) {
+            Log.w(TAG, "configured TTS language is unavailable: ${selected.locale}")
         }
+        tts.voice = selected
+        val gender = Prefs.headsetVoiceGender(this)
+        if (gender == Prefs.VoiceGender.MALE && !isMaleVoice(selected)) {
+            Log.w(TAG, "configured TTS voice is not recognized as male: ${selected.name}")
+        }
+        Log.d(TAG, "using configured ${gender.name.lowercase()} TTS voice ${selected.name} (${selected.locale})")
     }
 
     private fun finishTimeAnnouncement() {

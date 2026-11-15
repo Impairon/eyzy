@@ -86,10 +86,10 @@ object Prefs {
         runCatching {
             VoiceGender.valueOf(
                 c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
-                    .getString(KEY_HEADSET_VOICE_GENDER, VoiceGender.FEMALE.name)
-                    ?: VoiceGender.FEMALE.name
+                    .getString(KEY_HEADSET_VOICE_GENDER, VoiceGender.MALE.name)
+                    ?: VoiceGender.MALE.name
             )
-        }.getOrDefault(VoiceGender.FEMALE)
+        }.getOrDefault(VoiceGender.MALE)
 
     fun setHeadsetVoiceGender(c: Context, gender: VoiceGender) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
