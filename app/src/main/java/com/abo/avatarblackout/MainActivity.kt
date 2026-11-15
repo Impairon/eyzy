@@ -628,7 +628,7 @@ class MainActivity : Activity() {
                     "return to swizy and choose Male again."
             )
             .setPositiveButton("Open TTS settings") { _, _ ->
-                startActivity(Intent(Settings.ACTION_TTS_SETTINGS))
+                startActivity(Intent("android.settings.TTS_SETTINGS"))
             }
             .setNegativeButton("Close", null)
             .show()
