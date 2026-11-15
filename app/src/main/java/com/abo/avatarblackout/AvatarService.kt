@@ -14,7 +14,6 @@ import android.graphics.RectF
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.speech.tts.TextToSpeech
-import android.speech.tts.Voice
 import android.text.format.DateFormat
 import android.os.Build
 import android.os.Handler
@@ -50,45 +49,6 @@ class AvatarService : AccessibilityService() {
         // view-id fragments that mark a profile picture
         private val AVATAR_ID = Regex("photo|avatar|picture|profile|portrait|headshot|actor_image|initials|group_image")
 
-        private fun isMaleVoice(voice: Voice): Boolean {
-            val name = voice.name.lowercase(Locale.ROOT)
-            return !name.contains("female") &&
-                (name.contains("#male") ||
-                    name.contains("_male") ||
-                    name.contains("-male") ||
-                    name.contains("en-us-x-iol") ||
-                    name.contains("en-us-x-iob") ||
-                    listOf("david", "daniel", "george", "james", "john", "mark", "michael", "tom")
-                        .any(name::contains))
-        }
-
-        private fun isFemaleVoice(voice: Voice): Boolean {
-            val name = voice.name.lowercase(Locale.ROOT)
-            return name.contains("female") || name.contains("woman")
-        }
-
-        fun configuredVoiceGender(context: Context, result: (Prefs.VoiceGender?) -> Unit) {
-            var probe: TextToSpeech? = null
-            probe = TextToSpeech(context.applicationContext) { status ->
-                val tts = probe
-                val configured = tts?.voice ?: tts?.defaultVoice
-                val gender = if (status != TextToSpeech.SUCCESS || configured == null) {
-                    null
-                } else if (isMaleVoice(configured)) {
-                    Prefs.VoiceGender.MALE
-                } else if (isFemaleVoice(configured)) {
-                    Prefs.VoiceGender.FEMALE
-                } else {
-                    null
-                }
-                tts?.shutdown()
-                result(gender)
-            }
-        }
-
-        fun hasMaleVoice(context: Context, result: (Boolean) -> Unit) {
-            configuredVoiceGender(context) { result(it == Prefs.VoiceGender.MALE) }
-        }
     }
 
     /** One black circle: where to draw it, and an optional area it must not leave (for half-visible rows). */
@@ -313,7 +273,7 @@ class AvatarService : AccessibilityService() {
                 finishTimeAnnouncement()
                 return@TextToSpeech
             }
-            selectConfiguredVoice(tts)
+            configureSystemVoice(tts)
             tts.setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -334,7 +294,7 @@ class AvatarService : AccessibilityService() {
         }
     }
 
-    private fun selectConfiguredVoice(tts: TextToSpeech) {
+    private fun configureSystemVoice(tts: TextToSpeech) {
         val selected = tts.voice ?: tts.defaultVoice
         if (selected == null) {
             Log.w(TAG, "Android has no configured TTS voice")
@@ -348,11 +308,7 @@ class AvatarService : AccessibilityService() {
             Log.w(TAG, "configured TTS language is unavailable: ${selected.locale}")
         }
         tts.voice = selected
-        val gender = Prefs.headsetVoiceGender(this)
-        if (gender == Prefs.VoiceGender.MALE && !isMaleVoice(selected)) {
-            Log.w(TAG, "configured TTS voice is not recognized as male: ${selected.name}")
-        }
-        Log.d(TAG, "using configured ${gender.name.lowercase()} TTS voice ${selected.name} (${selected.locale})")
+        Log.d(TAG, "using Android configured TTS voice ${selected.name} (${selected.locale})")
     }
 
     private fun finishTimeAnnouncement() {
