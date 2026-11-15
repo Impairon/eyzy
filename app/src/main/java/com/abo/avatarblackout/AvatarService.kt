@@ -11,8 +11,6 @@ import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
 import android.media.AudioManager
-import android.media.session.MediaSession
-import android.media.session.PlaybackState
 import android.speech.tts.TextToSpeech
 import android.os.Build
 import android.os.Handler
@@ -85,9 +83,16 @@ class AvatarService : AccessibilityService() {
     private var profileCreationNew = false
     private var manualSessionProfileId: String? = null
     private var activePackage = ""
-    private var headsetSession: MediaSession? = null
     private var timeSpeaker: TextToSpeech? = null
-    private var headsetDownAt = 0L
+    private var headsetKeyDown = false
+    private var headsetLongPressTriggered = false
+    private var replayingMediaKey = false
+    private val headsetLongPress = Runnable {
+        if (headsetKeyDown && Prefs.headsetTime(this)) {
+            headsetLongPressTriggered = true
+            announceCurrentTime()
+        }
+    }
     private var resumeAfterTime = false
     private var speakingTime = false
     private val undoStack = ArrayDeque<List<Rect>>()
@@ -121,8 +126,7 @@ class AvatarService : AccessibilityService() {
         overlay = null
         control?.let { try { wm.removeView(it) } catch (_: Exception) {} }
         control = null
-        headsetSession?.release()
-        headsetSession = null
+        handler.removeCallbacks(headsetLongPress)
         timeSpeaker?.stop()
         timeSpeaker?.shutdown()
         timeSpeaker = null
@@ -135,6 +139,33 @@ class AvatarService : AccessibilityService() {
     }
 
     override fun onInterrupt() {}
+
+    override fun onKeyEvent(event: KeyEvent): Boolean {
+        if (replayingMediaKey || !Prefs.headsetTime(this)) return false
+        if (event.keyCode != KeyEvent.KEYCODE_MEDIA_STOP &&
+            event.keyCode != KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+        ) return false
+
+        when (event.action) {
+            KeyEvent.ACTION_DOWN -> {
+                if (!headsetKeyDown) {
+                    headsetKeyDown = true
+                    headsetLongPressTriggered = false
+                    handler.postDelayed(headsetLongPress, 600L)
+                }
+                return true
+            }
+            KeyEvent.ACTION_UP -> {
+                handler.removeCallbacks(headsetLongPress)
+                val wasLongPress = headsetLongPressTriggered
+                headsetKeyDown = false
+                headsetLongPressTriggered = false
+                if (!wasLongPress) replayMediaKey(event.keyCode)
+                return true
+            }
+            else -> return true
+        }
+    }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
@@ -155,7 +186,6 @@ class AvatarService : AccessibilityService() {
         handler.removeCallbacks(scan)
         handler.removeCallbacks(tick)
         pending = false
-        updateHeadsetTime()
         control?.refreshOpacity()
         if (Prefs.isEnabled(this)) {
             doScan()
@@ -175,49 +205,6 @@ class AvatarService : AccessibilityService() {
                 timeSpeaker?.language = Locale.getDefault()
             }
         }
-        headsetSession = MediaSession(this, "swizy-headset").apply {
-            setFlags(
-                MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or
-                    MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS
-            )
-            setCallback(object : MediaSession.Callback() {
-                override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
-                    if (!Prefs.headsetTime(this@AvatarService)) return false
-                    val event = mediaButtonIntent.getParcelableExtra<KeyEvent>(
-                        Intent.EXTRA_KEY_EVENT
-                    ) ?: return false
-                    if (event.keyCode != KeyEvent.KEYCODE_MEDIA_STOP &&
-                        event.keyCode != KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
-                    ) return false
-                    if (event.action == KeyEvent.ACTION_DOWN) {
-                        headsetDownAt = event.eventTime
-                        return true
-                    }
-                    if (event.action == KeyEvent.ACTION_UP &&
-                        event.eventTime - headsetDownAt >= 600L
-                    ) {
-                        announceCurrentTime()
-                        return true
-                    }
-                    return false
-                }
-            })
-        }
-        updateHeadsetTime()
-    }
-
-    private fun updateHeadsetTime() {
-        val session = headsetSession ?: return
-        if (Prefs.headsetTime(this)) {
-            session.isActive = true
-            session.setPlaybackState(
-                PlaybackState.Builder()
-                    .setState(PlaybackState.STATE_PAUSED, 0L, 0f)
-                    .setActions(PlaybackState.ACTION_PLAY_PAUSE)
-                    .build()
-            )
-        } else {
-            session.isActive = false
         }
     }
 
@@ -255,10 +242,13 @@ class AvatarService : AccessibilityService() {
 
     private fun dispatchMediaKey(keyCode: Int) {
         val audio = getSystemService(AudioManager::class.java) ?: return
-        headsetSession?.isActive = false
-        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
-        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
-        headsetSession?.isActive = Prefs.headsetTime(this)
+        replayingMediaKey = true
+        try {
+            audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+            audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+        } finally {
+            replayingMediaKey = false
+        }
     }
 
     fun summonManualHideControl() {

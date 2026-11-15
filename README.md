@@ -17,8 +17,9 @@ Settings.
 Release settings include app/orientation profiles, undo/redo, JSON layout
 backup, optional privacy indicator, battery saver scanning, mask color/opacity,
 and a local crash log.
-Optional headset time announces the current time after a long press of a wired
-headset media button, then resumes music that was playing.
+Optional headset time filters a long press of a wired headset media button,
+announces the current time, then resumes music that was playing. Short presses
+are passed through normally.
 
 See [`PROJECT_PATHS.md`](PROJECT_PATHS.md) for the module layout and build/install
 commands. The supplied patch references and combined review bundle are kept under
