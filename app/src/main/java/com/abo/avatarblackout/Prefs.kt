@@ -31,6 +31,7 @@ object Prefs {
     private const val KEY_BOX_OPACITY = "box_opacity"
     private const val KEY_CONTROL_OPACITY = "control_opacity"
     private const val KEY_BOX_COLOR = "box_color"
+    private const val KEY_HEADSET_TIME = "headset_time"
 
     enum class TileAction { START_APP, START_APP_AND_PAW }
     enum class BoxColor { BLACK, PURPLE, WHITE }
@@ -70,6 +71,14 @@ object Prefs {
     fun setPerformanceMode(c: Context, enabled: Boolean) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_PERFORMANCE_MODE, enabled).apply()
+
+    fun headsetTime(c: Context) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getBoolean(KEY_HEADSET_TIME, false)
+
+    fun setHeadsetTime(c: Context, enabled: Boolean) =
+        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_HEADSET_TIME, enabled).apply()
 
     fun boxOpacity(c: Context) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_BOX_OPACITY, 100)

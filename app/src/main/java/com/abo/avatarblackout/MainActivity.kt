@@ -509,6 +509,17 @@ class MainActivity : Activity() {
                 }
             }
             it.addView(performance)
+            val headsetTime = Switch(this).apply {
+                text = "Speak the time on long-press headset button"
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                isChecked = Prefs.headsetTime(this@MainActivity)
+                setOnCheckedChangeListener { _, checked ->
+                    Prefs.setHeadsetTime(this@MainActivity, checked)
+                    AvatarService.instance?.refresh()
+                }
+            }
+            it.addView(headsetTime)
             addSlider(it, "Line thickness", 4, 64, Prefs.lineThicknessDp(this)) {
                 Prefs.setLineThicknessDp(this, it)
                 AvatarService.instance?.refresh()
