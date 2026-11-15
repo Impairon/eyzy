@@ -1,6 +1,7 @@
 package com.abo.avatarblackout
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
 import android.content.Intent
 import android.graphics.Canvas
@@ -10,8 +11,10 @@ import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
+import android.media.AudioAttributes
 import android.media.AudioManager
 import android.speech.tts.TextToSpeech
+import android.text.format.DateFormat
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -84,6 +87,9 @@ class AvatarService : AccessibilityService() {
     private var manualSessionProfileId: String? = null
     private var activePackage = ""
     private var timeSpeaker: TextToSpeech? = null
+    private var timeSpeakerReady = false
+    private var pendingTimeText: String? = null
+    private val speechTimeout = Runnable { finishTimeAnnouncement() }
     private var headsetKeyDown = false
     private var headsetLongPressTriggered = false
     private var replayingMediaKey = false
@@ -114,7 +120,6 @@ class AvatarService : AccessibilityService() {
     override fun onServiceConnected() {
         instance = this
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        setupHeadsetTime()
         addOverlay()
         refresh()
     }
@@ -127,9 +132,13 @@ class AvatarService : AccessibilityService() {
         control?.let { try { wm.removeView(it) } catch (_: Exception) {} }
         control = null
         handler.removeCallbacks(headsetLongPress)
+        handler.removeCallbacks(speechTimeout)
         timeSpeaker?.stop()
         timeSpeaker?.shutdown()
         timeSpeaker = null
+        timeSpeakerReady = false
+        pendingTimeText = null
+        speakingTime = false
         manualSessionActive = false
         profileCreationId = null
         profileCaptureRects = mutableListOf()
@@ -140,19 +149,46 @@ class AvatarService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
+    /**
+     * Key filtering is requested only while the headset feature is on, so with it off the service
+     * never sees (or delays) a single key press.
+     */
+    private fun applyHeadsetFilter() {
+        val info = serviceInfo ?: return
+        val flag = AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+        val want = Prefs.headsetTime(this)
+        val has = info.flags and flag != 0
+        if (want == has) return
+        info.flags = if (want) info.flags or flag else info.flags and flag.inv()
+        serviceInfo = info
+    }
+
+    private fun isHeadsetKey(code: Int) =
+        // HEADSETHOOK is the middle button of most wired headsets, and the key behind the
+        // "long press starts the voice assistant" behaviour
+        code == KeyEvent.KEYCODE_HEADSETHOOK ||
+            code == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
+            code == KeyEvent.KEYCODE_MEDIA_STOP
+
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (replayingMediaKey || !Prefs.headsetTime(this)) return false
-        if (event.keyCode != KeyEvent.KEYCODE_MEDIA_STOP &&
-            event.keyCode != KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
-        ) return false
+        if (!isHeadsetKey(event.keyCode)) return false
+        Log.d(TAG, "headset key ${KeyEvent.keyCodeToString(event.keyCode)} action=${event.action} " +
+            "repeat=${event.repeatCount} device=${event.deviceId}")
+        // while a call is ringing or running the button must keep answering / ending it
+        val audio = getSystemService(AudioManager::class.java)
+        if (audio != null && audio.mode != AudioManager.MODE_NORMAL) return false
 
         when (event.action) {
             KeyEvent.ACTION_DOWN -> {
-                if (!headsetKeyDown) {
+                // repeatCount 0 = a fresh press (this also recovers if an earlier release was lost)
+                if (event.repeatCount == 0) {
                     headsetKeyDown = true
                     headsetLongPressTriggered = false
+                    handler.removeCallbacks(headsetLongPress)
                     handler.postDelayed(headsetLongPress, 600L)
                 }
+                // swallowing the press is what stops the system launching the assistant
                 return true
             }
             KeyEvent.ACTION_UP -> {
@@ -160,7 +196,8 @@ class AvatarService : AccessibilityService() {
                 val wasLongPress = headsetLongPressTriggered
                 headsetKeyDown = false
                 headsetLongPressTriggered = false
-                if (!wasLongPress) replayMediaKey(event.keyCode)
+                // short press: give it back to the media system so play/pause/next/previous still work
+                if (!wasLongPress) dispatchMediaKey(event.keyCode)
                 return true
             }
             else -> return true
@@ -183,6 +220,7 @@ class AvatarService : AccessibilityService() {
     }
 
     fun refresh() {
+        applyHeadsetFilter()
         handler.removeCallbacks(scan)
         handler.removeCallbacks(tick)
         pending = false
@@ -199,39 +237,66 @@ class AvatarService : AccessibilityService() {
         }
     }
 
-    private fun setupHeadsetTime() {
-        timeSpeaker = TextToSpeech(this) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                timeSpeaker?.language = Locale.getDefault()
-            }
-        }
-        }
-    }
-
-    private fun announceCurrentTime() {
+    /** Says the time out loud. Also used by the "Say the time now" button in Settings. */
+    fun announceCurrentTime() {
         if (speakingTime) return
+        val locale = Locale.getDefault()
+        val pattern = if (DateFormat.is24HourFormat(this)) "H:mm" else "h:mm a"
+        val time = SimpleDateFormat(pattern, locale).format(Date())
+        val text = if (locale.language == "en") "The time is $time" else time
         val audio = getSystemService(AudioManager::class.java)
         resumeAfterTime = audio?.isMusicActive == true
         if (resumeAfterTime) dispatchMediaKey(KeyEvent.KEYCODE_MEDIA_PAUSE)
         speakingTime = true
-        val now = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
-        val speaker = timeSpeaker
-        if (speaker == null) {
-            speakingTime = false
-            if (resumeAfterTime) dispatchMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY)
+        handler.removeCallbacks(speechTimeout)
+        handler.postDelayed(speechTimeout, 12_000L) // never stay "speaking" (and never leave the music paused) forever
+        speakTimeText(text)
+    }
+
+    /** The speech engine is started on first use and only once it reports ready is anything spoken. */
+    private fun speakTimeText(text: String) {
+        val engine = timeSpeaker
+        if (engine != null && timeSpeakerReady) {
+            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "swizy-time")
             return
         }
-        speaker.setOnUtteranceProgressListener(object :
-            android.speech.tts.UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) = Unit
-            override fun onError(utteranceId: String?) { finishTimeAnnouncement() }
-            override fun onDone(utteranceId: String?) { finishTimeAnnouncement() }
-        })
-        val params = android.os.Bundle()
-        speaker.speak("The time is $now", TextToSpeech.QUEUE_FLUSH, params, "swizy-time")
+        pendingTimeText = text
+        if (engine != null) return // still starting; it speaks as soon as it is ready
+        timeSpeaker = TextToSpeech(applicationContext) { status ->
+            val tts = timeSpeaker
+            if (status != TextToSpeech.SUCCESS || tts == null) {
+                Log.w(TAG, "text-to-speech failed to start: $status")
+                timeSpeaker = null
+                pendingTimeText = null
+                finishTimeAnnouncement()
+                return@TextToSpeech
+            }
+            val result = tts.setLanguage(Locale.getDefault())
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                tts.setLanguage(Locale.ENGLISH)
+            }
+            tts.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) = Unit
+                @Deprecated("Deprecated in Java")
+                override fun onError(utteranceId: String?) { handler.post { finishTimeAnnouncement() } }
+                override fun onDone(utteranceId: String?) { handler.post { finishTimeAnnouncement() } }
+            })
+            timeSpeakerReady = true
+            pendingTimeText?.let {
+                pendingTimeText = null
+                tts.speak(it, TextToSpeech.QUEUE_FLUSH, null, "swizy-time")
+            }
+        }
     }
 
     private fun finishTimeAnnouncement() {
+        handler.removeCallbacks(speechTimeout)
         if (!speakingTime) return
         speakingTime = false
         if (resumeAfterTime) {

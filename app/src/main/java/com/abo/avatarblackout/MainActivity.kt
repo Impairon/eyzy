@@ -520,6 +520,13 @@ class MainActivity : Activity() {
                 }
             }
             it.addView(headsetTime)
+            val testTime = actionButton("Say the time now")
+            testTime.setOnClickListener {
+                val service = AvatarService.instance
+                if (service != null) service.announceCurrentTime()
+                else Toast.makeText(this, "Turn on the swizy accessibility service first", Toast.LENGTH_SHORT).show()
+            }
+            it.addView(testTime)
             addSlider(it, "Line thickness", 4, 64, Prefs.lineThicknessDp(this)) {
                 Prefs.setLineThicknessDp(this, it)
                 AvatarService.instance?.refresh()
