@@ -3,6 +3,7 @@ package com.abo.avatarblackout
 import android.app.Activity
 import android.app.AlertDialog
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -628,10 +629,26 @@ class MainActivity : Activity() {
                     "return to swizy and choose Male again."
             )
             .setPositiveButton("Open TTS settings") { _, _ ->
-                startActivity(Intent("android.settings.TTS_SETTINGS"))
+                openTextToSpeechSettings()
             }
             .setNegativeButton("Close", null)
             .show()
+    }
+
+    private fun openTextToSpeechSettings() {
+        try {
+            startActivity(Intent("android.settings.TTS_SETTINGS"))
+        } catch (_: ActivityNotFoundException) {
+            try {
+                startActivity(Intent(Settings.ACTION_SETTINGS))
+            } catch (_: ActivityNotFoundException) {
+                Toast.makeText(
+                    this,
+                    "Open Android Settings, then search for Text-to-speech output.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
     }
 
     private fun exportBackup() {

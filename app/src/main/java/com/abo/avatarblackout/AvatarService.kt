@@ -63,13 +63,14 @@ class AvatarService : AccessibilityService() {
         }
 
         fun hasMaleVoice(context: Context, result: (Boolean) -> Unit) {
-            lateinit var probe: TextToSpeech
+            var probe: TextToSpeech? = null
             probe = TextToSpeech(context.applicationContext) { status ->
-                val configured = probe.voice ?: probe.defaultVoice
+                val tts = probe
+                val configured = tts?.voice ?: tts?.defaultVoice
                 val available = status == TextToSpeech.SUCCESS &&
                     configured != null &&
                     isMaleVoice(configured)
-                probe.shutdown()
+                tts?.shutdown()
                 result(available)
             }
         }
