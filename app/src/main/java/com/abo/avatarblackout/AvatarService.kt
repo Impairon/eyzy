@@ -275,6 +275,7 @@ class AvatarService : AccessibilityService() {
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 tts.setLanguage(Locale.ENGLISH)
             }
+            selectMaleVoice(tts)
             tts.setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -292,6 +293,25 @@ class AvatarService : AccessibilityService() {
                 pendingTimeText = null
                 tts.speak(it, TextToSpeech.QUEUE_FLUSH, null, "swizy-time")
             }
+        }
+    }
+
+    private fun selectMaleVoice(tts: TextToSpeech) {
+        val language = Locale.getDefault().language
+        val voices = tts.voices ?: return
+        val maleVoice = voices
+            .filter { it.locale.language == language || it.locale.language == Locale.ENGLISH.language }
+            .firstOrNull { voice ->
+                val name = voice.name.lowercase(Locale.ROOT)
+                (name.contains("male") && !name.contains("female")) ||
+                    listOf("david", "alex", "daniel", "george", "james", "john", "mark", "michael", "tom")
+                        .any(name::contains)
+            }
+        if (maleVoice != null) {
+            tts.voice = maleVoice
+            Log.d(TAG, "selected TTS voice ${maleVoice.name}")
+        } else {
+            Log.w(TAG, "no male TTS voice is installed; using system default")
         }
     }
 
