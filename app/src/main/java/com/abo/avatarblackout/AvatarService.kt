@@ -299,19 +299,34 @@ class AvatarService : AccessibilityService() {
     private fun selectMaleVoice(tts: TextToSpeech) {
         val language = Locale.getDefault().language
         val voices = tts.voices ?: return
-        val maleVoice = voices
+        val languageVoices = voices
             .filter { it.locale.language == language || it.locale.language == Locale.ENGLISH.language }
+        val maleVoice = languageVoices
+            .sortedByDescending { voice ->
+                val name = voice.name.lowercase(Locale.ROOT)
+                when {
+                    name.contains("#male") || name.contains("_male") ||
+                        name.contains("-male") -> 3
+                    name.contains("en-us-x-iol") || name.contains("en-us-x-iob") -> 2
+                    listOf("david", "daniel", "george", "james", "john", "mark", "michael", "tom")
+                        .any(name::contains) -> 1
+                    else -> 0
+                }
+            }
             .firstOrNull { voice ->
                 val name = voice.name.lowercase(Locale.ROOT)
-                (name.contains("male") && !name.contains("female")) ||
-                    listOf("david", "alex", "daniel", "george", "james", "john", "mark", "michael", "tom")
-                        .any(name::contains)
+                !name.contains("female") &&
+                    (name.contains("male") ||
+                        name.contains("en-us-x-iol") ||
+                        name.contains("en-us-x-iob") ||
+                        listOf("david", "daniel", "george", "james", "john", "mark", "michael", "tom")
+                            .any(name::contains))
             }
         if (maleVoice != null) {
             tts.voice = maleVoice
             Log.d(TAG, "selected TTS voice ${maleVoice.name}")
         } else {
-            Log.w(TAG, "no male TTS voice is installed; using system default")
+            Log.w(TAG, "no known male TTS voice is installed; available=${languageVoices.map { it.name }}")
         }
     }
 
