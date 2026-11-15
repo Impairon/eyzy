@@ -532,10 +532,17 @@ class MainActivity : Activity() {
             }
             it.addView(headsetTime)
             val chooseVoice = actionButton(
-                "Voice: ${Prefs.headsetVoiceGender(this).name.lowercase().replaceFirstChar { it.uppercase() }}"
+                "Voice: detecting..."
             )
             chooseVoice.setOnClickListener { chooseHeadsetVoice(headsetTime) }
             it.addView(chooseVoice)
+            AvatarService.configuredVoiceGender(this) { gender ->
+                runOnUiThread {
+                    val label = gender?.name?.lowercase()?.replaceFirstChar { it.uppercase() }
+                        ?: "Unknown"
+                    chooseVoice.text = "Voice: $label"
+                }
+            }
             val testTime = actionButton("Say the time now")
             testTime.setOnClickListener {
                 val service = AvatarService.instance

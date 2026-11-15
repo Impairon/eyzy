@@ -62,17 +62,32 @@ class AvatarService : AccessibilityService() {
                         .any(name::contains))
         }
 
-        fun hasMaleVoice(context: Context, result: (Boolean) -> Unit) {
+        private fun isFemaleVoice(voice: Voice): Boolean {
+            val name = voice.name.lowercase(Locale.ROOT)
+            return name.contains("female") || name.contains("woman")
+        }
+
+        fun configuredVoiceGender(context: Context, result: (Prefs.VoiceGender?) -> Unit) {
             var probe: TextToSpeech? = null
             probe = TextToSpeech(context.applicationContext) { status ->
                 val tts = probe
                 val configured = tts?.voice ?: tts?.defaultVoice
-                val available = status == TextToSpeech.SUCCESS &&
-                    configured != null &&
-                    isMaleVoice(configured)
+                val gender = if (status != TextToSpeech.SUCCESS || configured == null) {
+                    null
+                } else if (isMaleVoice(configured)) {
+                    Prefs.VoiceGender.MALE
+                } else if (isFemaleVoice(configured)) {
+                    Prefs.VoiceGender.FEMALE
+                } else {
+                    null
+                }
                 tts?.shutdown()
-                result(available)
+                result(gender)
             }
+        }
+
+        fun hasMaleVoice(context: Context, result: (Boolean) -> Unit) {
+            configuredVoiceGender(context) { result(it == Prefs.VoiceGender.MALE) }
         }
     }
 
