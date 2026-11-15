@@ -167,98 +167,98 @@ class AvatarService : AccessibilityService() {
             overlay?.setItems(emptyList())
             removeControl()
         }
+    }
 
-        private fun setupHeadsetTime() {
-            timeSpeaker = TextToSpeech(this) { status ->
-                if (status == TextToSpeech.SUCCESS) {
-                    timeSpeaker?.language = Locale.getDefault()
-                }
+    private fun setupHeadsetTime() {
+        timeSpeaker = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                timeSpeaker?.language = Locale.getDefault()
             }
-            headsetSession = MediaSession(this, "swizy-headset").apply {
-                setFlags(
-                    MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or
-                        MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS
-                )
-                setCallback(object : MediaSession.Callback() {
-                    override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
-                        if (!Prefs.headsetTime(this@AvatarService)) return false
-                        val event = mediaButtonIntent.getParcelableExtra<KeyEvent>(
-                            Intent.EXTRA_KEY_EVENT
-                        ) ?: return false
-                        if (event.keyCode != KeyEvent.KEYCODE_MEDIA_STOP &&
-                            event.keyCode != KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
-                        ) return false
-                        if (event.action == KeyEvent.ACTION_DOWN) {
-                            headsetDownAt = event.eventTime
-                            return true
-                        }
-                        if (event.action == KeyEvent.ACTION_UP &&
-                            event.eventTime - headsetDownAt >= 600L
-                        ) {
-                            announceCurrentTime()
-                            return true
-                        }
-                        return false
+        }
+        headsetSession = MediaSession(this, "swizy-headset").apply {
+            setFlags(
+                MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or
+                    MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS
+            )
+            setCallback(object : MediaSession.Callback() {
+                override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
+                    if (!Prefs.headsetTime(this@AvatarService)) return false
+                    val event = mediaButtonIntent.getParcelableExtra<KeyEvent>(
+                        Intent.EXTRA_KEY_EVENT
+                    ) ?: return false
+                    if (event.keyCode != KeyEvent.KEYCODE_MEDIA_STOP &&
+                        event.keyCode != KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                    ) return false
+                    if (event.action == KeyEvent.ACTION_DOWN) {
+                        headsetDownAt = event.eventTime
+                        return true
                     }
-                })
-            }
-            updateHeadsetTime()
-        }
-
-        private fun updateHeadsetTime() {
-            val session = headsetSession ?: return
-            if (Prefs.headsetTime(this)) {
-                session.isActive = true
-                session.setPlaybackState(
-                    PlaybackState.Builder()
-                        .setState(PlaybackState.STATE_PAUSED, 0L, 0f)
-                        .setActions(PlaybackState.ACTION_PLAY_PAUSE)
-                        .build()
-                )
-            } else {
-                session.isActive = false
-            }
-        }
-
-        private fun announceCurrentTime() {
-            if (speakingTime) return
-            val audio = getSystemService(AudioManager::class.java)
-            resumeAfterTime = audio?.isMusicActive == true
-            if (resumeAfterTime) dispatchMediaKey(KeyEvent.KEYCODE_MEDIA_PAUSE)
-            speakingTime = true
-            val now = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
-            val speaker = timeSpeaker
-            if (speaker == null) {
-                speakingTime = false
-                if (resumeAfterTime) dispatchMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY)
-                return
-            }
-            speaker.setOnUtteranceProgressListener(object :
-                android.speech.tts.UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) = Unit
-                override fun onError(utteranceId: String?) { finishTimeAnnouncement() }
-                override fun onDone(utteranceId: String?) { finishTimeAnnouncement() }
+                    if (event.action == KeyEvent.ACTION_UP &&
+                        event.eventTime - headsetDownAt >= 600L
+                    ) {
+                        announceCurrentTime()
+                        return true
+                    }
+                    return false
+                }
             })
-            val params = android.os.Bundle()
-            speaker.speak("The time is $now", TextToSpeech.QUEUE_FLUSH, params, "swizy-time")
         }
+        updateHeadsetTime()
+    }
 
-        private fun finishTimeAnnouncement() {
-            if (!speakingTime) return
+    private fun updateHeadsetTime() {
+        val session = headsetSession ?: return
+        if (Prefs.headsetTime(this)) {
+            session.isActive = true
+            session.setPlaybackState(
+                PlaybackState.Builder()
+                    .setState(PlaybackState.STATE_PAUSED, 0L, 0f)
+                    .setActions(PlaybackState.ACTION_PLAY_PAUSE)
+                    .build()
+            )
+        } else {
+            session.isActive = false
+        }
+    }
+
+    private fun announceCurrentTime() {
+        if (speakingTime) return
+        val audio = getSystemService(AudioManager::class.java)
+        resumeAfterTime = audio?.isMusicActive == true
+        if (resumeAfterTime) dispatchMediaKey(KeyEvent.KEYCODE_MEDIA_PAUSE)
+        speakingTime = true
+        val now = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+        val speaker = timeSpeaker
+        if (speaker == null) {
             speakingTime = false
-            if (resumeAfterTime) {
-                resumeAfterTime = false
-                dispatchMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY)
-            }
+            if (resumeAfterTime) dispatchMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY)
+            return
         }
+        speaker.setOnUtteranceProgressListener(object :
+            android.speech.tts.UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) = Unit
+            override fun onError(utteranceId: String?) { finishTimeAnnouncement() }
+            override fun onDone(utteranceId: String?) { finishTimeAnnouncement() }
+        })
+        val params = android.os.Bundle()
+        speaker.speak("The time is $now", TextToSpeech.QUEUE_FLUSH, params, "swizy-time")
+    }
 
-        private fun dispatchMediaKey(keyCode: Int) {
-            val audio = getSystemService(AudioManager::class.java) ?: return
-            headsetSession?.isActive = false
-            audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
-            audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
-            headsetSession?.isActive = Prefs.headsetTime(this)
+    private fun finishTimeAnnouncement() {
+        if (!speakingTime) return
+        speakingTime = false
+        if (resumeAfterTime) {
+            resumeAfterTime = false
+            dispatchMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY)
         }
+    }
+
+    private fun dispatchMediaKey(keyCode: Int) {
+        val audio = getSystemService(AudioManager::class.java) ?: return
+        headsetSession?.isActive = false
+        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+        headsetSession?.isActive = Prefs.headsetTime(this)
     }
 
     fun summonManualHideControl() {
