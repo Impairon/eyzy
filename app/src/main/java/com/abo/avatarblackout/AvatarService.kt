@@ -74,12 +74,15 @@ class AvatarService : AccessibilityService() {
     private var resizingTouchOffset: Pair<Float, Float>? = null
     private var resizingPreview: Rect? = null
     private var profileCreationId: String? = null
+    private var profileCaptureRects = mutableListOf<Rect>()
+    private var profileCreationNew = false
     private var manualSessionProfileId: String? = null
     private var activePackage = ""
     private val undoStack = ArrayDeque<List<Rect>>()
     private val redoStack = ArrayDeque<List<Rect>>()
     private val handler = Handler(Looper.getMainLooper())
     private var pending = false
+    private val controlIcon by lazy { BitmapFactory.decodeResource(resources, R.drawable.eyes) }
     private val scan = Runnable { pending = false; doScan() }
     // safety net: rescan every second so a missed event or a dropped overlay recovers by itself
     private val tick = object : Runnable {
@@ -106,6 +109,10 @@ class AvatarService : AccessibilityService() {
         control?.let { try { wm.removeView(it) } catch (_: Exception) {} }
         control = null
         manualSessionActive = false
+        profileCreationId = null
+        profileCaptureRects = mutableListOf()
+        profileCreationNew = false
+        manualSessionProfileId = null
         return super.onUnbind(intent)
     }
 
@@ -117,20 +124,13 @@ class AvatarService : AccessibilityService() {
             removeControl()
             addControl()
         }
-        if (Prefs.hasProfileForPackage(this, activePackage)) {
-            Prefs.setManualHideVisible(this, true)
-        }
         doScan()
     }
 
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
-        if (Prefs.maskMode(this) == Prefs.MaskMode.NONE) return
-        if (Prefs.maskMode(this) == Prefs.MaskMode.SIMPLE &&
-            e?.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
-        ) return
         if (!Prefs.isEnabled(this) || pending) return
         pending = true
-        handler.post(scan)
+        handler.postDelayed(scan, 80L)
     }
 
     fun refresh() {
@@ -170,7 +170,7 @@ class AvatarService : AccessibilityService() {
     }
 
     private fun finishManualSelection(rect: Rect) {
-        if (rect.width() < 12 || rect.height() < 12) {
+        if (rect.width() < dp(12) || rect.height() < dp(12)) {
             overlay?.setSelectionMode(false)
             setOverlayTouchable(false)
             addControl()
@@ -178,7 +178,7 @@ class AvatarService : AccessibilityService() {
         }
         rememberManualChange()
         if (profileCreationId != null) {
-            saveProfileRects(profileRects() + rect)
+            profileCaptureRects.add(Rect(rect))
         } else {
             saveManualRects(manualRects() + rect)
         }
@@ -190,18 +190,22 @@ class AvatarService : AccessibilityService() {
     }
 
     private fun removeLastManualArea() {
-        rememberManualChange()
-        saveManualRects(manualRects().dropLast(1))
+        val areas = editableRects()
+        if (areas.isEmpty()) return
+        rememberEditableChange(areas)
+        saveEditableRects(areas.dropLast(1))
         doScan()
     }
 
     private fun removeAllManualAreas() {
-        if (manualRects().isEmpty() && profileRects().isEmpty()) return
-        rememberManualChange()
-        if (manualSessionProfileId != null &&
-            Prefs.profiles(this).any { it.id == manualSessionProfileId }
+        val areas = editableRects()
+        if (areas.isEmpty()) return
+        rememberEditableChange(areas)
+        if (profileCreationId != null ||
+            (profileRects().isNotEmpty() && manualRects().isEmpty())
         ) {
-            Prefs.setManualHideVisible(this, false)
+            if (profileCreationId != null) profileCaptureRects.clear()
+            else saveProfileRects(emptyList())
             doScan()
             return
         }
@@ -212,22 +216,40 @@ class AvatarService : AccessibilityService() {
     }
 
     private fun rememberManualChange() {
-        undoStack.addLast(manualRects().map { Rect(it) })
+        rememberEditableChange(editableRects())
+    }
+
+    private fun rememberEditableChange(areas: List<Rect>) {
+        undoStack.addLast(areas.map { Rect(it) })
         while (undoStack.size > 20) undoStack.removeFirst()
         redoStack.clear()
     }
 
+    private fun editableRects(): List<Rect> {
+        if (profileCreationId != null) return profileCaptureRects
+        val profile = profileRects()
+        return if (profile.isNotEmpty() && manualRects().isEmpty()) profile else manualRects()
+    }
+
+    private fun saveEditableRects(rects: List<Rect>) {
+        if (profileCreationId != null) profileCaptureRects = rects.map { Rect(it) }.toMutableList()
+        else if (profileRects().isNotEmpty() && manualRects().isEmpty()) saveProfileRects(rects)
+        else saveManualRects(rects)
+    }
+
     private fun undoManualChange() {
         if (undoStack.isEmpty()) return
-        redoStack.addLast(manualRects().map { Rect(it) })
-        saveManualRects(undoStack.removeLast())
+        val current = editableRects()
+        redoStack.addLast(current.map { Rect(it) })
+        saveEditableRects(undoStack.removeLast())
         doScan()
     }
 
     private fun redoManualChange() {
         if (redoStack.isEmpty()) return
-        undoStack.addLast(manualRects().map { Rect(it) })
-        saveManualRects(redoStack.removeLast())
+        val current = editableRects()
+        undoStack.addLast(current.map { Rect(it) })
+        saveEditableRects(redoStack.removeLast())
         doScan()
     }
 
@@ -260,12 +282,11 @@ class AvatarService : AccessibilityService() {
     }
 
     private fun finishManualAreaMove(index: Int, start: Pair<Float, Float>, end: Pair<Float, Float>) {
-        val areas = manualRects()
+        val areas = editableRects()
         if (index in areas.indices) {
-            val old = areas[index]
             val updated = areas.toMutableList()
-            updated[index] = movingPreview ?: movedArea(old, start, end)
-            saveManualRects(updated)
+            updated[index] = movingPreview ?: movedArea(areas[index], start, end)
+            saveEditableRects(updated)
         }
         movingAreaIndex = -1
         movingAreaStart = null
@@ -306,11 +327,11 @@ class AvatarService : AccessibilityService() {
     }
 
     private fun finishManualAreaResize() {
-        val areas = manualRects()
+        val areas = editableRects()
         if (resizingAreaIndex in areas.indices && resizingPreview != null) {
             val updated = areas.toMutableList()
             updated[resizingAreaIndex] = resizingPreview!!
-            saveManualRects(updated)
+            saveEditableRects(updated)
         }
         resizingAreaIndex = -1
         resizingTouchOffset = null
@@ -353,8 +374,11 @@ class AvatarService : AccessibilityService() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = resources.displayMetrics.widthPixels - dp(70)
-            y = resources.displayMetrics.heightPixels / 2
+            val prefs = getSharedPreferences("avb", Context.MODE_PRIVATE)
+            x = prefs.getInt("control_x", resources.displayMetrics.widthPixels - dp(70))
+                .coerceIn(0, resources.displayMetrics.widthPixels - dp(58))
+            y = prefs.getInt("control_y", resources.displayMetrics.heightPixels / 2)
+                .coerceIn(0, resources.displayMetrics.heightPixels - dp(58))
         }
 
         wm.addView(v, lp)
@@ -378,7 +402,8 @@ class AvatarService : AccessibilityService() {
     }
 
     private fun profileRects(): List<Rect> =
-        Prefs.profileHideRects(this, profileId(), orientationKey())
+        if (profileCreationId != null) profileCaptureRects
+        else Prefs.profileHideRects(this, profileId(), orientationKey())
 
     private fun saveManualRects(rects: List<Rect>) =
         Prefs.saveManualHideRects(this, manualLayoutId(), orientationKey(), rects)
@@ -416,17 +441,34 @@ class AvatarService : AccessibilityService() {
         return Rect(rect.left, visibleTop, rect.right, visibleBottom)
     }
 
+    private fun manualStoredRect(displayed: Rect, index: Int): Rect {
+        val top = keyboardTop() ?: return Rect(displayed)
+        val safeBottom = (top - dp(56)).coerceAtLeast(0)
+        val original = editableRects().getOrNull(index) ?: return Rect(displayed)
+        val shift = (original.bottom - safeBottom).coerceAtLeast(0)
+        return Rect(
+            displayed.left,
+            displayed.top + shift,
+            displayed.right,
+            displayed.bottom + shift
+        )
+    }
+
+    private fun editableDisplayRects() = editableRects().map { manualDisplayRect(it) }
+
     private fun beginProfileCreation() {
         if (!Prefs.isEnabled(this) || !manualSessionActive) return
         val packageName = activePackage
+        val hadProfile = Prefs.hasProfileForPackage(this, packageName)
         val profile = Prefs.addProfile(
             this,
             "Profile ${packageName.substringAfterLast('.')}",
             packageName
         )
         profileCreationId = profile.id
+        profileCreationNew = !hadProfile
         manualSessionProfileId = profile.id
-        saveProfileRects(emptyList())
+        profileCaptureRects = mutableListOf()
         removeControl()
         addControl()
         control?.invalidate()
@@ -436,15 +478,22 @@ class AvatarService : AccessibilityService() {
     private fun saveProfileCreation() {
         val id = profileCreationId ?: return
         val packageName = activePackage
+        saveProfileRects(profileCaptureRects)
         Prefs.renameProfile(this, id, packageName.substringAfterLast('.').ifBlank { "Profile" })
         profileCreationId = null
+        profileCaptureRects = mutableListOf()
+        profileCreationNew = false
         control?.invalidate()
         doScan()
     }
 
     private fun cancelProfileCreation() {
-        profileCreationId?.let { Prefs.deleteProfile(this, it) }
+        if (profileCreationNew) {
+            profileCreationId?.let { Prefs.deleteProfile(this, it) }
+        }
         profileCreationId = null
+        profileCaptureRects = mutableListOf()
+        profileCreationNew = false
     }
 
     private fun removeControl() {
@@ -505,7 +554,7 @@ class AvatarService : AccessibilityService() {
                 }.getOrNull()
             }
             .firstOrNull()
-            ?.takeUnless { it == packageName || it == "com.android.systemui" }
+            ?.takeUnless { it == applicationContext.packageName || it == "com.android.systemui" }
     }
 
     private fun doScan() {
@@ -514,10 +563,9 @@ class AvatarService : AccessibilityService() {
             val detectedPackage = foregroundPackage() ?: ""
             if (detectedPackage != activePackage) {
                 activePackage = detectedPackage
-                Prefs.setManualHideVisible(
-                    this,
-                    manualSessionActive || Prefs.hasProfileForPackage(this, activePackage)
-                )
+                if (Prefs.hasProfileForPackage(this, activePackage)) {
+                    Prefs.setManualHideVisible(this, true)
+                }
                 Log.d(TAG, "foreground package changed to $activePackage")
             }
             val out = ArrayList<Item>()
@@ -557,7 +605,7 @@ class AvatarService : AccessibilityService() {
                     if (Prefs.maskMode(this) == Prefs.MaskMode.SIMPLE) {
                         if (packageName in TELEGRAM) {
                             if (!sc.hasInput) tgListLine(sc, out) else tgChat(sc, out)
-                        } else if (Prefs.maskMode(this) == Prefs.MaskMode.DYNAMIC) {
+                        } else {
                             lineFor(sc)?.let { out.add(it) }
                         }
                     } else {
@@ -654,16 +702,14 @@ class AvatarService : AccessibilityService() {
     private fun lineFor(sc: Scan): Item? {
         if (sc.avatarRects.isEmpty()) return null
         val dp = resources.displayMetrics.density
-        val clusters = sc.avatarRects.groupBy { it.centerX() / (12 * dp).toInt() }
-        val column = clusters.values.maxByOrNull { it.size } ?: return null
-        val center = column.map { it.centerX() }.average().toInt()
+        val centers = sc.avatarRects.map { it.centerX() }.sorted()
+        val center = centers[centers.size / 2]
         val scroll = sc.scrollRect
         val top = max(
             (93 * dp).toInt(),
-            column.minOf { it.top }
+            scroll?.top ?: sc.avatarRects.minOf { it.top }
         )
-        val bottom = (scroll?.bottom ?: column.maxOf { it.bottom })
-            .coerceAtMost(column.maxOf { it.bottom })
+        val bottom = (scroll?.bottom ?: sc.avatarRects.maxOf { it.bottom })
             .coerceAtMost(resources.displayMetrics.heightPixels)
         if (bottom <= top) return null
         val width = (Prefs.lineThicknessDp(this) * dp).toInt()
@@ -828,7 +874,7 @@ class AvatarService : AccessibilityService() {
             if (moveMode) {
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
-                        val areas = manualRects()
+                        val areas = editableDisplayRects()
                         movingAreaIndex = areas.indexOfLast { it.contains(screenX.toInt(), screenY.toInt()) }
                         if (movingAreaIndex >= 0) {
                             movingAreaStart = screenX to screenY
@@ -846,10 +892,12 @@ class AvatarService : AccessibilityService() {
                         val index = movingAreaIndex
                         val offset = movingTouchOffset
                         if (index >= 0 && offset != null) {
-                            movingPreview = areaAtTouch(
-                                manualRects()[index],
+                            val areas = editableDisplayRects()
+                            val area = areas.getOrNull(index) ?: return true
+                            movingPreview = manualStoredRect(areaAtTouch(
+                                area,
                                 screenX, screenY, offset
-                            )
+                            ), index)
                             invalidate()
                         }
                     }
@@ -871,7 +919,7 @@ class AvatarService : AccessibilityService() {
             if (resizeMode) {
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
-                        val areas = manualRects()
+                        val areas = editableDisplayRects()
                         val handle = dp(48)
                         resizingAreaIndex = areas.indexOfLast {
                             screenX >= it.right - handle && screenX <= it.right &&
@@ -892,10 +940,12 @@ class AvatarService : AccessibilityService() {
                         val index = resizingAreaIndex
                         val offset = resizingTouchOffset
                         if (index >= 0 && offset != null) {
-                            resizingPreview = resizedArea(
-                                manualRects()[index],
+                            val areas = editableDisplayRects()
+                            val area = areas.getOrNull(index) ?: return true
+                            resizingPreview = manualStoredRect(resizedArea(
+                                area,
                                 screenX, screenY, offset
-                            )
+                            ), index)
                             invalidate()
                         }
                     }
@@ -956,11 +1006,11 @@ class AvatarService : AccessibilityService() {
                 }
                 val r = it.rect
                 if (it.forceRect && movingAreaIndex >= 0 && movingPreview != null) {
-                    val manualIndex = manualRects().indexOfFirst { area -> area == r }
+                    val manualIndex = editableRects().indexOfFirst { area -> manualDisplayRect(area) == r }
                     if (manualIndex == movingAreaIndex) continue
                 }
                 if (it.forceRect && resizingAreaIndex >= 0 && resizingPreview != null) {
-                    val manualIndex = manualRects().indexOfFirst { area -> area == r }
+                    val manualIndex = editableRects().indexOfFirst { area -> manualDisplayRect(area) == r }
                     if (manualIndex == resizingAreaIndex) continue
                 }
                 val left = (r.left - dx).toFloat()
@@ -1008,11 +1058,12 @@ class AvatarService : AccessibilityService() {
             if (resizeMode) {
                 val activeIndex = resizingAreaIndex
                 val activePreview = resizingPreview
-                manualRects().forEachIndexed { index, area ->
+                editableRects().forEachIndexed { index, area ->
+                    val displayedArea = manualDisplayRect(area)
                     val handleArea = if (index == activeIndex && activePreview != null) {
                         activePreview
                     } else {
-                        area
+                        displayedArea
                     }
                     val handle = dp(18).toFloat()
                     canvas.drawRoundRect(
@@ -1056,13 +1107,17 @@ class AvatarService : AccessibilityService() {
 
     private inner class ControlView(c: Context) : View(c) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val icon = BitmapFactory.decodeResource(resources, R.drawable.eyes)
+        private val icon get() = controlIcon
         private var menu = false
         private var downX = 0f
         private var downY = 0f
         private var dragging = false
         private var menuOriginX = 0
         private var menuOriginY = 0
+        private var touchStartX = 0f
+        private var touchStartY = 0f
+        private var controlStartX = 0
+        private var controlStartY = 0
         private val fade = Runnable { dock() }
 
         init {
@@ -1142,29 +1197,34 @@ class AvatarService : AccessibilityService() {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     wake()
-                    animate().cancel()
+                    removeCallbacks(fade)
+                    touchStartX = event.rawX
+                    touchStartY = event.rawY
                     downX = event.rawX
                     downY = event.rawY
+                    val start = layoutParams as WindowManager.LayoutParams
+                    controlStartX = start.x
+                    controlStartY = start.y
                     dragging = false
                     return true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     if (!menu) {
                         val lp = layoutParams as WindowManager.LayoutParams
-                        val dx = (event.rawX - downX).toInt()
-                        val dy = (event.rawY - downY).toInt()
-                        if (kotlin.math.abs(dx) > dp(3) || kotlin.math.abs(dy) > dp(3)) {
+                        val totalDx = event.rawX - touchStartX
+                        val totalDy = event.rawY - touchStartY
+                        if (kotlin.math.hypot(totalDx.toDouble(), totalDy.toDouble()) > dp(4)) {
                             dragging = true
                         }
-                        lp.x = (lp.x + dx).coerceIn(
+                        lp.x = (controlStartX + totalDx).toInt().coerceIn(
                             0, resources.displayMetrics.widthPixels - width
                         )
-                        lp.y = (lp.y + dy).coerceIn(
+                        lp.y = (controlStartY + totalDy).toInt().coerceIn(
                             0, resources.displayMetrics.heightPixels - height
                         )
                         wm.updateViewLayout(this, lp)
-                        downX = event.rawX
-                        downY = event.rawY
+                        getSharedPreferences("avb", Context.MODE_PRIVATE).edit()
+                            .putInt("control_x", lp.x).putInt("control_y", lp.y).apply()
                     }
                     return true
                 }
