@@ -1,0 +1,243 @@
+From d0059fde7422413fc6710cf44092551b09924d86 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 16 Nov 2026 08:15:55 +0000
+Subject: [PATCH 2/5] Fix manual boxes, profiles and undo bugs
+
+- Manual boxes are now stored per app (manual-<package>). They used to be
+  global, so a box drawn in Chrome also showed over WhatsApp.
+- Switching apps no longer rewrites the 'hide all black boxes' switch.
+- The shade or system UI on top no longer counts as 'no app', which used to
+  hide every box for a moment; swizy's own screen still counts as no app.
+- Boxes captured for a new profile show only in the app being captured.
+- Saving an existing profile no longer renames it; the name uses the captured
+  package, not whatever app is in front when Save is pressed.
+- Undo history is cleared when the foreground app changes, and a move or
+  resize that changes nothing is no longer an undo step.
+- A cancelled touch (system back gesture) leaves selection, move and resize
+  mode instead of getting stuck in it.
+- The draw loop skipped the dragged box with 'continue' after canvas.save(),
+  leaking the save and its clip; the skip now comes before the save.
+---
+ .../com/abo/avatarblackout/AvatarService.kt   | 85 ++++++++++++-------
+ 1 file changed, 56 insertions(+), 29 deletions(-)
+
+diff --git a/app/src/main/java/com/abo/avatarblackout/AvatarService.kt b/app/src/main/java/com/abo/avatarblackout/AvatarService.kt
+index 91b626c..9eada7d 100644
+--- a/app/src/main/java/com/abo/avatarblackout/AvatarService.kt
++++ b/app/src/main/java/com/abo/avatarblackout/AvatarService.kt
+@@ -84,6 +84,7 @@ class AvatarService : AccessibilityService() {
+     private var profileCreationId: String? = null
+     private var profileCaptureRects = mutableListOf<Rect>()
+     private var profileCreationNew = false
++    private var profileCreationPackage = ""
+     private var manualSessionProfileId: String? = null
+     private var activePackage = ""
+     private var timeSpeaker: TextToSpeech? = null
+@@ -397,6 +398,11 @@ class AvatarService : AccessibilityService() {
+         doScan()
+     }
+ 
++    private fun clearUndo() {
++        undoStack.clear()
++        redoStack.clear()
++    }
++
+     private fun rememberManualChange() {
+         rememberEditableChange(editableRects())
+     }
+@@ -446,7 +452,6 @@ class AvatarService : AccessibilityService() {
+         movingAreaStart = null
+         movingTouchOffset = null
+         movingPreview = null
+-        rememberManualChange()
+         removeControl()
+         overlay?.setMoveMode(true)
+         setOverlayTouchable(true)
+@@ -457,7 +462,6 @@ class AvatarService : AccessibilityService() {
+         resizingAreaIndex = -1
+         resizingTouchOffset = null
+         resizingPreview = null
+-        rememberManualChange()
+         removeControl()
+         overlay?.setResizeMode(true)
+         setOverlayTouchable(true)
+@@ -466,9 +470,11 @@ class AvatarService : AccessibilityService() {
+     private fun finishManualAreaMove(index: Int, start: Pair<Float, Float>, end: Pair<Float, Float>) {
+         val areas = editableRects()
+         if (index in areas.indices) {
+-            val updated = areas.toMutableList()
+-            updated[index] = movingPreview ?: movedArea(areas[index], start, end)
+-            saveEditableRects(updated)
++            val moved = movingPreview ?: movedArea(areas[index], start, end)
++            if (moved != areas[index]) { // a tap that moved nothing is not an undo step
++                rememberEditableChange(areas)
++                saveEditableRects(areas.toMutableList().also { it[index] = moved })
++            }
+         }
+         movingAreaIndex = -1
+         movingAreaStart = null
+@@ -510,10 +516,10 @@ class AvatarService : AccessibilityService() {
+ 
+     private fun finishManualAreaResize() {
+         val areas = editableRects()
+-        if (resizingAreaIndex in areas.indices && resizingPreview != null) {
+-            val updated = areas.toMutableList()
+-            updated[resizingAreaIndex] = resizingPreview!!
+-            saveEditableRects(updated)
++        val resized = resizingPreview
++        if (resizingAreaIndex in areas.indices && resized != null && resized != areas[resizingAreaIndex]) {
++            rememberEditableChange(areas)
++            saveEditableRects(areas.toMutableList().also { it[resizingAreaIndex] = resized })
+         }
+         resizingAreaIndex = -1
+         resizingTouchOffset = null
+@@ -577,7 +583,9 @@ class AvatarService : AccessibilityService() {
+     private fun profileId() =
+         profileCreationId ?: Prefs.profileForPackage(this, activePackage).id
+ 
+-    private fun manualLayoutId() = "manual"
++    // Manual boxes are stored per app, so a box drawn in Chrome no longer shows over WhatsApp.
++    private fun manualLayoutId() =
++        if (activePackage.isBlank()) "manual" else "manual-$activePackage"
+ 
+     private fun manualRects(): List<Rect> {
+         return Prefs.manualHideRects(this, manualLayoutId(), orientationKey())
+@@ -641,6 +649,7 @@ class AvatarService : AccessibilityService() {
+     private fun beginProfileCreation() {
+         if (!Prefs.isEnabled(this) || !manualSessionActive) return
+         val packageName = activePackage
++        if (packageName.isBlank()) return
+         val hadProfile = Prefs.hasProfileForPackage(this, packageName)
+         val profile = Prefs.addProfile(
+             this,
+@@ -649,6 +658,7 @@ class AvatarService : AccessibilityService() {
+         )
+         profileCreationId = profile.id
+         profileCreationNew = !hadProfile
++        profileCreationPackage = packageName
+         manualSessionProfileId = profile.id
+         profileCaptureRects = mutableListOf()
+         removeControl()
+@@ -659,10 +669,13 @@ class AvatarService : AccessibilityService() {
+ 
+     private fun saveProfileCreation() {
+         val id = profileCreationId ?: return
+-        val packageName = activePackage
+         saveProfileRects(profileCaptureRects)
+-        Prefs.renameProfile(this, id, packageName.substringAfterLast('.').ifBlank { "Profile" })
++        // only a profile created in this session gets a new name; an existing one keeps its own
++        if (profileCreationNew) {
++            Prefs.renameProfile(this, id, profileCreationPackage.substringAfterLast('.').ifBlank { "Profile" })
++        }
+         profileCreationId = null
++        profileCreationPackage = ""
+         profileCaptureRects = mutableListOf()
+         profileCreationNew = false
+         control?.invalidate()
+@@ -674,6 +687,7 @@ class AvatarService : AccessibilityService() {
+             profileCreationId?.let { Prefs.deleteProfile(this, it) }
+         }
+         profileCreationId = null
++        profileCreationPackage = ""
+         profileCaptureRects = mutableListOf()
+         profileCreationNew = false
+     }
+@@ -717,8 +731,9 @@ class AvatarService : AccessibilityService() {
+ 
+     private fun Rect.area() = width() * height()
+ 
++    /** The app in front. null = cannot tell (system UI on top), keep what we had. "" = swizy itself. */
+     private fun foregroundPackage(): String? {
+-        return windows.asSequence()
++        val first = windows.asSequence()
+             .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+             .sortedWith(
+                 compareByDescending<AccessibilityWindowInfo> { it.isFocused }
+@@ -736,18 +751,21 @@ class AvatarService : AccessibilityService() {
+                 }.getOrNull()
+             }
+             .firstOrNull()
+-            ?.takeUnless { it == applicationContext.packageName || it == "com.android.systemui" }
++        return when (first) {
++            null, "com.android.systemui" -> null
++            applicationContext.packageName -> ""
++            else -> first
++        }
+     }
+ 
+     private fun doScan() {
+         try {
+             ensureOverlay()
+-            val detectedPackage = foregroundPackage() ?: ""
+-            if (detectedPackage != activePackage) {
++            val detectedPackage = foregroundPackage()
++            if (detectedPackage != null && detectedPackage != activePackage) {
++                // the "hide all black boxes" switch is the user's own choice: never change it here
+                 activePackage = detectedPackage
+-                if (Prefs.hasProfileForPackage(this, activePackage)) {
+-                    Prefs.setManualHideVisible(this, true)
+-                }
++                clearUndo()
+                 Log.d(TAG, "foreground package changed to $activePackage")
+             }
+             val out = ArrayList<Item>()
+@@ -768,7 +786,7 @@ class AvatarService : AccessibilityService() {
+             } else emptyList()
+             val profileItems = if (
+                 Prefs.manualHideVisible(this) &&
+-                (hasActiveProfile || profileCreationId != null) &&
++                (if (profileCreationId != null) activePackage == profileCreationPackage else hasActiveProfile) &&
+                 profileRects().isNotEmpty()
+             ) {
+                 profileRects().map { Item(manualDisplayRect(it), forceRect = true) }
+@@ -1050,6 +1068,16 @@ class AvatarService : AccessibilityService() {
+ 
+         override fun onTouchEvent(event: MotionEvent): Boolean {
+             if (!selection && !moveMode && !resizeMode) return false
++            if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
++                selectionStart = null
++                setSelectionMode(false)
++                setMoveMode(false)
++                setResizeMode(false)
++                setOverlayTouchable(false)
++                addControl()
++                doScan()
++                return true
++            }
+             getLocationOnScreen(loc)
+             val screenX = event.x + loc[0]
+             val screenY = event.y + loc[1]
+@@ -1179,6 +1207,14 @@ class AvatarService : AccessibilityService() {
+             getLocationOnScreen(loc)
+             val dx = loc[0]; val dy = loc[1]
+             for (it in items) {
++                val r = it.rect
++                if (it.forceRect && (movingAreaIndex >= 0 || resizingAreaIndex >= 0)) {
++                    val index = editableRects().indexOfFirst { area -> manualDisplayRect(area) == r }
++                    val dragged = index >= 0 &&
++                        ((index == movingAreaIndex && movingPreview != null) ||
++                            (index == resizingAreaIndex && resizingPreview != null))
++                    if (dragged) continue // its preview is drawn instead
++                }
+                 canvas.save()
+                 it.clip?.let { k ->
+                     canvas.clipRect(
+@@ -1186,15 +1222,6 @@ class AvatarService : AccessibilityService() {
+                         (k.right - dx).toFloat(), (k.bottom - dy).toFloat()
+                     )
+                 }
+-                val r = it.rect
+-                if (it.forceRect && movingAreaIndex >= 0 && movingPreview != null) {
+-                    val manualIndex = editableRects().indexOfFirst { area -> manualDisplayRect(area) == r }
+-                    if (manualIndex == movingAreaIndex) continue
+-                }
+-                if (it.forceRect && resizingAreaIndex >= 0 && resizingPreview != null) {
+-                    val manualIndex = editableRects().indexOfFirst { area -> manualDisplayRect(area) == r }
+-                    if (manualIndex == resizingAreaIndex) continue
+-                }
+                 val left = (r.left - dx).toFloat()
+                 val top = (r.top - dy).toFloat()
+                 val right = (r.right - dx).toFloat()
+-- 
+2.43.0
+
