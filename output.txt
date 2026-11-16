@@ -1,3 +1,0 @@
-Physical size: 1080x2400
-Physical density: 480
-    versionName=13.2.2
