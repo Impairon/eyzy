@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="icon_background">#14111B</color>
-    <string name="service_desc">Covers avatar pictures in supported apps while Lowery is enabled.</string>
+    <string name="service_desc">swizy protects profile pictures in supported apps when enabled.</string>
     <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowActionModeOverlay">true</item>
