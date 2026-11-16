@@ -1,0 +1,4 @@
+/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/java/com/abo/avatarblackout/Prefs.kt
+/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/java/com/abo/avatarblackout/BlackoutTile.kt
+/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/java/com/abo/avatarblackout/AvatarService.kt
+/home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/java/com/abo/avatarblackout/MainActivity.kt

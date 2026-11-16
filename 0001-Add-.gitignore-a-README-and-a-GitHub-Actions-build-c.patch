@@ -1,0 +1,120 @@
+From cbe7ad96ba63f2147c4ca13f34e74f783fad11f7 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 16 Nov 2026 08:14:50 +0000
+Subject: [PATCH 1/5] Add .gitignore, a README and a GitHub Actions build check
+
+- .gitignore keeps build output, local.properties, UI dumps, patch and bundle
+  files out of the repo
+- a GitHub Actions job runs ./gradlew assembleDebug on every push and keeps
+  the APK, so a broken build is noticed immediately
+- shorter README with the build steps
+---
+ .github/workflows/build.yml | 22 ++++++++++++++++++++
+ .gitignore                  | 15 ++++++++++++++
+ README.md                   | 40 ++++++++++++++++++-------------------
+ 3 files changed, 56 insertions(+), 21 deletions(-)
+ create mode 100644 .github/workflows/build.yml
+ create mode 100644 .gitignore
+
+diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
+new file mode 100644
+index 0000000..2bc51ec
+--- /dev/null
++++ b/.github/workflows/build.yml
+@@ -0,0 +1,22 @@
++name: build
++
++on:
++  push:
++  pull_request:
++
++jobs:
++  debug-apk:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-java@v4
++        with:
++          distribution: temurin
++          java-version: 17
++      - name: Build debug APK
++        run: ./gradlew assembleDebug --no-daemon
++      - name: Keep the APK
++        uses: actions/upload-artifact@v4
++        with:
++          name: swizy-debug-apk
++          path: app/build/outputs/apk/debug/app-debug.apk
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..0692e99
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,15 @@
++# build output and local machine settings
++.gradle/
++build/
++local.properties
++.idea/
++*.iml
++.cxx/
++captures/
++*.apk
++
++# debugging leftovers: UI dumps contain on-screen text, patch/bundle files are not source
++window.xml
++output*.txt
++*.patch
++*.bundle
+diff --git a/README.md b/README.md
+index 79986eb..27e2a2c 100644
+--- a/README.md
++++ b/README.md
+@@ -1,26 +1,24 @@
+ # swizy
+ 
+-An Android privacy utility with Lowery avatar masking, manual per-app layouts,
+-Sibha counting, and offline-capable prayer times.
++A small Android app (Kotlin, no dependencies) with a few personal tools:
+ 
+-Lowery also includes **Hide an area manually**. Summon the app-icon ball from
+-the Lowery tab, open its menu, choose **Add**, and drag across any screen
+-region. Multiple rectangles remain black independently of avatar detection.
+-The movable ball fades while idle and provides Add, remove-last, show/hide-all,
+-move-boxes, and Close controls. Settings also has **Do nothing (manual only)**,
+-which disables dynamic avatar detection while leaving manual boxes available.
+-Choose **Add profile** from the ball to capture boxes for the current foreground
+-app, then choose **Save profile**. Saved profiles apply automatically when that
+-app returns to the foreground; profiles can also be reviewed and managed in
+-Settings.
++- **Lowery**: an accessibility service that covers profile pictures in WhatsApp, Telegram
++  and LinkedIn with one vertical line (or circles), plus manual black boxes and per-app profiles.
++  Toggle it from the app or the Quick Settings tile.
++- **Sibha**: a tap counter with an optional beep and vibration every N counts.
++- **Prayers**: daily prayer times from aladhan.com (GPS or manual coordinates), cached offline.
++- **Headset time**: long-press the button on wired headphones to hear the time.
+ 
+-Release settings include app/orientation profiles, undo/redo, JSON layout
+-backup, optional privacy indicator, battery saver scanning, mask color/opacity,
+-and a local crash log.
+-Optional headset time filters a long press of a wired headset media button,
+-announces the current time, then resumes music that was playing. Short presses
+-are passed through normally.
++## Build
+ 
+-See [`PROJECT_PATHS.md`](PROJECT_PATHS.md) for the module layout and build/install
+-commands. The supplied patch references and combined review bundle are kept under
+-[`patches/`](patches/).
++```
++./gradlew assembleDebug
++adb install -r app/build/outputs/apk/debug/app-debug.apk
++```
++
++Needs JDK 17 and the Android SDK (`sdk.dir` in `local.properties`, which is not tracked).
++Every push is also built by GitHub Actions; the APK is attached to each run.
++After installing, enable **swizy** under Settings > Accessibility.
++
++Code: `MainActivity.kt` (screens), `AvatarService.kt` (masking, boxes, headset),
++`Prefs.kt` (settings storage), `BlackoutTile.kt` (Quick Settings tile).
+-- 
+2.43.0
+

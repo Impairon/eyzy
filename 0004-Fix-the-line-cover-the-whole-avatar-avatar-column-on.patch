@@ -1,0 +1,230 @@
+From d853cf8002745f8ad7c8c8357650f1ee28a5ac7e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 16 Nov 2026 08:19:10 +0000
+Subject: [PATCH 4/5] Fix the line: cover the whole avatar, avatar column only,
+ Telegram groups only
+
+- The line is now as wide as the avatars it hides (plus a little); the
+  thickness setting is a minimum instead of the exact width.
+- The avatar column is the median of the avatars inside the scrolling list, so
+  a chat's header photo no longer pulls the line towards the toolbar.
+- Telegram: inside a chat the line only appears in groups, recognised by a
+  'members' header or a '168 members, 2 online' subtitle, with the position of
+  the message bubbles as a fallback. Private chats and channels start their
+  bubbles at the left edge, where the line used to cover them.
+- Remove the per-scan 'rendering N avatar bars' log line.
+---
+ .../com/abo/avatarblackout/AvatarService.kt   | 105 ++++++++++++------
+ 1 file changed, 72 insertions(+), 33 deletions(-)
+
+diff --git a/app/src/main/java/com/abo/avatarblackout/AvatarService.kt b/app/src/main/java/com/abo/avatarblackout/AvatarService.kt
+index e52a04e..be19f52 100644
+--- a/app/src/main/java/com/abo/avatarblackout/AvatarService.kt
++++ b/app/src/main/java/com/abo/avatarblackout/AvatarService.kt
+@@ -18,6 +18,7 @@ import android.text.format.DateFormat
+ import android.os.Build
+ import android.os.Handler
+ import android.os.Looper
++import android.os.SystemClock
+ import android.util.Log
+ import android.view.Gravity
+ import android.view.KeyEvent
+@@ -49,6 +50,10 @@ class AvatarService : AccessibilityService() {
+         private const val LINKEDIN = "com.linkedin.android"
+         // view-id fragments that mark a profile picture
+         private val AVATAR_ID = Regex("photo|avatar|picture|profile|portrait|headshot|actor_image|initials|group_image")
++        // a Telegram header that says "members", or looks like "168 members, 2 online", means a group;
++        // groups show avatars, private chats and channels do not
++        private val MEMBER_WORDS = Regex("member|participant|عضو|أعضاء|اعضاء|مشارك", RegexOption.IGNORE_CASE)
++        private val GROUP_SUBTITLE = Regex("\\d+[^\\d,\\n]+,\\s*\\d+")
+ 
+     }
+ 
+@@ -68,6 +73,9 @@ class AvatarService : AccessibilityService() {
+         var listRect: Rect? = null
+         var scrollRect: Rect? = null
+         var hasInput = false
++        var groupWord = false             // Telegram header looks like a group
++        var headerSeen = false            // a Telegram header was readable at all
++        var minLeft = Int.MAX_VALUE       // left-most message content inside a Telegram chat
+     }
+ 
+     private lateinit var wm: WindowManager
+@@ -88,6 +96,7 @@ class AvatarService : AccessibilityService() {
+     private var profileCreationPackage = ""
+     private var manualSessionProfileId: String? = null
+     private var activePackage = ""
++    private var tgGroupAt = 0L
+     private var timeSpeaker: TextToSpeech? = null
+     private var timeSpeakerReady = false
+     private var configuredTtsLocale: Locale? = null
+@@ -766,6 +775,7 @@ class AvatarService : AccessibilityService() {
+             if (detectedPackage != null && detectedPackage != activePackage) {
+                 // the "hide all black boxes" switch is the user's own choice: never change it here
+                 activePackage = detectedPackage
++                tgGroupAt = 0L
+                 clearUndo()
+                 Log.d(TAG, "foreground package changed to $activePackage")
+             }
+@@ -830,36 +840,46 @@ class AvatarService : AccessibilityService() {
+             manualItems.asReversed().forEach { manual ->
+                 if (uniqueItems.none { it.rect == manual.rect }) uniqueItems.add(0, manual)
+             }
+-            Log.d(TAG, "rendering ${uniqueItems.size} avatar bars")
+             overlay?.setItems(uniqueItems)
+         } catch (e: Exception) {
+             Log.w(TAG, "scan failed", e)
+         }
+     }
+ 
+-    private fun walk(n: AccessibilityNodeInfo, sc: Scan, depth: Int) {
++    private fun walk(n: AccessibilityNodeInfo, sc: Scan, depth: Int, inScroll: Boolean = false) {
+         if (depth > 45) return
+-        if (n.className?.contains("EditText") == true) sc.hasInput = true
+-        val bounds = Rect().also { n.getBoundsInScreen(it) }
++        val dm = resources.displayMetrics
+         val cls = n.className?.toString() ?: ""
+-        if (n.isVisibleToUser) {
++        if (cls.contains("EditText")) sc.hasInput = true
++        val bounds = Rect().also { n.getBoundsInScreen(it) }
++        val visible = n.isVisibleToUser
++        val isScrollBox = n.isScrollable || cls.contains("RecyclerView") ||
++            cls.contains("ListView") || cls.contains("ScrollView")
++        if (visible) {
+             avatarItem(n)?.let {
+                 sc.items.add(it)
+                 sc.avatarRects.add(Rect(bounds))
+             }
+         }
+-        if (n.isVisibleToUser &&
+-            (n.isScrollable || cls.contains("RecyclerView") ||
+-                cls.contains("ListView") || cls.contains("ScrollView"))
+-        ) {
+-            if (sc.scrollRect == null || bounds.area() > sc.scrollRect!!.area()) {
+-                sc.scrollRect = bounds
+-            }
++        if (visible && isScrollBox) {
++            val cur = sc.scrollRect
++            if (cur == null || bounds.area() > cur.area()) sc.scrollRect = bounds
+         }
+         // Telegram draws avatars itself and exposes no avatar nodes, so we work from its list rows
+-        val telegramList = n.packageName?.toString() in TELEGRAM &&
+-            n.className?.contains("RecyclerView") == true
+-        val listBounds = if (telegramList) Rect().also { n.getBoundsInScreen(it) } else null
++        val isTelegram = n.packageName?.toString() in TELEGRAM
++        if (isTelegram && visible) {
++            val d = n.contentDescription?.toString()
++            if (!d.isNullOrEmpty()) {
++                if (!inScroll && bounds.top < 100 * dm.density && bounds.width() > dm.widthPixels * 0.4f && d.length > 3) {
++                    sc.headerSeen = true
++                    if (MEMBER_WORDS.containsMatchIn(d) || GROUP_SUBTITLE.containsMatchIn(d)) sc.groupWord = true
++                }
++                if (inScroll && bounds.width() < dm.widthPixels * 0.9f && bounds.left < dm.widthPixels * 0.4f) {
++                    sc.minLeft = minOf(sc.minLeft, bounds.left)
++                }
++            }
++        }
++        val listBounds = if (isTelegram && cls.contains("RecyclerView")) bounds else null
+         if (listBounds != null) {
+             val cur = sc.listRect
+             if (cur == null || listBounds.area() > cur.area()) sc.listRect = listBounds
+@@ -870,7 +890,7 @@ class AvatarService : AccessibilityService() {
+                 telegramRow(c, listBounds, sc.tgRows)
+                 telegramMsgRow(c, sc.msgRows)
+             }
+-            walk(c, sc, depth + 1)
++            walk(c, sc, depth + 1, inScroll || isScrollBox)
+         }
+     }
+ 
+@@ -900,20 +920,29 @@ class AvatarService : AccessibilityService() {
+         return null
+     }
+ 
++    /** As wide as the avatar it has to hide (plus a little), or the user's minimum thickness if that is wider. */
++    private fun lineWidth(avatarWidth: Int): Int {
++        val dp = resources.displayMetrics.density
++        return max((avatarWidth + 4 * dp).toInt(), (Prefs.lineThicknessDp(this) * dp).toInt())
++    }
++
+     private fun lineFor(sc: Scan): Item? {
+-        if (sc.avatarRects.isEmpty()) return null
+         val dp = resources.displayMetrics.density
+-        val centers = sc.avatarRects.map { it.centerX() }.sorted()
+-        val center = centers[centers.size / 2]
+         val scroll = sc.scrollRect
+-        val top = max(
+-            (93 * dp).toInt(),
+-            scroll?.top ?: sc.avatarRects.minOf { it.top }
+-        )
+-        val bottom = (scroll?.bottom ?: sc.avatarRects.maxOf { it.bottom })
++        // only avatars inside the list count: a chat's header photo is not part of the avatar column
++        val column = if (scroll != null) {
++            sc.avatarRects.filter { scroll.contains(it.centerX(), it.centerY()) }
++        } else {
++            sc.avatarRects
++        }
++        if (column.isEmpty()) return null
++        val center = column.map { it.centerX() }.sorted().let { it[it.size / 2] }
++        val avatarWidth = column.map { it.width() }.sorted().let { it[it.size / 2] }
++        val top = max((93 * dp).toInt(), scroll?.top ?: column.minOf { it.top })
++        val bottom = (scroll?.bottom ?: column.maxOf { it.bottom })
+             .coerceAtMost(resources.displayMetrics.heightPixels)
+         if (bottom <= top) return null
+-        val width = (Prefs.lineThicknessDp(this) * dp).toInt()
++        val width = lineWidth(avatarWidth)
+         return Item(
+             Rect(center - width / 2, top, center + width / 2, bottom),
+             Rect(0, top, resources.displayMetrics.widthPixels, bottom)
+@@ -924,7 +953,7 @@ class AvatarService : AccessibilityService() {
+         val row = sc.tgRows.firstOrNull() ?: return
+         val list = sc.listRect ?: row.clip ?: return
+         val dp = resources.displayMetrics.density
+-        val width = (Prefs.lineThicknessDp(this) * dp).toInt()
++        val width = lineWidth(row.rect.width())
+         val center = row.rect.centerX()
+         val top = max((93 * dp).toInt(), list.top)
+         val bottom = list.bottom.coerceAtMost(resources.displayMetrics.heightPixels)
+@@ -973,8 +1002,19 @@ class AvatarService : AccessibilityService() {
+     // fixed left-side position from the visible message rows.
+     // ---------------------------------------------------------------------------------------
+ 
++    /** Only groups show avatars; in a private chat or channel the bubbles start at the left edge. */
++    private fun isTelegramGroup(sc: Scan): Boolean {
++        val dp = resources.displayMetrics.density
++        val now = SystemClock.uptimeMillis()
++        val leftDp = if (sc.minLeft == Int.MAX_VALUE) -1f else sc.minLeft / dp
++        if (sc.groupWord || leftDp in 55f..100f) tgGroupAt = now
++        else if (sc.headerSeen || leftDp in 0f..50f) tgGroupAt = 0L
++        return tgGroupAt != 0L && now - tgGroupAt < 8000L
++    }
++
+     private fun tgChat(sc: Scan, out: MutableList<Item>) {
+         val list = sc.listRect ?: return
++        if (!isTelegramGroup(sc)) return
+         val dp = resources.displayMetrics.density
+         // skip date pills / service lines (too short for an avatar) and rows cut off at the bottom
+         val rows = sc.msgRows.filter { it.height() >= 44 * dp && it.bottom < list.bottom - 2 }
+@@ -983,13 +1023,12 @@ class AvatarService : AccessibilityService() {
+         if (Prefs.maskMode(this) == Prefs.MaskMode.SIMPLE) {
+             val top = max(toolbarBottom, rows.minOf { it.top })
+             val bottom = rows.maxOf { it.bottom }.coerceAtMost(list.bottom)
+-            val column = Rect(
+-                (6 * dp).toInt(),
+-                top,
+-                (48 * dp).toInt(),
+-                bottom
+-            )
+-            out.add(Item(barFor(column), Rect(list.left, top, list.right, bottom)))
++            val width = lineWidth((42 * dp).toInt())
++            val center = (27 * dp).toInt() // the 42dp avatar column sits 6dp from the left edge
++            out.add(Item(
++                Rect(center - width / 2, top, center + width / 2, bottom),
++                Rect(list.left, top, list.right, bottom)
++            ))
+             return
+         }
+         for (r in rows) {
+-- 
+2.43.0
+
