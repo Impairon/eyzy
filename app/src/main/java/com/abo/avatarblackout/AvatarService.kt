@@ -86,6 +86,12 @@ class AvatarService : AccessibilityService() {
     private var profileCreationNew = false
     private var manualSessionProfileId: String? = null
     private var activePackage = ""
+    private var lastEventPackage = ""
+    private var cachedProfileRects: List<Rect>? = null
+    private var cachedProfilePackage = ""
+    private var cachedManualRects: List<Rect>? = null
+    private var cachedHasProfile = false
+    private var cachedHasProfilePackage = ""
     private var timeSpeaker: TextToSpeech? = null
     private var timeSpeakerReady = false
     private var configuredTtsLocale: Locale? = null
@@ -217,12 +223,27 @@ class AvatarService : AccessibilityService() {
         ensureOverlay()
         if (manualSessionActive) addControl()
         lastRenderKey = null
+        invalidateProfileCache()
         doScan()
     }
 
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
         if (!Prefs.isEnabled(this) || pending) return
+        // Use the event's package name for instant app-switch detection
+        val eventPkg = e?.packageName?.toString() ?: ""
+        if (eventPkg.isNotBlank() &&
+            eventPkg != applicationContext.packageName &&
+            eventPkg != "com.android.systemui" &&
+            eventPkg != lastEventPackage) {
+            lastEventPackage = eventPkg
+            // App changed: trigger an immediate scan with no debounce
+            pending = true
+            handler.removeCallbacks(scan)
+            handler.post(scan)
+            return
+        }
         pending = true
+        handler.removeCallbacks(scan)
         handler.postDelayed(scan, 30L)
     }
 
@@ -232,6 +253,7 @@ class AvatarService : AccessibilityService() {
         handler.removeCallbacks(tick)
         pending = false
         lastRenderKey = null
+        invalidateProfileCache()
         control?.refreshOpacity()
         if (Prefs.isEnabled(this)) {
             doScan()
@@ -596,11 +618,16 @@ class AvatarService : AccessibilityService() {
         if (profileCreationId != null) profileCaptureRects
         else Prefs.profileHideRects(this, profileId(), orientationKey())
 
-    private fun saveManualRects(rects: List<Rect>) =
+    private fun saveManualRects(rects: List<Rect>) {
         Prefs.saveManualHideRects(this, manualLayoutId(), orientationKey(), rects)
+        cachedManualRects = null
+    }
 
-    private fun saveProfileRects(rects: List<Rect>) =
+    private fun saveProfileRects(rects: List<Rect>) {
         Prefs.saveProfileHideRects(this, profileId(), orientationKey(), rects)
+        cachedProfileRects = null
+        cachedProfilePackage = ""
+    }
 
     private fun keyboardTop(): Int? {
         return windows.asSequence()
@@ -748,52 +775,101 @@ class AvatarService : AccessibilityService() {
             ?.takeUnless { it == applicationContext.packageName || it == "com.android.systemui" }
     }
 
+    private fun invalidateProfileCache() {
+        cachedProfileRects = null
+        cachedProfilePackage = ""
+        cachedManualRects = null
+        cachedHasProfile = false
+        cachedHasProfilePackage = ""
+    }
+
+    private fun hasProfileCached(): Boolean {
+        val pkg = activePackage
+        if (cachedHasProfilePackage == pkg) return cachedHasProfile
+        cachedHasProfilePackage = pkg
+        cachedHasProfile = Prefs.hasProfileForPackage(this, pkg)
+        return cachedHasProfile
+    }
+
+    private fun profileRectsCached(): List<Rect> {
+        val pkg = activePackage
+        if (cachedProfilePackage == pkg && cachedProfileRects != null) return cachedProfileRects!!
+        cachedProfilePackage = pkg
+        cachedProfileRects = if (profileCreationId != null) profileCaptureRects
+            else Prefs.profileHideRects(this, profileId(), orientationKey())
+        return cachedProfileRects!!
+    }
+
+    private fun manualRectsCached(): List<Rect> {
+        if (cachedManualRects != null) return cachedManualRects!!
+        cachedManualRects = Prefs.manualHideRects(this, manualLayoutId(), orientationKey())
+        return cachedManualRects!!
+    }
+
     private fun doScan() {
         try {
             ensureOverlay()
             val detectedPackage = foregroundPackage() ?: ""
             if (detectedPackage != activePackage) {
                 activePackage = detectedPackage
-                if (Prefs.hasProfileForPackage(this, activePackage)) {
+                invalidateProfileCache()
+                if (hasProfileCached()) {
                     Prefs.setManualHideVisible(this, true)
                 }
                 Log.d(TAG, "foreground package changed to $activePackage")
             }
             val out = ArrayList<Item>()
-            val hasActiveProfile = Prefs.hasProfileForPackage(this, activePackage)
+            val hasActiveProfile = hasProfileCached()
+            val currentProfileRects = profileRectsCached()
+            val currentManualRects = manualRectsCached()
             val legacyProfileRects = if (hasActiveProfile) {
                 Prefs.manualHideRects(this, profileId(), orientationKey())
             } else {
                 emptyList()
             }
-            if (hasActiveProfile && profileRects().isEmpty() && legacyProfileRects.isNotEmpty()) {
+            if (hasActiveProfile && currentProfileRects.isEmpty() && legacyProfileRects.isNotEmpty()) {
                 saveProfileRects(legacyProfileRects)
                 Prefs.clearManualHideRects(this, profileId(), orientationKey())
+                cachedProfileRects = null
+                cachedProfilePackage = ""
             }
-            val manualItems = if (
-                Prefs.manualHideVisible(this) && manualRects().isNotEmpty()
+            val manualVisible = Prefs.manualHideVisible(this)
+            val maskMode = Prefs.maskMode(this)
+            val isTarget = activePackage in TARGETS
+            // Short-circuit: no profile, no manual boxes, not a target app → nothing to draw
+            if (!hasActiveProfile &&
+                (currentManualRects.isEmpty() || !manualVisible) &&
+                !isTarget &&
+                profileCreationId == null
             ) {
-                manualRects().map { Item(manualDisplayRect(it), forceRect = true) }
+                if (lastRenderKey != "empty") {
+                    lastRenderKey = "empty"
+                    overlay?.setItems(emptyList())
+                }
+                return
+            }
+            val manualItems = if (manualVisible && currentManualRects.isNotEmpty()) {
+                currentManualRects.map { Item(manualDisplayRect(it), forceRect = true) }
             } else emptyList()
-            val profileItems = if (
-                Prefs.manualHideVisible(this) &&
+            val profileItems = if (manualVisible &&
                 (hasActiveProfile || profileCreationId != null) &&
-                profileRects().isNotEmpty()
+                currentProfileRects.isNotEmpty()
             ) {
-                profileRects().map { Item(manualDisplayRect(it), forceRect = true) }
+                currentProfileRects.map { Item(manualDisplayRect(it), forceRect = true) }
             } else emptyList()
             out.addAll(manualItems)
             out.addAll(profileItems)
-            for (w in windows) {
+            if (maskMode != Prefs.MaskMode.NONE) {
+              for (w in windows) {
                 if (w.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
                 val root = (if (Build.VERSION.SDK_INT >= 33)
                     w.getRoot(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
                 else w.root) ?: continue
                 val packageName = root.packageName?.toString() ?: continue
-                if (packageName in TARGETS && Prefs.maskMode(this) != Prefs.MaskMode.NONE) {
+                if (packageName in TARGETS) {
                     val sc = Scan()
                     walk(root, sc, 0)
-                    if (Prefs.maskMode(this) == Prefs.MaskMode.SIMPLE) {
+                    if (maskMode == Prefs.MaskMode.SIMPLE) {
                         if (packageName in TELEGRAM) {
                             if (!sc.hasInput) tgListLine(sc, out) else tgChat(sc, out)
                         } else {
@@ -806,6 +882,7 @@ class AvatarService : AccessibilityService() {
                         }
                     }
                 }
+              }
             }
             // if a big container and a bigger-than-half child both matched, keep the child
             val finalItems = out.filter { a ->
