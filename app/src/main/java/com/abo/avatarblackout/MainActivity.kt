@@ -119,11 +119,24 @@ class MainActivity : Activity() {
             if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR) {
                 val rotationMatrix = FloatArray(9)
                 SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+                // Remap for upright portrait: the phone is held vertically like a compass,
+                // not flat on a table. Axis mapping: X->Y, Y->X, Z->Z (eighth rotation).
+                val remapped = FloatArray(9)
+                SensorManager.remapCoordinateSystem(
+                    rotationMatrix,
+                    SensorManager.AXIS_Y, SensorManager.AXIS_X,
+                    remapped
+                )
                 val orientation = FloatArray(3)
-                SensorManager.getOrientation(rotationMatrix, orientation)
-                val azimuthDeg = (Math.toDegrees(orientation[0].toDouble()).toFloat() + 360) % 360
-                compassAzimuth = azimuthDeg
-                compassView?.setAzimuth(azimuthDeg)
+                SensorManager.getOrientation(remapped, orientation)
+                // Smooth with a low-pass filter so the needle doesn't jitter
+                val rawAzimuth = (Math.toDegrees(orientation[0].toDouble()).toFloat() + 360) % 360
+                compassAzimuth = if (compassAzimuth == 0f) rawAzimuth else {
+                    // shortest-path interpolation across the 0/360 boundary
+                    val diff = ((rawAzimuth - compassAzimuth + 540) % 360) - 180
+                    compassAzimuth + diff * 0.25f
+                }
+                compassView?.setAzimuth(compassAzimuth % 360f)
             }
         }
     }
@@ -458,10 +471,9 @@ class MainActivity : Activity() {
                 setPadding(0, dp(8), 0, dp(4))
             }
             it.addView(coords)
+            addText(it, "Hold your phone upright, as if reading the screen normally. The compass dial rotates as you turn. When the purple arrow points straight up, the top edge of your phone faces the Kaaba.")
             if (rotationSensor == null) {
-                addText(it, "No compass sensor found. The arrow shows the Qibla direction from North but will not rotate with your phone.")
-            } else {
-                addText(it, "Rotate your phone until the purple arrow points up to face the Qibla.")
+                addText(it, "No compass sensor found on this device. The arrow shows the Qibla bearing from North but will not rotate with your phone.")
             }
         })
         content.addView(card("About Qibla") {
