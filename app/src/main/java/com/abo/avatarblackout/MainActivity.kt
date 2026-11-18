@@ -29,6 +29,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
+import android.view.Surface
 import android.view.View
 import android.view.Gravity
 import android.view.MotionEvent
@@ -62,7 +63,11 @@ class MainActivity : Activity() {
     private var sensorManager: SensorManager? = null
     private var rotationSensor: Sensor? = null
     private var compassAzimuth = 0f
+    private var compassTilt = 0f
     private var compassView: CompassView? = null
+    private var displayRotation = Surface.ROTATION_0
+    private var accelSensor: Sensor? = null
+    private var magSensor: Sensor? = null
     private val prayerLabels = linkedMapOf(
         "Fajr" to "Fajr",
         "Sunrise" to "Sunrise",
@@ -102,41 +107,91 @@ class MainActivity : Activity() {
     private fun registerSensors() {
         if (sensorManager == null) {
             sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
-            rotationSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
         }
-        rotationSensor?.let {
-            sensorManager?.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_UI)
+        displayRotation = if (Build.VERSION.SDK_INT >= 30) {
+            display?.rotation ?: Surface.ROTATION_0
+        } else {
+            @Suppress("DEPRECATION")
+            windowManager?.defaultDisplay?.rotation ?: Surface.ROTATION_0
+        }
+        rotationSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+            ?: sensorManager?.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR)
+        if (rotationSensor != null) {
+            sensorManager?.registerListener(sensorListener, rotationSensor, SensorManager.SENSOR_DELAY_UI)
+        } else {
+            accelSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            magSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+            if (accelSensor != null && magSensor != null) {
+                sensorManager?.registerListener(accelMagListener, accelSensor, SensorManager.SENSOR_DELAY_UI)
+                sensorManager?.registerListener(accelMagListener, magSensor, SensorManager.SENSOR_DELAY_UI)
+            }
         }
     }
 
     private fun unregisterSensors() {
         sensorManager?.unregisterListener(sensorListener)
+        sensorManager?.unregisterListener(accelMagListener)
+    }
+
+    private fun updateHeadingFromMatrix(R: FloatArray) {
+        val fwdX: Float
+        val fwdY: Float
+        when (displayRotation) {
+            Surface.ROTATION_90 -> { fwdX = -R[0]; fwdY = -R[3] }
+            Surface.ROTATION_180 -> { fwdX = R[1]; fwdY = R[4] }
+            Surface.ROTATION_270 -> { fwdX = R[0]; fwdY = R[3] }
+            else -> { fwdX = -R[1]; fwdY = -R[4] }
+        }
+        val horizMag = Math.sqrt((fwdX * fwdX + fwdY * fwdY).toDouble()).toFloat()
+        if (horizMag < 0.01f) return
+        val rawAzimuth = (Math.toDegrees(
+            Math.atan2(fwdX.toDouble(), fwdY.toDouble())
+        ).toFloat() + 360) % 360
+        // Tilt: 0 = flat on table, 90 = upright
+        val rawTilt = Math.toDegrees(Math.acos(R[8].coerceIn(-1.0, 1.0))).toFloat()
+        compassAzimuth = if (compassAzimuth == 0f) rawAzimuth else {
+            val diff = ((rawAzimuth - compassAzimuth + 540) % 360) - 180
+            compassAzimuth + diff * 0.2f
+        }
+        compassTilt = if (compassTilt == 0f) rawTilt else compassTilt + (rawTilt - compassTilt) * 0.2f
+        compassView?.setAzimuth(compassAzimuth % 360f)
+        compassView?.setTilt(compassTilt)
     }
 
     private val sensorListener = object : SensorEventListener {
-        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+            compassView?.setAccuracy(accuracy)
+        }
         override fun onSensorChanged(event: SensorEvent) {
-            if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR) {
-                val rotationMatrix = FloatArray(9)
-                SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-                // Remap for upright portrait: the phone is held vertically like a compass,
-                // not flat on a table. Axis mapping: X->Y, Y->X, Z->Z (eighth rotation).
-                val remapped = FloatArray(9)
-                SensorManager.remapCoordinateSystem(
-                    rotationMatrix,
-                    SensorManager.AXIS_Y, SensorManager.AXIS_X,
-                    remapped
-                )
-                val orientation = FloatArray(3)
-                SensorManager.getOrientation(remapped, orientation)
-                // Smooth with a low-pass filter so the needle doesn't jitter
-                val rawAzimuth = (Math.toDegrees(orientation[0].toDouble()).toFloat() + 360) % 360
-                compassAzimuth = if (compassAzimuth == 0f) rawAzimuth else {
-                    // shortest-path interpolation across the 0/360 boundary
-                    val diff = ((rawAzimuth - compassAzimuth + 540) % 360) - 180
-                    compassAzimuth + diff * 0.25f
+            if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR ||
+                event.sensor.type == Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR) {
+                val R = FloatArray(9)
+                SensorManager.getRotationMatrixFromVector(R, event.values)
+                updateHeadingFromMatrix(R)
+            }
+        }
+    }
+
+    private val accelMagListener = object : SensorEventListener {
+        private val gravity = FloatArray(3)
+        private val geomagnetic = FloatArray(3)
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+            compassView?.setAccuracy(accuracy)
+        }
+        override fun onSensorChanged(event: SensorEvent) {
+            when (event.sensor.type) {
+                Sensor.TYPE_ACCELEROMETER -> {
+                    val a = 0.8f
+                    gravity[0] = a * gravity[0] + (1 - a) * event.values[0]
+                    gravity[1] = a * gravity[1] + (1 - a) * event.values[1]
+                    gravity[2] = a * gravity[2] + (1 - a) * event.values[2]
                 }
-                compassView?.setAzimuth(compassAzimuth % 360f)
+                Sensor.TYPE_MAGNETIC_FIELD ->
+                    System.arraycopy(event.values, 0, geomagnetic, 0, 3)
+            }
+            val R = FloatArray(9)
+            if (SensorManager.getRotationMatrix(R, null, gravity, geomagnetic)) {
+                updateHeadingFromMatrix(R)
             }
         }
     }
@@ -471,8 +526,8 @@ class MainActivity : Activity() {
                 setPadding(0, dp(8), 0, dp(4))
             }
             it.addView(coords)
-            addText(it, "Hold your phone upright, as if reading the screen normally. The compass dial rotates as you turn. When the purple arrow points straight up, the top edge of your phone faces the Kaaba.")
-            if (rotationSensor == null) {
+            addText(it, "Hold your phone at any comfortable angle — flat on a table, tilted, or upright. The compass automatically compensates for tilt. Turn until the purple arrow points straight up and the green Aligned message appears.")
+            if (rotationSensor == null && accelSensor == null) {
                 addText(it, "No compass sensor found on this device. The arrow shows the Qibla bearing from North but will not rotate with your phone.")
             }
         })
@@ -497,6 +552,8 @@ class MainActivity : Activity() {
     private inner class CompassView(c: android.content.Context) : View(c) {
         private var azimuth = 0f
         private var qiblaBearing = 0f
+        private var tilt = 0f
+        private var accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
         private val accent = Color.rgb(139, 92, 246)
         private val secondaryColor = Color.rgb(177, 166, 194)
         private val borderColor = Color.rgb(79, 64, 99)
@@ -525,9 +582,19 @@ class MainActivity : Activity() {
             invalidate()
         }
 
+        fun setTilt(deg: Float) {
+            tilt = deg
+            invalidate()
+        }
+
+        fun setAccuracy(acc: Int) {
+            accuracy = acc
+            invalidate()
+        }
+
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
             val size = dp(280)
-            setMeasuredDimension(size, size)
+            setMeasuredDimension(size, size + dp(50))
         }
 
         override fun onDraw(canvas: Canvas) {
@@ -603,12 +670,31 @@ class MainActivity : Activity() {
             needlePaint.color = accent
             canvas.drawCircle(cx, cy, dp(4).toFloat(), needlePaint)
 
+            // Accuracy dot
+            val accColor = when (accuracy) {
+                SensorManager.SENSOR_STATUS_ACCURACY_HIGH -> Color.rgb(34, 197, 94)
+                SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM -> Color.rgb(250, 204, 21)
+                SensorManager.SENSOR_STATUS_ACCURACY_LOW -> Color.rgb(249, 115, 22)
+                else -> Color.rgb(239, 68, 68)
+            }
+            dotPaint.color = accColor
+            canvas.drawCircle(cx, cy - radius + dp(14), dp(4).toFloat(), dotPaint)
+
+            // Tilt indicator
+            labelPaint.textSize = dp(12).toFloat()
+            labelPaint.color = secondaryColor
+            canvas.drawText("Tilt: ${tilt.toInt()}°", cx, cy + dp(44), labelPaint)
+
             val diff = ((qiblaBearing - azimuth + 360) % 360)
             val aligned = diff < 3f || diff > 357f
             if (aligned) {
                 labelPaint.color = Color.rgb(34, 197, 94)
                 labelPaint.textSize = dp(14).toFloat()
-                canvas.drawText("Aligned with Qibla", cx, height.toFloat() - dp(4), labelPaint)
+                canvas.drawText("Aligned with Qibla", cx, height.toFloat() - dp(6), labelPaint)
+            } else if (accuracy < SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM) {
+                labelPaint.color = Color.rgb(239, 68, 68)
+                labelPaint.textSize = dp(12).toFloat()
+                canvas.drawText("Figure-8 to calibrate", cx, height.toFloat() - dp(6), labelPaint)
             }
         }
     }
