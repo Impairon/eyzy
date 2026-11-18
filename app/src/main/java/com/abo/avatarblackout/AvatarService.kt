@@ -106,6 +106,7 @@ class AvatarService : AccessibilityService() {
     private val redoStack = ArrayDeque<List<Rect>>()
     private val handler = Handler(Looper.getMainLooper())
     private var pending = false
+    private var lastRenderKey: String? = null
     private val controlIcon by lazy { BitmapFactory.decodeResource(resources, R.drawable.eyes) }
     private val scan = Runnable { pending = false; doScan() }
     // safety net: rescan every second so a missed event or a dropped overlay recovers by itself
@@ -113,7 +114,7 @@ class AvatarService : AccessibilityService() {
         override fun run() {
             if (Prefs.isEnabled(this@AvatarService)) {
                 doScan()
-                handler.postDelayed(this, if (Prefs.performanceMode(this@AvatarService)) 3000 else 1000)
+                handler.postDelayed(this, if (Prefs.performanceMode(this@AvatarService)) 1500 else 600)
             }
         }
     }
@@ -208,17 +209,21 @@ class AvatarService : AccessibilityService() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (manualSessionActive) {
-            removeControl()
-            addControl()
-        }
+        // Remove both overlay and control so z-order is correct after re-adding
+        control?.let { try { wm.removeViewImmediate(it) } catch (_: Exception) {} }
+        control = null
+        overlay?.let { try { wm.removeViewImmediate(it) } catch (_: Exception) {} }
+        overlay = null
+        ensureOverlay()
+        if (manualSessionActive) addControl()
+        lastRenderKey = null
         doScan()
     }
 
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
         if (!Prefs.isEnabled(this) || pending) return
         pending = true
-        handler.postDelayed(scan, 80L)
+        handler.postDelayed(scan, 30L)
     }
 
     fun refresh() {
@@ -226,12 +231,13 @@ class AvatarService : AccessibilityService() {
         handler.removeCallbacks(scan)
         handler.removeCallbacks(tick)
         pending = false
+        lastRenderKey = null
         control?.refreshOpacity()
         if (Prefs.isEnabled(this)) {
             doScan()
             handler.postDelayed(
                 tick,
-                if (Prefs.performanceMode(this)) 3000 else 1000
+                if (Prefs.performanceMode(this)) 1500 else 600
             )
         } else {
             overlay?.setItems(emptyList())
@@ -557,10 +563,13 @@ class AvatarService : AccessibilityService() {
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             val prefs = getSharedPreferences("avb", Context.MODE_PRIVATE)
-            x = prefs.getInt("control_x", resources.displayMetrics.widthPixels - dp(70))
-                .coerceIn(0, resources.displayMetrics.widthPixels - dp(58))
-            y = prefs.getInt("control_y", resources.displayMetrics.heightPixels / 2)
-                .coerceIn(0, resources.displayMetrics.heightPixels - dp(58))
+            val screenW = resources.displayMetrics.widthPixels
+            val screenH = resources.displayMetrics.heightPixels
+            val oriKey = orientationKey()
+            x = prefs.getInt("control_x_$oriKey", prefs.getInt("control_x", screenW - dp(70)))
+                .coerceIn(0, screenW - dp(58))
+            y = prefs.getInt("control_y_$oriKey", prefs.getInt("control_y", screenH / 2))
+                .coerceIn(0, screenH - dp(58))
         }
 
         wm.addView(v, lp)
@@ -812,7 +821,14 @@ class AvatarService : AccessibilityService() {
                 if (uniqueItems.none { it.rect == manual.rect }) uniqueItems.add(0, manual)
             }
             Log.d(TAG, "rendering ${uniqueItems.size} avatar bars")
-            overlay?.setItems(uniqueItems)
+            val renderKey = uniqueItems.joinToString("|") {
+                "${it.rect.left},${it.rect.top},${it.rect.right},${it.rect.bottom}," +
+                "${it.clip?.left},${it.clip?.top},${it.clip?.right},${it.clip?.bottom},${it.forceRect}"
+            }
+            if (renderKey != lastRenderKey) {
+                lastRenderKey = renderKey
+                overlay?.setItems(uniqueItems)
+            }
         } catch (e: Exception) {
             Log.w(TAG, "scan failed", e)
         }
@@ -1406,7 +1422,8 @@ class AvatarService : AccessibilityService() {
                         )
                         wm.updateViewLayout(this, lp)
                         getSharedPreferences("avb", Context.MODE_PRIVATE).edit()
-                            .putInt("control_x", lp.x).putInt("control_y", lp.y).apply()
+                            .putInt("control_x_${this@AvatarService.orientationKey()}", lp.x)
+                            .putInt("control_y_${this@AvatarService.orientationKey()}", lp.y).apply()
                     }
                     return true
                 }

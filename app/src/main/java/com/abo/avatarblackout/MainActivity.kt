@@ -8,7 +8,14 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.drawable.GradientDrawable
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -52,6 +59,10 @@ class MainActivity : Activity() {
     private lateinit var pageTitle: TextView
     private lateinit var root: FrameLayout
     private var currentPage = 0
+    private var sensorManager: SensorManager? = null
+    private var rotationSensor: Sensor? = null
+    private var compassAzimuth = 0f
+    private var compassView: CompassView? = null
     private val prayerLabels = linkedMapOf(
         "Fajr" to "Fajr",
         "Sunrise" to "Sunrise",
@@ -77,8 +88,43 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        registerSensors()
         if (::content.isInitialized) {
             openPage(currentPage)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        unregisterSensors()
+    }
+
+    private fun registerSensors() {
+        if (sensorManager == null) {
+            sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
+            rotationSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        }
+        rotationSensor?.let {
+            sensorManager?.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_UI)
+        }
+    }
+
+    private fun unregisterSensors() {
+        sensorManager?.unregisterListener(sensorListener)
+    }
+
+    private val sensorListener = object : SensorEventListener {
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        override fun onSensorChanged(event: SensorEvent) {
+            if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR) {
+                val rotationMatrix = FloatArray(9)
+                SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+                val orientation = FloatArray(3)
+                SensorManager.getOrientation(rotationMatrix, orientation)
+                val azimuthDeg = (Math.toDegrees(orientation[0].toDouble()).toFloat() + 360) % 360
+                compassAzimuth = azimuthDeg
+                compassView?.setAzimuth(azimuthDeg)
+            }
         }
     }
 
@@ -223,7 +269,8 @@ class MainActivity : Activity() {
         addMenuItem("swizy") { openPage(0) }
         addMenuItem("Sibha") { openPage(1) }
         addMenuItem("Prayers") { openPage(2) }
-        addMenuItem("Settings") { openPage(3) }
+        addMenuItem("Qibla") { openPage(3) }
+        addMenuItem("Settings") { openPage(4) }
         val scroll = ScrollView(this).apply {
             isFillViewport = true
         }
@@ -239,24 +286,27 @@ class MainActivity : Activity() {
     }
 
     private fun openPage(page: Int) {
-        currentPage = page.mod(4)
+        if (currentPage == 3) compassView = null
+        currentPage = page.mod(5)
         menu.visibility = View.GONE
         when (currentPage) {
             0 -> showLowery()
             1 -> showSibha()
             2 -> showPrayers()
+            3 -> showQibla()
             else -> showSettings()
         }
     }
 
     private fun navigate(step: Int) {
-        openPage((currentPage + step).mod(4))
+        openPage((currentPage + step).mod(5))
     }
 
     private fun toggleMenu() {
         if (menu.visibility == View.VISIBLE) {
             val out = TranslateAnimation(0f, -menu.width.toFloat(), 0f, 0f).apply {
-                duration = 180
+                duration = 220
+                interpolator = android.view.animation.DecelerateInterpolator()
                 fillAfter = true
             }
 
@@ -272,7 +322,8 @@ class MainActivity : Activity() {
         } else {
             menu.visibility = View.VISIBLE
             menu.translationX = -menu.width.toFloat()
-            menu.animate().translationX(0f).setDuration(180).start()
+            menu.animate().translationX(0f).setDuration(220)
+                .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
         }
     }
 
@@ -310,16 +361,20 @@ class MainActivity : Activity() {
             }
             it.addView(manual)
         })
+    }
 
     private fun showSibha() {
         pageTitle.text = "Sibha"
         content.removeAllViews()
-        val wood = Color.rgb(82, 52, 35)
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(dp(20), dp(28), dp(20), dp(28))
-            background = rounded(wood, 18)
+            background = GradientDrawable().apply {
+                orientation = GradientDrawable.Orientation.TL_BR
+                colors = intArrayOf(Color.rgb(95, 60, 40), Color.rgb(60, 38, 25))
+                cornerRadius = dp(18).toFloat()
+            }
         }
         val label = TextView(this).apply {
             text = "SIBHA"
@@ -357,6 +412,193 @@ class MainActivity : Activity() {
         content.addView(card)
         content.addView(Space(this), LinearLayout.LayoutParams(1, dp(18)))
         content.addView(reset, LinearLayout.LayoutParams(-1, dp(52)))
+    }
+
+    private fun showQibla() {
+        pageTitle.text = "Qibla"
+        content.removeAllViews()
+        if (sensorManager == null) {
+            sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
+            rotationSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        }
+        val lat = Prefs.latitude(this).toDoubleOrNull()
+        val lon = Prefs.longitude(this).toDoubleOrNull()
+        content.addView(card("Qibla finder") {
+            addText(it, "Point your phone to find the direction of the Kaaba in Mecca.")
+            if (lat == null || lon == null) {
+                addText(it, "Set your location in the Prayers page first, or enable GPS there, then come back.")
+                val help = actionButton("Go to Prayers")
+                help.setOnClickListener { openPage(2) }
+                it.addView(help)
+                return@card
+            }
+            val bearing = qiblaBearing(lat, lon)
+            val compass = CompassView(this).apply {
+                setQiblaBearing(bearing.toFloat())
+                setAzimuth(compassAzimuth)
+            }
+            compassView = compass
+            val info = TextView(this).apply {
+                text = "Qibla bearing: ${String.format(Locale.US, "%.1f", bearing)} degrees from North"
+                textSize = 15f
+                setTextColor(purple)
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setPadding(0, dp(12), 0, dp(8))
+            }
+            it.addView(info)
+            it.addView(compass, LinearLayout.LayoutParams(-1, dp(300)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+            })
+            val coords = TextView(this).apply {
+                text = "Your location: ${String.format(Locale.US, "%.4f", lat)}, ${String.format(Locale.US, "%.4f", lon)}"
+                textSize = 13f
+                setTextColor(secondary)
+                gravity = Gravity.CENTER
+                setPadding(0, dp(8), 0, dp(4))
+            }
+            it.addView(coords)
+            if (rotationSensor == null) {
+                addText(it, "No compass sensor found. The arrow shows the Qibla direction from North but will not rotate with your phone.")
+            } else {
+                addText(it, "Rotate your phone until the purple arrow points up to face the Qibla.")
+            }
+        })
+        content.addView(card("About Qibla") {
+            addText(it, "The Qibla is the direction faced during prayer, toward the Kaaba in Mecca. The compass shows this direction relative to north as detected by your phone.")
+        })
+    }
+
+    private fun qiblaBearing(lat: Double, lon: Double): Double {
+        val kaabaLat = Math.toRadians(21.4225)
+        val kaabaLon = Math.toRadians(39.8262)
+        val userLat = Math.toRadians(lat)
+        val userLon = Math.toRadians(lon)
+        val dLon = kaabaLon - userLon
+        val y = Math.sin(dLon) * Math.cos(kaabaLat)
+        val x = Math.cos(userLat) * Math.sin(kaabaLat) -
+            Math.sin(userLat) * Math.cos(kaabaLat) * Math.cos(dLon)
+        val bearing = Math.toDegrees(Math.atan2(y, x))
+        return (bearing + 360) % 360
+    }
+
+    private inner class CompassView(c: android.content.Context) : View(c) {
+        private var azimuth = 0f
+        private var qiblaBearing = 0f
+        private val accent = Color.rgb(139, 92, 246)
+        private val secondaryColor = Color.rgb(177, 166, 194)
+        private val borderColor = Color.rgb(79, 64, 99)
+        private val panelColor = Color.rgb(35, 29, 46)
+        private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(28, 23, 38) }
+        private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = dp(2).toFloat()
+        }
+        private val tickPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val needlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = dp(15).toFloat()
+            typeface = Typeface.DEFAULT_BOLD
+            textAlign = Paint.Align.CENTER
+        }
+        private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+        fun setAzimuth(deg: Float) {
+            azimuth = deg
+            invalidate()
+        }
+
+        fun setQiblaBearing(deg: Float) {
+            qiblaBearing = deg
+            invalidate()
+        }
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val size = dp(280)
+            setMeasuredDimension(size, size)
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            val cx = width / 2f
+            val cy = height / 2f
+            val radius = (minOf(width, height) / 2f) - dp(12)
+
+            canvas.drawCircle(cx, cy, radius, bgPaint)
+            ringPaint.color = borderColor
+            canvas.drawCircle(cx, cy, radius, ringPaint)
+            ringPaint.color = accent
+            canvas.drawCircle(cx, cy, radius - dp(3), ringPaint)
+
+            canvas.save()
+            canvas.rotate(-azimuth, cx, cy)
+
+            for (i in 0..359 step 6) {
+                val angle = Math.toRadians(i.toDouble()).toFloat()
+                val isMajor = i % 90 == 0
+                val inner = if (isMajor) radius - dp(18) else radius - dp(8)
+                tickPaint.color = if (isMajor) accent else secondaryColor
+                tickPaint.strokeWidth = if (isMajor) dp(2).toFloat() else dp(1).toFloat()
+                canvas.drawLine(
+                    cx + (radius - dp(4)) * Math.sin(angle.toDouble()).toFloat(),
+                    cy - (radius - dp(4)) * Math.cos(angle.toDouble()).toFloat(),
+                    cx + inner * Math.sin(angle.toDouble()).toFloat(),
+                    cy - inner * Math.cos(angle.toDouble()).toFloat(),
+                    tickPaint
+                )
+            }
+
+            val cardinals = listOf("N" to 0f, "E" to 90f, "S" to 180f, "W" to 270f)
+            for ((label, deg) in cardinals) {
+                val angle = Math.toRadians(deg.toDouble()).toFloat()
+                val dist = radius - dp(28)
+                labelPaint.color = if (label == "N") accent else Color.WHITE
+                canvas.drawText(
+                    label,
+                    cx + dist * Math.sin(angle.toDouble()).toFloat(),
+                    cy - dist * Math.cos(angle.toDouble()).toFloat() + dp(5),
+                    labelPaint
+                )
+            }
+
+            canvas.restore()
+
+            val qiblaAngle = Math.toRadians(((qiblaBearing - azimuth + 360) % 360).toDouble()).toFloat()
+            val needleLen = radius - dp(24)
+            val tipX = cx + needleLen * Math.sin(qiblaAngle.toDouble()).toFloat()
+            val tipY = cy - needleLen * Math.cos(qiblaAngle.toDouble()).toFloat()
+            val baseAngle1 = qiblaAngle + Math.toRadians(150.0).toFloat()
+            val baseAngle2 = qiblaAngle - Math.toRadians(150.0).toFloat()
+            val baseR = dp(10).toFloat()
+            val path = Path().apply {
+                moveTo(tipX, tipY)
+                lineTo(
+                    cx + baseR * Math.sin(baseAngle1.toDouble()).toFloat(),
+                    cy - baseR * Math.cos(baseAngle1.toDouble()).toFloat()
+                )
+                lineTo(
+                    cx + baseR * Math.sin(baseAngle2.toDouble()).toFloat(),
+                    cy - baseR * Math.cos(baseAngle2.toDouble()).toFloat()
+                )
+                close()
+            }
+            needlePaint.color = accent
+            canvas.drawPath(path, needlePaint)
+            dotPaint.color = Color.rgb(30, 144, 255)
+            canvas.drawCircle(tipX, tipY, dp(7).toFloat(), dotPaint)
+
+            needlePaint.color = panelColor
+            canvas.drawCircle(cx, cy, dp(6).toFloat(), needlePaint)
+            needlePaint.color = accent
+            canvas.drawCircle(cx, cy, dp(4).toFloat(), needlePaint)
+
+            val diff = ((qiblaBearing - azimuth + 360) % 360)
+            val aligned = diff < 3f || diff > 357f
+            if (aligned) {
+                labelPaint.color = Color.rgb(34, 197, 94)
+                labelPaint.textSize = dp(14).toFloat()
+                canvas.drawText("Aligned with Qibla", cx, height.toFloat() - dp(4), labelPaint)
+            }
+        }
     }
 
     private fun showSettings() {
@@ -561,8 +803,8 @@ class MainActivity : Activity() {
             it.addView(save)
         })
         content.addView(card("Release") {
-            addText(it, "swizy 1.6.0")
-            addText(it, "Changelog: manual profiles, orientation-aware layouts, undo/redo, backup tools, privacy indicator, and battery saver mode.")
+            addText(it, "swizy 1.7.0")
+            addText(it, "Changelog: faster scanning, rotation fixes, Qibla compass, refined UI, per-orientation control position.")
             addText(it, "Crash logs are stored locally and are never uploaded automatically.")
         })
     }
@@ -883,8 +1125,13 @@ class MainActivity : Activity() {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(14), dp(16), dp(14))
-            background = outlined(panel, border, 16)
-            elevation = dp(2).toFloat()
+            background = GradientDrawable().apply {
+                orientation = GradientDrawable.Orientation.TOP_BOTTOM
+                colors = intArrayOf(panel, Color.rgb(28, 23, 38))
+                cornerRadius = dp(16).toFloat()
+                setStroke(dp(1), border)
+            }
+            elevation = dp(3).toFloat()
         }
         box.addView(TextView(this).apply {
             text = title
@@ -950,7 +1197,11 @@ class MainActivity : Activity() {
         setPadding(dp(14), 0, dp(14), 0)
         setTextColor(Color.WHITE)
         typeface = Typeface.DEFAULT_BOLD
-        background = outlined(purple, Color.rgb(188, 162, 255), 14)
+        background = GradientDrawable().apply {
+            cornerRadius = dp(14).toFloat()
+            setStroke(dp(1), Color.rgb(188, 162, 255))
+            colors = intArrayOf(purple, Color.rgb(124, 77, 209))
+        }
         layoutParams = LinearLayout.LayoutParams(-1, dp(48)).apply {
             setMargins(0, dp(5), 0, dp(5))
         }

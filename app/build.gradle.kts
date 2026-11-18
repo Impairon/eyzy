@@ -10,8 +10,8 @@ android {
         applicationId = "com.abo.avatarblackout"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.6.0"
+        versionCode = 3
+        versionName = "1.7.0"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
