@@ -702,13 +702,178 @@ class MainActivity : Activity() {
     private fun showSettings() {
         pageTitle.text = "Settings"
         content.removeAllViews()
-        content.addView(card("Profiles & backup") {
-            addText(it, "Manual boxes are saved separately for each app profile and screen orientation.")
-            val profiles = Prefs.profiles(this)
+        // Collapsible sections in app order: swizy, Sibha, Prayers, then Profiles & Release
+        content.addView(collapsibleSection("swizy", defaultOpen = true) { section ->
+            addText(section, "Control how swizy masks profile pictures.")
+            addText(section, "swizy mask mode")
+            val mode = styledSpinner()
+            mode.adapter = optionAdapter(
+                arrayOf("Simple line", "Dynamic circle", "Do nothing (manual only)")
+            )
+            mode.setSelection(Prefs.maskMode(this).ordinal)
+            mode.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+                override fun onItemSelected(
+                    parent: AdapterView<*>?, view: View?, position: Int, id: Long
+                ) {
+                    Prefs.setMaskMode(this@MainActivity, Prefs.MaskMode.entries[position])
+                    AvatarService.instance?.refresh()
+                }
+            })
+            section.addView(mode, LinearLayout.LayoutParams(-1, dp(52)))
+            addText(section, "Mask color")
+            val color = styledSpinner()
+            color.adapter = optionAdapter(
+                arrayOf("Black (privacy safe)", "Purple", "White")
+            )
+            color.setSelection(Prefs.boxColor(this).ordinal)
+            color.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+                override fun onItemSelected(
+                    parent: AdapterView<*>?, view: View?, position: Int, id: Long
+                ) {
+                    Prefs.setBoxColor(this@MainActivity, Prefs.BoxColor.entries[position])
+                    AvatarService.instance?.refresh()
+                }
+            })
+            section.addView(color, LinearLayout.LayoutParams(-1, dp(52)))
+            addSlider(section, "Mask opacity (black boxes)", 25, 100, Prefs.boxOpacity(this)) {
+                Prefs.setBoxOpacity(this, it)
+                AvatarService.instance?.refresh()
+            }
+            addSlider(section, "Paw opacity when idle", 35, 100, Prefs.controlOpacity(this)) {
+                Prefs.setControlOpacity(this, it)
+                AvatarService.instance?.refresh()
+            }
+            addSlider(section, "Line thickness", 4, 64, Prefs.lineThicknessDp(this)) {
+                Prefs.setLineThicknessDp(this, it)
+                AvatarService.instance?.refresh()
+            }
+            addSlider(section, "Dynamic circle size", 24, 96, Prefs.circleSizeDp(this)) {
+                Prefs.setCircleSizeDp(this, it)
+                AvatarService.instance?.refresh()
+            }
+            val indicator = Switch(this).apply {
+                text = "Show privacy indicator while masking"
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                isChecked = Prefs.privacyIndicator(this@MainActivity)
+                setOnCheckedChangeListener { _, checked ->
+                    Prefs.setPrivacyIndicator(this@MainActivity, checked)
+                    AvatarService.instance?.refresh()
+                }
+            }
+            section.addView(indicator)
+            val performance = Switch(this).apply {
+                text = "Battery saver mode"
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                isChecked = Prefs.performanceMode(this@MainActivity)
+                setOnCheckedChangeListener { _, checked ->
+                    Prefs.setPerformanceMode(this@MainActivity, checked)
+                    AvatarService.instance?.refresh()
+                }
+            }
+            section.addView(performance)
+            addText(section, "Quick Settings action")
+            val tileAction = styledSpinner()
+            tileAction.adapter = optionAdapter(
+                arrayOf("Start app", "Start app and summon the paw")
+            )
+            tileAction.setSelection(Prefs.tileAction(this).ordinal)
+            tileAction.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+                override fun onItemSelected(
+                    parent: AdapterView<*>?, view: View?, position: Int, id: Long
+                ) {
+                    Prefs.setTileAction(this@MainActivity, Prefs.TileAction.entries[position])
+                }
+            })
+            section.addView(tileAction, LinearLayout.LayoutParams(-1, dp(52)))
+        })
+        content.addView(collapsibleSection("Sibha", defaultOpen = false) { section ->
+            addText(section, "Settings for the prayer counter.")
+            val peep = EditText(this).apply {
+                hint = "Peep every N counts (0 disables)"
+                setText(Prefs.sibhaPeepEvery(this@MainActivity).takeIf { it > 0 }?.toString() ?: "")
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                setTextColor(Color.WHITE)
+                setHintTextColor(secondary)
+            }
+            section.addView(peep)
+            val save = actionButton("Save Sibha reminder")
+            save.setOnClickListener {
+                Prefs.setSibhaPeepEvery(this@MainActivity, peep.text.toString().toIntOrNull() ?: 0)
+                Toast.makeText(this, "Sibha reminder saved", Toast.LENGTH_SHORT).show()
+            }
+            section.addView(save)
+        })
+        content.addView(collapsibleSection("Prayers", defaultOpen = false) { section ->
+            addText(section, "Prayer time calculation and announcement settings.")
+            addText(section, "Prayer calculation method")
+            val method = styledSpinner()
+            val methodNames = arrayOf(
+                "Egyptian General Authority",
+                "Muslim World League",
+                "Umm Al-Qura",
+                "Karachi",
+                "ISNA"
+            )
+            val methodValues = intArrayOf(5, 3, 4, 1, 2)
+            method.adapter = optionAdapter(methodNames)
+            method.setSelection(methodValues.indexOf(Prefs.prayerMethod(this)).coerceAtLeast(0))
+            method.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+                override fun onItemSelected(
+                    parent: AdapterView<*>?, view: View?, position: Int, id: Long
+                ) {
+                    if (Prefs.prayerMethod(this@MainActivity) != methodValues[position]) {
+                        Prefs.setPrayerMethod(this@MainActivity, methodValues[position])
+                    }
+                }
+            })
+            section.addView(method, LinearLayout.LayoutParams(-1, dp(52)))
+            val format = Switch(this).apply {
+                text = "Use 24-hour prayer times"
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                isChecked = Prefs.prayer24Hour(this@MainActivity)
+                setOnCheckedChangeListener { _, checked ->
+                    Prefs.setPrayer24Hour(this@MainActivity, checked)
+                }
+            }
+            section.addView(format)
+            val headsetTime = Switch(this).apply {
+                text = "Speak the time on long-press headset button"
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                isChecked = Prefs.headsetTime(this@MainActivity)
+                setOnCheckedChangeListener { _, checked ->
+                    Prefs.setHeadsetTime(this@MainActivity, checked)
+                    AvatarService.instance?.refresh()
+                }
+            }
+            section.addView(headsetTime)
+            val voiceInfo = actionButton("How to change voice")
+            voiceInfo.setOnClickListener {
+                showVoiceInstructions()
+            }
+            section.addView(voiceInfo)
+            val testTime = actionButton("Say the time now")
+            testTime.setOnClickListener {
+                val service = AvatarService.instance
+                if (service != null) service.announceCurrentTime()
+                else Toast.makeText(this, "Turn on the swizy accessibility service first", Toast.LENGTH_SHORT).show()
+            }
+            section.addView(testTime)
+        })
+        content.addView(collapsibleSection("Profiles & backup", defaultOpen = false) { section ->
+            addText(section, "Manual boxes are saved separately for each app profile and screen orientation.")
             addText(
-                it,
+                section,
                 "Create profiles from the paw menu: choose Add profile in the target app, draw your boxes, then choose Save profile. swizy will apply that profile automatically whenever the app is open."
             )
+            val profiles = Prefs.profiles(this)
             profiles.forEach { profile ->
                 val row = LinearLayout(this).apply {
                     gravity = Gravity.CENTER_VERTICAL
@@ -732,189 +897,84 @@ class MainActivity : Activity() {
                         .show()
                 }
                 row.addView(remove, LinearLayout.LayoutParams(dp(110), dp(52)))
-                it.addView(row)
+                section.addView(row)
             }
             val export = actionButton("Export layouts")
             export.setOnClickListener { exportBackup() }
-            it.addView(export)
+            section.addView(export)
             val import = actionButton("Import layouts")
             import.setOnClickListener { importBackup() }
-            it.addView(import)
+            section.addView(import)
         })
-        content.addView(card("Settings") {
-            addText(it, "Control shared behavior for swizy, Sibha, and Prayers.")
-            addText(it, "Prayer calculation method")
-            val method = styledSpinner()
-            val methodNames = arrayOf(
-                "Egyptian General Authority",
-                "Muslim World League",
-                "Umm Al-Qura",
-                "Karachi",
-                "ISNA"
-            )
-            val methodValues = intArrayOf(5, 3, 4, 1, 2)
-            method.adapter = optionAdapter(methodNames)
-            method.setSelection(methodValues.indexOf(Prefs.prayerMethod(this)).coerceAtLeast(0))
-            method.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
-                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-                override fun onItemSelected(
-                    parent: AdapterView<*>?, view: View?, position: Int, id: Long
-                ) {
-                    if (Prefs.prayerMethod(this@MainActivity) != methodValues[position]) {
-                        Prefs.setPrayerMethod(this@MainActivity, methodValues[position])
-                    }
-                }
-            })
-            it.addView(method, LinearLayout.LayoutParams(-1, dp(52)))
-            addText(it, "swizy mask mode")
-            val mode = styledSpinner()
-            mode.adapter = optionAdapter(
-                arrayOf("Simple line", "Dynamic circle", "Do nothing (manual only)")
-            )
-            mode.setSelection(Prefs.maskMode(this).ordinal)
-            mode.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
-                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-                override fun onItemSelected(
-                    parent: AdapterView<*>?, view: View?, position: Int, id: Long
-                ) {
-                    Prefs.setMaskMode(this@MainActivity, Prefs.MaskMode.entries[position])
-                    AvatarService.instance?.refresh()
-                }
-            })
-            it.addView(mode, LinearLayout.LayoutParams(-1, dp(52)))
-            addText(it, "Mask color")
-            val color = styledSpinner()
-            color.adapter = optionAdapter(
-                arrayOf("Black (privacy safe)", "Purple", "White")
-            )
-            color.setSelection(Prefs.boxColor(this).ordinal)
-            color.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
-                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-                override fun onItemSelected(
-                    parent: AdapterView<*>?, view: View?, position: Int, id: Long
-                ) {
-                    Prefs.setBoxColor(this@MainActivity, Prefs.BoxColor.entries[position])
-                    AvatarService.instance?.refresh()
-                }
-            })
-            it.addView(color, LinearLayout.LayoutParams(-1, dp(52)))
-            addSlider(it, "Mask opacity (black boxes)", 25, 100, Prefs.boxOpacity(this)) {
-                Prefs.setBoxOpacity(this, it)
-                AvatarService.instance?.refresh()
-            }
-            addSlider(it, "Paw opacity when idle", 35, 100, Prefs.controlOpacity(this)) {
-                Prefs.setControlOpacity(this, it)
-                AvatarService.instance?.refresh()
-            }
-            addText(it, "Quick Settings action")
-            val tileAction = styledSpinner()
-            tileAction.adapter = optionAdapter(
-                arrayOf("Start app", "Start app and summon the paw")
-            )
-            tileAction.setSelection(Prefs.tileAction(this).ordinal)
-            tileAction.setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
-                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-                override fun onItemSelected(
-                    parent: AdapterView<*>?, view: View?, position: Int, id: Long
-                ) {
-                    Prefs.setTileAction(this@MainActivity, Prefs.TileAction.entries[position])
-                }
-            })
-            it.addView(tileAction, LinearLayout.LayoutParams(-1, dp(52)))
-            val indicator = Switch(this).apply {
-                text = "Show privacy indicator while masking"
-                textSize = 16f
-                setTextColor(Color.WHITE)
-                isChecked = Prefs.privacyIndicator(this@MainActivity)
-                setOnCheckedChangeListener { _, checked ->
-                    Prefs.setPrivacyIndicator(this@MainActivity, checked)
-                    AvatarService.instance?.refresh()
-                }
-            }
-            it.addView(indicator)
-            val performance = Switch(this).apply {
-                text = "Battery saver mode"
-                textSize = 16f
-                setTextColor(Color.WHITE)
-                isChecked = Prefs.performanceMode(this@MainActivity)
-                setOnCheckedChangeListener { _, checked ->
-                    Prefs.setPerformanceMode(this@MainActivity, checked)
-                    AvatarService.instance?.refresh()
-                }
-            }
-            it.addView(performance)
-            val headsetTime = Switch(this).apply {
-                text = "Speak the time on long-press headset button"
-                textSize = 16f
-                setTextColor(Color.WHITE)
-                isChecked = Prefs.headsetTime(this@MainActivity)
-                setOnCheckedChangeListener { _, checked ->
-                    Prefs.setHeadsetTime(this@MainActivity, checked)
-                    AvatarService.instance?.refresh()
-                }
-            }
-            it.addView(headsetTime)
-            val voiceInfo = actionButton("How to change voice")
-            voiceInfo.setOnClickListener {
-                showVoiceInstructions()
-            }
-            it.addView(voiceInfo)
-            val testTime = actionButton("Say the time now")
-            testTime.setOnClickListener {
-                val service = AvatarService.instance
-                if (service != null) service.announceCurrentTime()
-                else Toast.makeText(this, "Turn on the swizy accessibility service first", Toast.LENGTH_SHORT).show()
-            }
-            it.addView(testTime)
-            addSlider(it, "Line thickness", 4, 64, Prefs.lineThicknessDp(this)) {
-                Prefs.setLineThicknessDp(this, it)
-                AvatarService.instance?.refresh()
-            }
-            addSlider(it, "Dynamic circle size", 24, 96, Prefs.circleSizeDp(this)) {
-                Prefs.setCircleSizeDp(this, it)
-                AvatarService.instance?.refresh()
-            }
-            val format = Switch(this).apply {
-                text = "Use 24-hour prayer times"
-                textSize = 16f
-                setTextColor(Color.WHITE)
-                isChecked = Prefs.prayer24Hour(this@MainActivity)
-                setOnCheckedChangeListener { _, checked ->
-                    Prefs.setPrayer24Hour(this@MainActivity, checked)
-                }
-            }
+        content.addView(collapsibleSection("Release", defaultOpen = false) { section ->
+            addText(section, "swizy 1.7.0")
+            addText(section, "Changelog: faster scanning, rotation fixes, Qibla compass, refined UI, per-orientation control position.")
+            addText(section, "Crash logs are stored locally and are never uploaded automatically.")
+        })
+    }
 
-            it.addView(format)
-            val peep = EditText(this).apply {
-                hint = "Peep every N counts (0 disables)"
-                setText(Prefs.sibhaPeepEvery(this@MainActivity).takeIf { it > 0 }?.toString() ?: "")
-                inputType = android.text.InputType.TYPE_CLASS_NUMBER
-                setTextColor(Color.WHITE)
-                setHintTextColor(secondary)
+    private fun collapsibleSection(
+        title: String,
+        defaultOpen: Boolean,
+        body: (LinearLayout) -> Unit
+    ): View {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = GradientDrawable().apply {
+                orientation = GradientDrawable.Orientation.TOP_BOTTOM
+                colors = intArrayOf(panel, Color.rgb(28, 23, 38))
+                cornerRadius = dp(16).toFloat()
+                setStroke(dp(1), border)
             }
-            it.addView(peep)
-            val save = actionButton("Save Sibha reminder")
-            save.setOnClickListener {
-                Prefs.setSibhaPeepEvery(this@MainActivity, peep.text.toString().toIntOrNull() ?: 0)
-                Toast.makeText(this, "Sibha reminder saved", Toast.LENGTH_SHORT).show()
-            }
-            it.addView(save)
+            elevation = dp(3).toFloat()
+        }
+        val arrow = TextView(this).apply {
+            text = if (defaultOpen) "▼" else "▶"
+            textSize = 14f
+            setTextColor(purple)
+            setPadding(0, 0, dp(8), 0)
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(4))
+        }
+        header.addView(arrow)
+        header.addView(TextView(this).apply {
+            text = title
+            textSize = 18f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
         })
-        content.addView(card("Release") {
-            addText(it, "swizy 1.7.0")
-            addText(it, "Changelog: faster scanning, rotation fixes, Qibla compass, refined UI, per-orientation control position.")
-            addText(it, "Crash logs are stored locally and are never uploaded automatically.")
-        })
+        box.addView(header)
+        val section = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = if (defaultOpen) View.VISIBLE else View.GONE
+        }
+        body(section)
+        box.addView(section)
+        header.setOnClickListener {
+            val isOpen = section.visibility == View.VISIBLE
+            section.visibility = if (isOpen) View.GONE else View.VISIBLE
+            arrow.text = if (isOpen) "▶" else "▼"
+        }
+        val wrapper = LinearLayout(this).apply {
+            setPadding(0, 0, 0, dp(12))
+            addView(box, LinearLayout.LayoutParams(-1, -2))
+        }
+        return wrapper
     }
 
     private fun showVoiceInstructions() {
         AlertDialog.Builder(this)
             .setTitle("Change the announcement voice")
             .setMessage(
-                "swizy uses Android's current Text-to-speech voice. To change the voice, " +
-                    "language, or voice type, open Android Settings and search for " +
-                    "\"Text-to-speech output\". Choose the TTS engine, language, and voice there. " +
-                    "If available, select English (United States) and a male or female voice."
+                "1. Go to Settings and search for Text to speech\n" +
+                "2. Choose a language you like\n" +
+                "3. For voices, go to the favorite engine and click the settings or gear tab on the side and choose Install voice data\n" +
+                "4. Choose the language and voice\n" +
+                "5. Reboot the phone & enjoy"
             )
             .setPositiveButton("Open Android Settings") { _, _ ->
                 openTextToSpeechSettings()

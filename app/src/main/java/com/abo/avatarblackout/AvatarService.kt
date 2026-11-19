@@ -215,32 +215,55 @@ class AvatarService : AccessibilityService() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        // Remove both overlay and control so z-order is correct after re-adding
         control?.let { try { wm.removeViewImmediate(it) } catch (_: Exception) {} }
         control = null
         overlay?.let { try { wm.removeViewImmediate(it) } catch (_: Exception) {} }
         overlay = null
-        ensureOverlay()
-        if (manualSessionActive) addControl()
         lastRenderKey = null
+        lastEventPackage = ""
+        lastKeyboardTop = 0
+        cachedKeyboardTop = null
         invalidateProfileCache()
+        ensureOverlay()
+        if (manualSessionActive) {
+            addControl()
+        }
         doScan()
     }
 
+    private var lastKeyboardTop = 0
+
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
-        if (!Prefs.isEnabled(this) || pending) return
-        // Use the event's package name for instant app-switch detection
+        if (!Prefs.isEnabled(this)) return
         val eventPkg = e?.packageName?.toString() ?: ""
-        if (eventPkg.isNotBlank() &&
-            eventPkg != applicationContext.packageName &&
-            eventPkg != "com.android.systemui" &&
-            eventPkg != lastEventPackage) {
-            lastEventPackage = eventPkg
-            // App changed: trigger an immediate scan with no debounce
+        // Detect keyboard open/close instantly via input method window events
+        val kbTop = keyboardTop() ?: 0
+        if (kbTop != lastKeyboardTop) {
+            lastKeyboardTop = kbTop
             pending = true
             handler.removeCallbacks(scan)
             handler.post(scan)
             return
+        }
+        if (pending) return
+        if (eventPkg.isNotBlank() &&
+            eventPkg != applicationContext.packageName &&
+            eventPkg != "com.android.systemui") {
+            if (eventPkg != lastEventPackage) {
+                lastEventPackage = eventPkg
+                activePackage = eventPkg
+                invalidateProfileCache()
+                if (hasProfileCached()) {
+                    Prefs.setManualHideVisible(this, true)
+                }
+            }
+            // For known target apps, scan immediately — no debounce
+            if (eventPkg in TARGETS || hasProfileCached()) {
+                pending = true
+                handler.removeCallbacks(scan)
+                handler.post(scan)
+                return
+            }
         }
         pending = true
         handler.removeCallbacks(scan)
@@ -589,13 +612,17 @@ class AvatarService : AccessibilityService() {
             val screenH = resources.displayMetrics.heightPixels
             val oriKey = orientationKey()
             x = prefs.getInt("control_x_$oriKey", prefs.getInt("control_x", screenW - dp(70)))
-                .coerceIn(0, screenW - dp(58))
+                .coerceIn(0, (screenW - dp(58)).coerceAtLeast(0))
             y = prefs.getInt("control_y_$oriKey", prefs.getInt("control_y", screenH / 2))
-                .coerceIn(0, screenH - dp(58))
+                .coerceIn(0, (screenH - dp(58)).coerceAtLeast(0))
         }
 
-        wm.addView(v, lp)
-        control = v
+        try {
+            wm.addView(v, lp)
+            control = v
+        } catch (ex: Exception) {
+            Log.w(TAG, "addControl failed", ex)
+        }
     }
 
     private fun orientationKey() =
@@ -629,8 +656,15 @@ class AvatarService : AccessibilityService() {
         cachedProfilePackage = ""
     }
 
+    private var cachedKeyboardTop: Int? = null
+    private var cachedKeyboardTopTime = 0L
+
     private fun keyboardTop(): Int? {
-        return windows.asSequence()
+        // Cache for 100ms so multiple manualDisplayRect calls in one scan don't re-query windows
+        val now = System.currentTimeMillis()
+        if (cachedKeyboardTop != null && now - cachedKeyboardTopTime < 100) return cachedKeyboardTop
+        cachedKeyboardTopTime = now
+        cachedKeyboardTop = windows.asSequence()
             .filter { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
             .mapNotNull { window ->
                 Rect().also { bounds ->
@@ -640,6 +674,7 @@ class AvatarService : AccessibilityService() {
             .map { it.top }
             .filter { it > 0 }
             .minOrNull()
+        return cachedKeyboardTop
     }
 
     private fun manualDisplayRect(rect: Rect): Rect {
@@ -809,14 +844,25 @@ class AvatarService : AccessibilityService() {
     private fun doScan() {
         try {
             ensureOverlay()
-            val detectedPackage = foregroundPackage() ?: ""
-            if (detectedPackage != activePackage) {
-                activePackage = detectedPackage
+            // If the last event already told us the package, trust it instead of the expensive
+            // windows scan. Only call foregroundPackage() as a fallback when we have no event info.
+            if (lastEventPackage.isNotBlank() && lastEventPackage != activePackage) {
+                activePackage = lastEventPackage
                 invalidateProfileCache()
                 if (hasProfileCached()) {
                     Prefs.setManualHideVisible(this, true)
                 }
                 Log.d(TAG, "foreground package changed to $activePackage")
+            } else if (lastEventPackage.isBlank()) {
+                val detectedPackage = foregroundPackage() ?: ""
+                if (detectedPackage != activePackage) {
+                    activePackage = detectedPackage
+                    invalidateProfileCache()
+                    if (hasProfileCached()) {
+                        Prefs.setManualHideVisible(this, true)
+                    }
+                    Log.d(TAG, "foreground package changed to $activePackage")
+                }
             }
             val out = ArrayList<Item>()
             val hasActiveProfile = hasProfileCached()
