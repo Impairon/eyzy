@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="paper">#F4F1EA</color>
+    <color name="ink">#161614</color>
+    <color name="signal">#C93A1E</color>
+    <color name="icon_bg">#121211</color>
+</resources>
