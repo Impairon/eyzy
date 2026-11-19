@@ -148,7 +148,7 @@ class MainActivity : Activity() {
             Math.atan2(fwdX.toDouble(), fwdY.toDouble())
         ).toFloat() + 360) % 360
         // Tilt: 0 = flat on table, 90 = upright
-        val rawTilt = Math.toDegrees(Math.acos(R[8].coerceIn(-1.0, 1.0))).toFloat()
+        val rawTilt = Math.toDegrees(Math.acos(R[8].toDouble().coerceIn(-1.0, 1.0))).toFloat()
         compassAzimuth = if (compassAzimuth == 0f) rawAzimuth else {
             val diff = ((rawAzimuth - compassAzimuth + 540) % 360) - 180
             compassAzimuth + diff * 0.2f
