@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Katib mark: the hook (ك / scribe's stroke) holding three voice bars. Traced from the engraved logo. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="560" android:viewportHeight="560">
+    <group android:translateX="-65" android:translateY="-62">
+        <path android:strokeColor="#FF000000" android:strokeWidth="70" android:strokeLineCap="butt" android:fillColor="#00000000"
+            android:pathData="M108,342 L108,450 Q108,558 216,558 L474,558 Q582,558 582,450 L582,92"/>
+        <path android:strokeColor="#FF000000" android:strokeWidth="64" android:strokeLineCap="round" android:pathData="M237,330 L237,397"/>
+        <path android:strokeColor="#FF000000" android:strokeWidth="68" android:strokeLineCap="round" android:pathData="M345,250 L345,462"/>
+        <path android:strokeColor="#FF000000" android:strokeWidth="66" android:strokeLineCap="round" android:pathData="M452,310 L452,398"/>
+    </group>
+</vector>
