@@ -35,6 +35,18 @@ val copySwizyBrandAssets by tasks.registering(Sync::class) {
         into("drawable-nodpi")
         rename { "swizy_logo_with_bg.png" }
     }
+    from(rootProject.file("katib/app/src/main/res/font/plex_arabic_regular.ttf")) {
+        into("font")
+        rename { "ibm_plex_arabic_regular.ttf" }
+    }
+    from(rootProject.file("katib/app/src/main/res/font/plex_arabic_medium.ttf")) {
+        into("font")
+        rename { "ibm_plex_arabic_medium.ttf" }
+    }
+    from(rootProject.file("katib/app/src/main/res/font/amiri_bold.ttf")) {
+        into("font")
+        rename { "amiri_bold.ttf" }
+    }
     into(layout.buildDirectory.dir("generated/res/swizyBrand"))
 }
 
