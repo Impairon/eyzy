@@ -808,10 +808,38 @@ class MainActivity : FragmentActivity() {
     private fun showLowery() {
         pageTitle.text = "لويري"
         content.removeAllViews()
-        content.addView(card("لويري ✨") {
-            addText(it, "swizy protects profile pictures with a narrow bar while keeping chats, buttons, and the keyboard usable.")
+
+        // A compact mascot-led introduction keeps the page recognizable without crowding it.
+        content.addView(card("لويري ✨") { section ->
+            val intro = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(6), 0, dp(10))
+            }
+            val mascot = ImageView(this).apply {
+                setImageResource(R.drawable.swizy_logo)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                contentDescription = "Lowery mascot"
+                background = rounded(panelRaised, 18)
+                setPadding(dp(5), dp(5), dp(5), dp(5))
+            }
+            intro.addView(mascot, LinearLayout.LayoutParams(dp(88), dp(88)))
+            val description = TextView(this).apply {
+                text = if (currentAppLanguage() == "ar") {
+                    "يحمي صور الحسابات مع إبقاء المحادثات والأزرار ولوحة المفاتيح قابلة للاستخدام."
+                } else {
+                    "Protect profile pictures while keeping chats, buttons, and the keyboard usable."
+                }
+                textSize = 14f
+                setTextColor(secondary)
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(14), 0, 0, 0)
+            }
+            intro.addView(description, LinearLayout.LayoutParams(0, -2, 1f))
+            section.addView(intro)
+
             val enabled = Switch(this).apply {
-                text = "swizy is patrol"
+                text = if (currentAppLanguage() == "ar") "تفعيل لويري" else "Enable Lowery"
                 textSize = 16f
                 setTextColor(Color.WHITE)
                 isChecked = Prefs.isEnabled(this@MainActivity)
@@ -820,11 +848,12 @@ class MainActivity : FragmentActivity() {
                     AvatarService.instance?.refresh()
                 }
             }
-            it.addView(enabled)
+            section.addView(enabled)
             val access = actionButton("Open Accessibility settings")
             access.setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
-            it.addView(access)
+            section.addView(access)
         })
+
         content.addView(card("Hide an area manually") {
             addText(it, "Choose any part of WhatsApp or another supported app and keep it completely black. The small side control can hide or restore it, choose a new area, or remove it.")
             val manual = actionButton("Summon the paw")
