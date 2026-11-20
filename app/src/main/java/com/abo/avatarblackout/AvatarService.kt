@@ -1552,7 +1552,7 @@ class AvatarService : AccessibilityService() {
             paint.color = Color.rgb(139, 92, 246)
             canvas.drawCircle(ballX, ballY, dp(27).toFloat(), paint)
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = dp(1.5f).toInt().toFloat()
+            paint.strokeWidth = dp(2).toFloat()
             paint.color = Color.rgb(205, 183, 255)
             canvas.drawCircle(ballX, ballY, dp(27).toFloat(), paint)
             paint.style = Paint.Style.FILL
