@@ -127,6 +127,16 @@ class MainActivity : Activity() {
         if (view is TextView) {
             view.text = translate(view.text.toString())
             if (view is EditText) view.hint = translate(view.hint?.toString().orEmpty())
+            if (currentAppLanguage() == "ar" && Build.VERSION.SDK_INT >= 26) {
+                val hasArabic = view.text.toString().any { it in '\u0600'..'\u06FF' }
+                val bold = view.typeface?.isBold == true
+                val font = if (hasArabic && view.textSize >= 18f && bold) {
+                    resources.getFont(R.font.amiri_bold)
+                } else {
+                    resources.getFont(R.font.ibm_plex_arabic_regular)
+                }
+                view.typeface = Typeface.create(font, if (bold) Typeface.BOLD else Typeface.NORMAL)
+            }
         }
         if (view is android.view.ViewGroup) {
             for (index in 0 until view.childCount) localizeTree(view.getChildAt(index))
