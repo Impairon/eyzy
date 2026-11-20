@@ -814,6 +814,7 @@ class MainActivity : Activity() {
             val reliable = sensorAvailable && hasLiveHeading &&
                 accuracy >= SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM &&
                 !magneticFieldDisturbed
+            if (!reliable) alignedSince = 0L
 
             val message = when {
                 !sensorAvailable ->
