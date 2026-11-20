@@ -72,6 +72,7 @@ class AvatarService : AccessibilityService() {
     private lateinit var wm: WindowManager
     private var overlay: OverlayView? = null
     private var control: ControlView? = null
+    private var closeTarget: CloseTargetView? = null
     private var manualSessionActive = false
     private var selectionStart: Pair<Float, Float>? = null
     private var movingAreaIndex = -1
@@ -139,6 +140,7 @@ class AvatarService : AccessibilityService() {
         overlay = null
         control?.let { try { wm.removeView(it) } catch (_: Exception) {} }
         control = null
+        hideCloseTarget()
         handler.removeCallbacks(headsetLongPress)
         handler.removeCallbacks(speechTimeout)
         timeSpeaker?.stop()
@@ -563,14 +565,6 @@ class AvatarService : AccessibilityService() {
         doScan()
     }
 
-    private fun closeManualSession() {
-        cancelProfileCreation()
-        manualSessionActive = false
-        manualSessionProfileId = null
-        removeControl()
-        doScan()
-    }
-
     private fun setOverlayTouchable(touchable: Boolean) {
         overlay?.let {
             val lp = it.layoutParams as WindowManager.LayoutParams
@@ -744,6 +738,61 @@ class AvatarService : AccessibilityService() {
     private fun removeControl() {
         control?.let { try { wm.removeView(it) } catch (_: Exception) {} }
         control = null
+        hideCloseTarget()
+    }
+
+    private fun showCloseTarget() {
+        if (closeTarget != null) return
+        val target = CloseTargetView(this)
+        val lp = WindowManager.LayoutParams(
+            dp(76), dp(76), WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply { gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; y = dp(24) }
+        runCatching { wm.addView(target, lp); closeTarget = target }
+    }
+
+    private fun hideCloseTarget() {
+        closeTarget?.let { runCatching { wm.removeView(it) } }
+        closeTarget = null
+    }
+
+    private fun isOverCloseTarget(rawY: Float): Boolean =
+        rawY >= resources.displayMetrics.heightPixels - dp(112)
+
+    private fun closeManualSession() {
+        cancelProfileCreation()
+        manualSessionActive = false
+        manualSessionProfileId = null
+        removeControl()
+        doScan()
+    }
+
+    private inner class CloseTargetView(c: Context) : View(c) {
+        private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        override fun onDraw(canvas: Canvas) {
+            val cx = width / 2f
+            val cy = height / 2f
+            p.color = Color.argb(225, 29, 23, 43)
+            canvas.drawCircle(cx, cy, dp(30).toFloat(), p)
+            p.color = Color.rgb(139, 92, 246)
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = dp(2).toFloat()
+            canvas.drawCircle(cx, cy, dp(30).toFloat(), p)
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = dp(3).toFloat()
+            p.strokeCap = Paint.Cap.ROUND
+            val d = dp(9).toFloat()
+            canvas.drawLine(cx-d, cy-d, cx+d, cy+d, p)
+            canvas.drawLine(cx+d, cy-d, cx-d, cy+d, p)
+            p.style = Paint.Style.FILL
+            p.textAlign = Paint.Align.CENTER
+            p.textSize = dp(10).toFloat()
+            p.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+            canvas.drawText("Close", cx, height - dp(3).toFloat(), p)
+        }
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
@@ -1504,15 +1553,20 @@ class AvatarService : AccessibilityService() {
                 canvas.drawText("Add hidden area", dp(51).toFloat(), dp(33).toFloat(), paint)
 
                 val hasProfile = Prefs.hasProfileForPackage(this@AvatarService, activePackage)
-                val rows = listOf(
-                    if (profileCreationId != null) "Save profile" else if (hasProfile) "Edit profile" else "Add profile",
-                    "Remove last added area",
-                    "Remove all black boxes",
-                    if (Prefs.manualHideVisible(this@AvatarService)) "Hide all black boxes" else "Show all black boxes",
-                    "Move black boxes",
-                    "Resize black boxes",
-                    "Close"
-                )
+                val rows = buildList {
+                    if (profileCreationId != null) {
+                        add("Save profile")
+                        add("Cancel profile")
+                    } else {
+                        add(if (hasProfile) "Edit profile" else "Add profile")
+                    }
+                    add("Remove last added area")
+                    add("Remove all black boxes")
+                    add(if (Prefs.manualHideVisible(this@AvatarService)) "Hide all black boxes" else "Show all black boxes")
+                    add("Move black boxes")
+                    add("Resize black boxes")
+                    add("Close")
+                }
                 val rowTop = dp(58)
                 val rowHeight = dp(44)
                 rows.forEachIndexed { index, label ->
@@ -1591,24 +1645,47 @@ class AvatarService : AccessibilityService() {
                         val totalDx = event.rawX - touchStartX
                         val totalDy = event.rawY - touchStartY
                         if (kotlin.math.hypot(totalDx.toDouble(), totalDy.toDouble()) > dp(4)) {
+                            if (!dragging) showCloseTarget()
                             dragging = true
                         }
                         lp.x = (controlStartX + totalDx).toInt().coerceIn(
-                            0, resources.displayMetrics.widthPixels - width
+                            0, (resources.displayMetrics.widthPixels - width).coerceAtLeast(0)
                         )
                         lp.y = (controlStartY + totalDy).toInt().coerceIn(
-                            0, resources.displayMetrics.heightPixels - height
+                            0, (resources.displayMetrics.heightPixels - height).coerceAtLeast(0)
                         )
+                        // Keep the drag path lightweight: persist only once on release.
                         wm.updateViewLayout(this, lp)
-                        getSharedPreferences("avb", Context.MODE_PRIVATE).edit()
-                            .putInt("control_x_${this@AvatarService.orientationKey()}", lp.x)
-                            .putInt("control_y_${this@AvatarService.orientationKey()}", lp.y).apply()
                     }
                     return true
                 }
                 MotionEvent.ACTION_UP -> {
                     if (dragging && !menu) {
+                        val lp = layoutParams as WindowManager.LayoutParams
                         dragging = false
+                        hideCloseTarget()
+                        if (isOverCloseTarget(event.rawY)) {
+                            closeManualSession()
+                            return true
+                        }
+                        getSharedPreferences("avb", Context.MODE_PRIVATE).edit()
+                            .putInt("control_x_${this@AvatarService.orientationKey()}", lp.x)
+                            .putInt("control_y_${this@AvatarService.orientationKey()}", lp.y)
+                            .apply()
+                        // Settle gently to the nearest edge after the drag ends.
+                        val left = lp.x + width / 2 < resources.displayMetrics.widthPixels / 2
+                        val targetX = if (left) 0 else
+                            (resources.displayMetrics.widthPixels - width).coerceAtLeast(0)
+                        animate().cancel()
+                        animate().x(targetX.toFloat()).setDuration(170)
+                            .setInterpolator(android.view.animation.DecelerateInterpolator())
+                            .withEndAction {
+                                lp.x = targetX
+                                runCatching { wm.updateViewLayout(this, lp) }
+                                getSharedPreferences("avb", Context.MODE_PRIVATE).edit()
+                                    .putInt("control_x_${this@AvatarService.orientationKey()}", lp.x)
+                                    .apply()
+                            }.start()
                         postDelayed(fade, 2200)
                     } else if (!menu) {
                         menu = true
@@ -1616,7 +1693,7 @@ class AvatarService : AccessibilityService() {
                         menuOriginX = lp.x
                         menuOriginY = lp.y
                         lp.width = dp(250)
-                        lp.height = dp(58 + 7 * 44)
+                        lp.height = dp(58 + (if (profileCreationId != null) 8 else 7) * 44)
                         lp.x = (lp.x - dp(192)).coerceAtLeast(0)
                         lp.y = (menuOriginY - (lp.height - dp(58)) / 2).coerceIn(
                             0, (resources.displayMetrics.heightPixels - lp.height).coerceAtLeast(0)
@@ -1642,11 +1719,12 @@ class AvatarService : AccessibilityService() {
                                 if (profileCreationId != null) saveProfileCreation()
                                 else beginProfileCreation()
                             }
-                            y < dp(146) -> removeLastManualArea()
-                            y < dp(190) -> removeAllManualAreas()
-                            y < dp(234) -> toggleManualAreas()
-                            y < dp(278) -> beginManualAreaMove()
-                            y < dp(322) -> beginManualAreaResize()
+                            profileCreationId != null && y < dp(146) -> cancelProfileCreation().also { doScan() }
+                            y < dp(if (profileCreationId != null) 190 else 146) -> removeLastManualArea()
+                            y < dp(if (profileCreationId != null) 234 else 190) -> removeAllManualAreas()
+                            y < dp(if (profileCreationId != null) 278 else 234) -> toggleManualAreas()
+                            y < dp(if (profileCreationId != null) 322 else 278) -> beginManualAreaMove()
+                            y < dp(if (profileCreationId != null) 366 else 322) -> beginManualAreaResize()
                             else -> closeManualSession()
                         }
                         if (control === this && manualSessionActive) {
@@ -1659,6 +1737,8 @@ class AvatarService : AccessibilityService() {
                 }
                 MotionEvent.ACTION_CANCEL -> {
                     pressedMenuIndex = -1
+                    if (dragging) hideCloseTarget()
+                    dragging = false
                     invalidate()
                     if (control === this) postDelayed(fade, 900)
                     return true
