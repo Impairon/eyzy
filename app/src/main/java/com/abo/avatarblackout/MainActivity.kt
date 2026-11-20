@@ -476,7 +476,8 @@ class MainActivity : Activity() {
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             if (event.actionMasked == MotionEvent.ACTION_UP && tracking) {
-                onSwipe(if (event.x < downX) -1 else 1)
+                // A physical left swipe advances; a right swipe goes back.
+                onSwipe(if (event.x < downX) 1 else -1)
                 tracking = false
             } else if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
                 tracking = false
@@ -486,7 +487,8 @@ class MainActivity : Activity() {
     }
 
     private fun showShell() {
-        root = FrameLayout(this).apply {
+        // Keep the bottom navigation and horizontal page swipes working together.
+        root = SwipeFrameLayout(this) { direction -> navigate(direction) }.apply {
             setBackgroundColor(backgroundColor)
             layoutDirection = if (currentAppLanguage() == "ar") View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR
         }
