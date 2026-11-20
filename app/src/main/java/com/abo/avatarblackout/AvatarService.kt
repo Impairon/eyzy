@@ -113,7 +113,7 @@ class AvatarService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var pending = false
     private var lastRenderKey: String? = null
-    private val controlIcon by lazy { BitmapFactory.decodeResource(resources, R.drawable.eyes) }
+    private val controlIcon by lazy { BitmapFactory.decodeResource(resources, R.drawable.swizy_logo) }
     private val scan = Runnable { pending = false; doScan() }
     // safety net: rescan every second so a missed event or a dropped overlay recovers by itself
     private val tick = object : Runnable {
@@ -1430,6 +1430,7 @@ class AvatarService : AccessibilityService() {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val icon get() = controlIcon
         private var menu = false
+        private var pressedMenuIndex = -1
         private var downX = 0f
         private var downY = 0f
         private var dragging = false
@@ -1469,41 +1470,96 @@ class AvatarService : AccessibilityService() {
         }
 
         override fun onDraw(canvas: Canvas) {
-            val ballX: Float = if (menu) (width - dp(29)).toFloat() else width / 2f
-            val ballY: Float = height / 2f
+            val ballX = if (menu) (width - dp(29)).toFloat() else width / 2f
+            val ballY = height / 2f
             if (menu) {
-                paint.color = Color.argb(235, 35, 29, 46)
+                val panelRight = (width - dp(58)).toFloat()
+                val panelRect = RectF(0f, 0f, panelRight, height.toFloat())
+                paint.style = Paint.Style.FILL
+                paint.color = Color.rgb(29, 23, 43)
+                canvas.drawRoundRect(panelRect, dp(16).toFloat(), dp(16).toFloat(), paint)
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = dp(1).toFloat()
+                paint.color = Color.rgb(105, 79, 151)
                 canvas.drawRoundRect(
-                    0f, 0f, (width - dp(58)).toFloat(), height.toFloat(),
-                    dp(14).toFloat(), dp(14).toFloat(), paint
+                    RectF(dp(1).toFloat(), dp(1).toFloat(), panelRight - dp(1), height - dp(1).toFloat()),
+                    dp(16).toFloat(), dp(16).toFloat(), paint
                 )
+                paint.style = Paint.Style.FILL
+
+                // A branded first row: the same transparent mascot sits on a plum surface.
+                paint.color = Color.rgb(62, 43, 94)
+                canvas.drawRoundRect(
+                    RectF(dp(7).toFloat(), dp(6).toFloat(), panelRight - dp(7), dp(52).toFloat()),
+                    dp(12).toFloat(), dp(12).toFloat(), paint
+                )
+                if (icon != null) {
+                    canvas.drawBitmap(
+                        icon, null,
+                        RectF(dp(13).toFloat(), dp(12).toFloat(), dp(43).toFloat(), dp(42).toFloat()),
+                        paint
+                    )
+                }
                 paint.color = Color.WHITE
                 paint.textAlign = Paint.Align.LEFT
-                paint.textSize = dp(14).toFloat()
-                canvas.drawText("Add", dp(16).toFloat(), dp(42).toFloat(), paint)
-                canvas.drawText(
+                paint.typeface = android.graphics.Typeface.create(
+                    "sans-serif-medium", android.graphics.Typeface.BOLD
+                )
+                paint.textSize = dp(13).toFloat()
+                canvas.drawText("Add hidden area", dp(51).toFloat(), dp(33).toFloat(), paint)
+
+                val rows = listOf(
                     if (profileCreationId != null) "Save profile" else "Add profile",
-                    dp(16).toFloat(), dp(84).toFloat(), paint
+                    "Remove last added area",
+                    "Remove all black boxes",
+                    "Undo",
+                    "Redo",
+                    if (Prefs.manualHideVisible(this@AvatarService)) "Hide all black boxes" else "Show all black boxes",
+                    "Move black boxes",
+                    "Resize black boxes",
+                    "Close"
                 )
-                canvas.drawText("Remove last added area", dp(16).toFloat(), dp(126).toFloat(), paint)
-                canvas.drawText("Remove all black boxes", dp(16).toFloat(), dp(168).toFloat(), paint)
-                canvas.drawText("Undo", dp(16).toFloat(), dp(210).toFloat(), paint)
-                canvas.drawText("Redo", dp(16).toFloat(), dp(252).toFloat(), paint)
-                canvas.drawText(
-                    if (Prefs.manualHideVisible(this@AvatarService)) "Hide all black boxes"
-                    else "Show all black boxes",
-                    dp(16).toFloat(), dp(294).toFloat(), paint
-                )
-                canvas.drawText("Move black boxes", dp(16).toFloat(), dp(336).toFloat(), paint)
-                canvas.drawText("Resize black boxes", dp(16).toFloat(), dp(378).toFloat(), paint)
-                canvas.drawText("Close", dp(16).toFloat(), dp(420).toFloat(), paint)
+                val rowTop = dp(58)
+                val rowHeight = dp(44)
+                rows.forEachIndexed { index, label ->
+                    val top = rowTop + index * rowHeight
+                    val bottom = top + rowHeight - dp(2)
+                    if (pressedMenuIndex == index + 1) {
+                        paint.color = Color.rgb(68, 49, 101)
+                        canvas.drawRoundRect(
+                            RectF(dp(7).toFloat(), top.toFloat(), panelRight - dp(7), bottom.toFloat()),
+                            dp(9).toFloat(), dp(9).toFloat(), paint
+                        )
+                    }
+                    paint.color = if (index == rows.lastIndex) Color.rgb(213, 190, 255)
+                        else Color.rgb(238, 233, 247)
+                    paint.textSize = dp(12).toFloat()
+                    paint.typeface = android.graphics.Typeface.create(
+                        "sans-serif", android.graphics.Typeface.NORMAL
+                    )
+                    canvas.drawText(label, dp(16).toFloat(), (top + dp(27)).toFloat(), paint)
+                    if (index < rows.lastIndex) {
+                        paint.color = Color.argb(55, 190, 170, 225)
+                        canvas.drawLine(
+                            dp(14).toFloat(), bottom.toFloat(),
+                            panelRight - dp(14), bottom.toFloat(), paint
+                        )
+                    }
+                }
             }
-            paint.color = purple()
-            canvas.drawCircle(ballX, ballY, dp(26).toFloat(), paint)
+
+            paint.style = Paint.Style.FILL
+            paint.color = Color.rgb(139, 92, 246)
+            canvas.drawCircle(ballX, ballY, dp(27).toFloat(), paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = dp(1.5f).toInt().toFloat()
+            paint.color = Color.rgb(205, 183, 255)
+            canvas.drawCircle(ballX, ballY, dp(27).toFloat(), paint)
+            paint.style = Paint.Style.FILL
             if (icon != null) {
                 canvas.drawBitmap(
                     icon, null,
-                    RectF(ballX - dp(15), ballY - dp(15), ballX + dp(15), ballY + dp(15)),
+                    RectF(ballX - dp(16), ballY - dp(16), ballX + dp(16), ballY + dp(16)),
                     paint
                 )
             }
@@ -1511,12 +1567,18 @@ class AvatarService : AccessibilityService() {
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             if (event.actionMasked == MotionEvent.ACTION_OUTSIDE && menu) {
+                pressedMenuIndex = -1
                 collapseMenu()
                 wake()
                 return true
             }
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    if (menu && event.x < width - dp(58)) {
+                        pressedMenuIndex = ((event.y - dp(58)) / dp(44)).toInt() + 1
+                        if (event.y < dp(58)) pressedMenuIndex = 0
+                        invalidate()
+                    }
                     wake()
                     removeCallbacks(fade)
                     touchStartX = event.rawX
@@ -1563,7 +1625,7 @@ class AvatarService : AccessibilityService() {
                         lp.height = dp(457)
                         lp.x = (lp.x - dp(192)).coerceAtLeast(0)
                         lp.y = (menuOriginY - (lp.height - dp(58)) / 2).coerceIn(
-                            0, resources.displayMetrics.heightPixels - lp.height
+                            0, (resources.displayMetrics.heightPixels - lp.height).coerceAtLeast(0)
                         )
                         translationX = 0f
                         lp.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -1579,19 +1641,20 @@ class AvatarService : AccessibilityService() {
                             return true
                         }
                         val y = event.y
+                        pressedMenuIndex = -1
                         when {
                             y < dp(58) -> beginManualHideSelection()
-                            y < dp(100) -> {
+                            y < dp(102) -> {
                                 if (profileCreationId != null) saveProfileCreation()
                                 else beginProfileCreation()
                             }
-                            y < dp(142) -> removeLastManualArea()
-                            y < dp(184) -> removeAllManualAreas()
-                            y < dp(226) -> undoManualChange()
-                            y < dp(268) -> redoManualChange()
-                            y < dp(310) -> toggleManualAreas()
-                            y < dp(352) -> beginManualAreaMove()
-                            y < dp(394) -> beginManualAreaResize()
+                            y < dp(146) -> removeLastManualArea()
+                            y < dp(190) -> removeAllManualAreas()
+                            y < dp(234) -> undoManualChange()
+                            y < dp(278) -> redoManualChange()
+                            y < dp(322) -> toggleManualAreas()
+                            y < dp(366) -> beginManualAreaMove()
+                            y < dp(410) -> beginManualAreaResize()
                             else -> closeManualSession()
                         }
                         if (control != null && manualSessionActive) {
