@@ -103,9 +103,10 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        registerSensors()
         if (::content.isInitialized) {
             openPage(currentPage)
+        } else {
+            registerSensors()
         }
     }
 
@@ -285,6 +286,15 @@ class MainActivity : Activity() {
         private var hasGeomagnetic = false
         private var gravityTimestamp = 0L
         private var magneticTimestamp = 0L
+
+        fun resetSamples() {
+            hasGravity = false
+            hasGeomagnetic = false
+            gravityTimestamp = 0L
+            magneticTimestamp = 0L
+            gravity.fill(0f)
+            geomagnetic.fill(0f)
+        }
 
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
             if (sensor?.type == Sensor.TYPE_MAGNETIC_FIELD) {
@@ -497,6 +507,13 @@ class MainActivity : Activity() {
             }
         }
         currentPage = page.mod(5)
+        if (currentPage == 3) {
+            // Re-register on every Qibla entry so Android restarts the sensor
+            // stream and we wait for fresh readings instead of reusing stale state.
+            unregisterSensors()
+            accelMagListener.resetSamples()
+            registerSensors()
+        }
         menu.visibility = View.GONE
         when (currentPage) {
             0 -> showLowery()
