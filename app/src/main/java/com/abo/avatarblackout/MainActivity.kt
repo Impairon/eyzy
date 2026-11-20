@@ -877,11 +877,11 @@ class MainActivity : Activity() {
         private var alignedSince = 0L
         private var lastStatus = ""
         var statusListener: ((String, Boolean) -> Unit)? = null
-        private val accent = Color.rgb(139, 92, 246)
-        private val secondaryColor = Color.rgb(177, 166, 194)
-        private val borderColor = Color.rgb(79, 64, 99)
-        private val panelColor = Color.rgb(35, 29, 46)
-        private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(28, 23, 38) }
+        private val accent = purple
+        private val secondaryColor = secondary
+        private val borderColor = border
+        private val panelColor = panel
+        private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = panelRaised }
         private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = dp(2).toFloat()
@@ -1762,7 +1762,7 @@ class MainActivity : Activity() {
         typeface = Typeface.DEFAULT_BOLD
         background = GradientDrawable().apply {
             cornerRadius = dp(14).toFloat()
-            setStroke(dp(1), Color.rgb(188, 162, 255))
+            setStroke(dp(1), Color.rgb(230, 176, 148))
             colors = intArrayOf(purple, Color.rgb(153, 91, 67))
         }
         layoutParams = LinearLayout.LayoutParams(-1, dp(48)).apply {
