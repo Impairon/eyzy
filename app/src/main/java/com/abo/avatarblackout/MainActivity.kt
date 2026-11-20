@@ -26,6 +26,7 @@ import android.os.Bundle
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -66,6 +67,11 @@ class MainActivity : Activity() {
     private var compassAzimuth = 0f
     private var compassTilt = 0f
     private var compassInitialized = false
+    private var lastHeadingTimestampNanos = 0L
+    private var compassAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
+    private var measuredMagneticFieldUt: Float? = null
+    private var expectedMagneticFieldUt: Float? = null
+    private var magneticFieldDisturbed = false
     private var compassView: CompassView? = null
     private var displayRotation = Surface.ROTATION_0
     private var accelSensor: Sensor? = null
@@ -110,34 +116,83 @@ class MainActivity : Activity() {
         if (sensorManager == null) {
             sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
         }
-        displayRotation = if (Build.VERSION.SDK_INT >= 30) {
+        displayRotation = currentDisplayRotation()
+        compassInitialized = false
+        lastHeadingTimestampNanos = 0L
+        compassAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
+        measuredMagneticFieldUt = null
+        magneticFieldDisturbed = false
+
+        rotationSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+            ?: sensorManager?.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR)
+        accelSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        magSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+
+        if (rotationSensor != null) {
+            sensorManager?.registerListener(
+                sensorListener, rotationSensor, SensorManager.SENSOR_DELAY_GAME
+            )
+            // Monitor raw magnetic-field strength as an independent interference hint.
+            // This is diagnostic only; the fused rotation-vector sensor still supplies heading.
+            if (magSensor != null) {
+                sensorManager?.registerListener(
+                    magneticMonitorListener, magSensor, SensorManager.SENSOR_DELAY_NORMAL
+                )
+            }
+        } else if (accelSensor != null && magSensor != null) {
+            sensorManager?.registerListener(
+                accelMagListener, accelSensor, SensorManager.SENSOR_DELAY_GAME
+            )
+            sensorManager?.registerListener(
+                accelMagListener, magSensor, SensorManager.SENSOR_DELAY_GAME
+            )
+        }
+        compassView?.setSensorState(false, compassAccuracy, magneticFieldDisturbed)
+    }
+
+    private fun currentDisplayRotation(): Int =
+        if (Build.VERSION.SDK_INT >= 30) {
             display?.rotation ?: Surface.ROTATION_0
         } else {
             @Suppress("DEPRECATION")
             windowManager?.defaultDisplay?.rotation ?: Surface.ROTATION_0
         }
-        rotationSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-            ?: sensorManager?.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR)
-        if (rotationSensor != null) {
-            sensorManager?.registerListener(sensorListener, rotationSensor, SensorManager.SENSOR_DELAY_UI)
-        } else {
-            accelSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-            magSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
-            if (accelSensor != null && magSensor != null) {
-                sensorManager?.registerListener(accelMagListener, accelSensor, SensorManager.SENSOR_DELAY_UI)
-                sensorManager?.registerListener(accelMagListener, magSensor, SensorManager.SENSOR_DELAY_UI)
-            }
-        }
-    }
 
     private fun unregisterSensors() {
         sensorManager?.unregisterListener(sensorListener)
         sensorManager?.unregisterListener(accelMagListener)
+        sensorManager?.unregisterListener(magneticMonitorListener)
+        compassInitialized = false
+        lastHeadingTimestampNanos = 0L
+        compassView?.setSensorState(false, compassAccuracy, magneticFieldDisturbed)
     }
 
-    private fun updateHeadingFromMatrix(R: FloatArray) {
-        val (xAxis, yAxis) = when (displayRotation) {
-            Surface.ROTATION_0 -> SensorManager.AXIS_X to SensorManager.AXIS_Y
+    private fun updateMagneticField(values: FloatArray) {
+        if (values.size < 3) return
+        val x = values[0]
+        val y = values[1]
+        val z = values[2]
+        if (!x.isFinite() || !y.isFinite() || !z.isFinite()) return
+
+        val measured = Math.sqrt((x * x + y * y + z * z).toDouble()).toFloat()
+        if (!measured.isFinite() || measured <= 0f) return
+        measuredMagneticFieldUt = measured
+
+        val expected = expectedMagneticFieldUt
+        // A broad tolerance avoids treating normal model/device variation as a fault.
+        // It detects strong anomalies, but cannot detect every directional magnetic distortion.
+        magneticFieldDisturbed = expected != null &&
+            kotlin.math.abs(measured - expected) > maxOf(15f, expected * 0.30f)
+
+        compassView?.setSensorState(
+            compassInitialized, compassAccuracy, magneticFieldDisturbed
+        )
+    }
+
+    private fun updateHeadingFromMatrix(R: FloatArray, timestampNanos: Long) {
+        // Display remapping makes the heading refer to the displayed top edge.
+        val rotation = currentDisplayRotation().also { displayRotation = it }
+        val (xAxis, yAxis) = when (rotation) {
             Surface.ROTATION_90 -> SensorManager.AXIS_Y to SensorManager.AXIS_MINUS_X
             Surface.ROTATION_180 -> SensorManager.AXIS_MINUS_X to SensorManager.AXIS_MINUS_Y
             Surface.ROTATION_270 -> SensorManager.AXIS_MINUS_Y to SensorManager.AXIS_X
@@ -149,31 +204,61 @@ class MainActivity : Activity() {
         val orientation = FloatArray(3)
         SensorManager.getOrientation(remapped, orientation)
 
-        val rawAzimuth = (Math.toDegrees(orientation[0].toDouble()).toFloat() + 360) % 360
-        val rawTilt = Math.toDegrees(Math.acos(remapped[8].toDouble().coerceIn(-1.0, 1.0))).toFloat()
+        // Android's rotation matrix supplies tilt-compensated magnetic azimuth.
+        // Keep this magnetic heading paired with the magnetic Qibla target.
+        val rawMagneticAzimuth = QiblaMath.normalize360(
+            Math.toDegrees(orientation[0].toDouble()).toFloat()
+        )
+        val pitchDegrees = Math.toDegrees(orientation[1].toDouble()).toFloat()
+        val rollDegrees = Math.toDegrees(orientation[2].toDouble()).toFloat()
+        val now = if (timestampNanos > 0L) timestampNanos else SystemClock.elapsedRealtimeNanos()
 
-        compassAzimuth = if (!compassInitialized) {
+        if (!compassInitialized) {
+            compassAzimuth = rawMagneticAzimuth
             compassInitialized = true
-            rawAzimuth
         } else {
-            val diff = ((rawAzimuth - compassAzimuth + 540) % 360) - 180
-            compassAzimuth + diff * 0.35f
+            val elapsedSeconds = ((now - lastHeadingTimestampNanos).coerceAtLeast(1L)) / 1_000_000_000f
+            val alpha = (1f - Math.exp((-elapsedSeconds / 0.24f).toDouble()).toFloat())
+                .coerceIn(0.04f, 0.42f)
+            val delta = QiblaMath.normalizeSigned(rawMagneticAzimuth - compassAzimuth)
+            val responsiveAlpha = if (kotlin.math.abs(delta) > 70f) maxOf(alpha, 0.34f) else alpha
+            compassAzimuth = QiblaMath.smoothAngle(
+                compassAzimuth, rawMagneticAzimuth, responsiveAlpha
+            )
+            compassTilt += (kotlin.math.abs(pitchDegrees) - compassTilt) * 0.18f
         }
-        compassTilt = if (!compassInitialized) rawTilt else compassTilt + (rawTilt - compassTilt) * 0.2f
-        compassView?.setAzimuth(compassAzimuth % 360f)
-        compassView?.setTilt(compassTilt)
+        if (!compassTilt.isFinite()) compassTilt = kotlin.math.abs(pitchDegrees)
+        lastHeadingTimestampNanos = now
+
+        compassView?.setHeading(
+            compassAzimuth, compassTilt, compassAccuracy, magneticFieldDisturbed
+        )
     }
 
     private val sensorListener = object : SensorEventListener {
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-            compassView?.setAccuracy(accuracy)
+            compassAccuracy = accuracy
+            compassView?.setSensorState(
+                compassInitialized, compassAccuracy, magneticFieldDisturbed
+            )
         }
         override fun onSensorChanged(event: SensorEvent) {
             if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR ||
                 event.sensor.type == Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR) {
-                val R = FloatArray(9)
-                SensorManager.getRotationMatrixFromVector(R, event.values)
-                updateHeadingFromMatrix(R)
+                val matrix = FloatArray(9)
+                SensorManager.getRotationMatrixFromVector(matrix, event.values)
+                updateHeadingFromMatrix(matrix, event.timestamp)
+            }
+        }
+    }
+
+    private val magneticMonitorListener = object : SensorEventListener {
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+            // Keep the rotation-vector accuracy as the main heading quality indicator.
+        }
+        override fun onSensorChanged(event: SensorEvent) {
+            if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
+                updateMagneticField(event.values)
             }
         }
     }
@@ -181,23 +266,46 @@ class MainActivity : Activity() {
     private val accelMagListener = object : SensorEventListener {
         private val gravity = FloatArray(3)
         private val geomagnetic = FloatArray(3)
+        private var hasGravity = false
+        private var hasGeomagnetic = false
+        private var gravityTimestamp = 0L
+        private var magneticTimestamp = 0L
+
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-            compassView?.setAccuracy(accuracy)
+            compassAccuracy = accuracy
+            compassView?.setSensorState(
+                compassInitialized, compassAccuracy, magneticFieldDisturbed
+            )
         }
         override fun onSensorChanged(event: SensorEvent) {
             when (event.sensor.type) {
                 Sensor.TYPE_ACCELEROMETER -> {
-                    val a = 0.8f
-                    gravity[0] = a * gravity[0] + (1 - a) * event.values[0]
-                    gravity[1] = a * gravity[1] + (1 - a) * event.values[1]
-                    gravity[2] = a * gravity[2] + (1 - a) * event.values[2]
+                    if (event.values.size < 3) return
+                    val a = 0.82f
+                    if (!hasGravity) {
+                        System.arraycopy(event.values, 0, gravity, 0, 3)
+                        hasGravity = true
+                    } else {
+                        for (i in 0..2) gravity[i] = a * gravity[i] + (1f - a) * event.values[i]
+                    }
+                    gravityTimestamp = event.timestamp
                 }
-                Sensor.TYPE_MAGNETIC_FIELD ->
+                Sensor.TYPE_MAGNETIC_FIELD -> {
+                    if (event.values.size < 3) return
                     System.arraycopy(event.values, 0, geomagnetic, 0, 3)
+                    hasGeomagnetic = true
+                    magneticTimestamp = event.timestamp
+                    updateMagneticField(event.values)
+                }
             }
-            val R = FloatArray(9)
-            if (SensorManager.getRotationMatrix(R, null, gravity, geomagnetic)) {
-                updateHeadingFromMatrix(R)
+
+            if (!hasGravity || !hasGeomagnetic) return
+            val now = maxOf(gravityTimestamp, magneticTimestamp)
+            if (now - minOf(gravityTimestamp, magneticTimestamp) > 1_000_000_000L) return
+
+            val matrix = FloatArray(9)
+            if (SensorManager.getRotationMatrix(matrix, null, gravity, geomagnetic)) {
+                updateHeadingFromMatrix(matrix, now)
             }
         }
     }
@@ -515,14 +623,37 @@ class MainActivity : Activity() {
                 it.addView(help)
                 return@card
             }
-            val bearing = qiblaBearing(lat, lon)
+            if (!lat.isFinite() || lat !in -90.0..90.0 ||
+                lon == null || !lon.isFinite() || lon !in -180.0..180.0
+            ) {
+                addText(it, "The saved location is invalid. Update it from the Prayers page.")
+                val help = actionButton("Go to Prayers")
+                help.setOnClickListener { openPage(2) }
+                it.addView(help)
+                return@card
+            }
+
+            val geo = GeomagneticField(
+                lat.toFloat(), lon.toFloat(), 0f, System.currentTimeMillis()
+            )
+            expectedMagneticFieldUt = geo.fieldStrength / 1000f
+            val trueBearing = QiblaMath.initialBearing(lat, lon)
+            // Android's orientation azimuth is magnetic. Compare it with a
+            // magnetic Qibla target, not a true-north target.
+            val magneticBearing = QiblaMath.magneticBearingFromTrue(
+                trueBearing, geo.declination.toDouble()
+            ).toFloat()
+
             val compass = CompassView(this).apply {
-                setQiblaBearing(bearing.toFloat())
-                setAzimuth(compassAzimuth)
+                setQiblaBearing(magneticBearing)
+                setHeading(
+                    compassAzimuth, compassTilt, compassAccuracy, magneticFieldDisturbed,
+                    compassInitialized
+                )
             }
             compassView = compass
             val info = TextView(this).apply {
-                text = "Qibla bearing: ${String.format(Locale.US, "%.1f", bearing)}° from North"
+                text = "Qibla from true north: ${String.format(Locale.US, "%.1f", trueBearing)}°"
                 textSize = 15f
                 setTextColor(purple)
                 typeface = Typeface.DEFAULT_BOLD
@@ -531,10 +662,12 @@ class MainActivity : Activity() {
             }
             it.addView(info)
             val headingText = TextView(this).apply {
-                textSize = 13f
+                textSize = 14f
+                typeface = Typeface.DEFAULT_BOLD
                 setTextColor(secondary)
                 gravity = Gravity.CENTER
-                setPadding(0, 0, 0, dp(8))
+                setPadding(dp(8), 0, dp(8), dp(10))
+                minHeight = dp(40)
             }
             it.addView(headingText)
             it.addView(compass, LinearLayout.LayoutParams(-1, dp(300)).apply {
@@ -548,12 +681,21 @@ class MainActivity : Activity() {
                 setPadding(0, dp(8), 0, dp(4))
             }
             it.addView(coords)
-            addText(it, "Point the top edge of your phone toward the purple arrow. Turn until the arrow points straight up and the green Aligned message appears. Hold your phone at any comfortable angle — the compass compensates for tilt.")
-            if (rotationSensor == null && accelSensor == null) {
-                addText(it, "No compass sensor found on this device. The arrow shows the Qibla bearing from North but will not rotate with your phone.")
+            addText(
+                it,
+                "Hold the phone at your comfortable upward angle (around 45° is fine). Keep the screen facing you and use the top edge as the forward direction. The compass compensates for tilt."
+            )
+            if (rotationSensor == null && (accelSensor == null || magSensor == null)) {
+                addText(it, "A live compass sensor is unavailable. The calculated Qibla bearing is shown, but the arrow cannot track your phone.")
             }
-            compass.headingListener = { az ->
-                headingText.text = "Your heading: ${String.format(Locale.US, "%.1f", az)}°"
+            compass.statusListener = { message, reliable ->
+                headingText.text = message
+                headingText.setTextColor(
+                    if (reliable) Color.rgb(34, 197, 94)
+                    else if (message.contains("interference", true) ||
+                        message.contains("weak", true) || message.contains("unreliable", true)
+                    ) Color.rgb(249, 115, 22) else secondary
+                )
             }
         })
         content.addView(card("About Qibla") {
@@ -561,33 +703,16 @@ class MainActivity : Activity() {
         })
     }
 
-    private fun qiblaBearing(lat: Double, lon: Double): Double {
-        val kaabaLat = Math.toRadians(21.4225)
-        val kaabaLon = Math.toRadians(39.8262)
-        val userLat = Math.toRadians(lat)
-        val userLon = Math.toRadians(lon)
-        val dLon = kaabaLon - userLon
-        val y = Math.sin(dLon) * Math.cos(kaabaLat)
-        val x = Math.cos(userLat) * Math.sin(kaabaLat) -
-            Math.sin(userLat) * Math.cos(kaabaLat) * Math.cos(dLon)
-        val trueBearing = Math.toDegrees(Math.atan2(y, x))
-        val magNorthBearing = (trueBearing + 360) % 360
-        val geo = GeomagneticField(
-            lat.toFloat(),
-            lon.toFloat(),
-            0f,
-            System.currentTimeMillis()
-        )
-        val declination = geo.declination
-        return ((magNorthBearing - declination + 360) % 360)
-    }
-
     private inner class CompassView(c: android.content.Context) : View(c) {
         private var azimuth = 0f
         private var qiblaBearing = 0f
         private var tilt = 0f
         private var accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
-        var headingListener: ((Float) -> Unit)? = null
+        private var hasLiveHeading = false
+        private var magneticFieldDisturbed = false
+        private var alignedSince = 0L
+        private var lastStatus = ""
+        var statusListener: ((String, Boolean) -> Unit)? = null
         private val accent = Color.rgb(139, 92, 246)
         private val secondaryColor = Color.rgb(177, 166, 194)
         private val borderColor = Color.rgb(79, 64, 99)
@@ -606,25 +731,77 @@ class MainActivity : Activity() {
         }
         private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-        fun setAzimuth(deg: Float) {
-            azimuth = deg
-            headingListener?.invoke(deg)
-            invalidate()
-        }
-
         fun setQiblaBearing(deg: Float) {
-            qiblaBearing = deg
+            qiblaBearing = QiblaMath.normalize360(deg)
+            updateGuidance()
             invalidate()
         }
 
-        fun setTilt(deg: Float) {
-            tilt = deg
+        fun setHeading(
+            heading: Float,
+            tiltDegrees: Float,
+            sensorAccuracy: Int,
+            fieldDisturbed: Boolean,
+            live: Boolean = true
+        ) {
+            azimuth = QiblaMath.normalize360(heading)
+            tilt = tiltDegrees
+            accuracy = sensorAccuracy
+            magneticFieldDisturbed = fieldDisturbed
+            hasLiveHeading = live
+            updateGuidance()
             invalidate()
         }
 
-        fun setAccuracy(acc: Int) {
-            accuracy = acc
+        fun setSensorState(live: Boolean, sensorAccuracy: Int, fieldDisturbed: Boolean) {
+            hasLiveHeading = live
+            accuracy = sensorAccuracy
+            magneticFieldDisturbed = fieldDisturbed
+            if (!live || fieldDisturbed || sensorAccuracy < SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM) {
+                alignedSince = 0L
+            }
+            updateGuidance()
             invalidate()
+        }
+
+        private fun updateGuidance() {
+            val now = SystemClock.elapsedRealtime()
+            val difference = QiblaMath.relativeQiblaAngle(qiblaBearing, azimuth)
+            val absoluteDifference = kotlin.math.abs(difference)
+            val reliable = hasLiveHeading &&
+                accuracy >= SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM &&
+                !magneticFieldDisturbed
+
+            val message = when {
+                !hasLiveHeading ->
+                    "Finding compass direction…"
+                magneticFieldDisturbed ->
+                    "Magnetic interference detected. Move away from your laptop, magnets or metal."
+                accuracy == SensorManager.SENSOR_STATUS_UNRELIABLE ->
+                    "Compass is unreliable. Move away from electronics, then slowly move the phone in a figure-eight."
+                accuracy < SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM ->
+                    "Compass signal is weak. Move away from metal and electronics."
+                absoluteDifference <= 5f -> {
+                    if (alignedSince == 0L) alignedSince = now
+                    if (now - alignedSince >= 900L) "Facing Qibla"
+                    else "Hold steady — checking alignment…"
+                }
+                else -> {
+                    alignedSince = 0L
+                    when {
+                        absoluteDifference >= 160f -> "Qibla is behind you — turn around."
+                        difference > 0f -> "Turn right ${absoluteDifference.toInt()}°"
+                        else -> "Turn left ${absoluteDifference.toInt()}°"
+                    }
+                }
+            }
+
+            if (message != lastStatus) {
+                lastStatus = message
+                statusListener?.invoke(message, reliable && message == "Facing Qibla")
+            } else if (message == "Facing Qibla") {
+                statusListener?.invoke(message, true)
+            }
         }
 
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -706,10 +883,11 @@ class MainActivity : Activity() {
             canvas.drawCircle(cx, cy, dp(4).toFloat(), needlePaint)
 
             // Accuracy dot
-            val accColor = when (accuracy) {
-                SensorManager.SENSOR_STATUS_ACCURACY_HIGH -> Color.rgb(34, 197, 94)
-                SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM -> Color.rgb(250, 204, 21)
-                SensorManager.SENSOR_STATUS_ACCURACY_LOW -> Color.rgb(249, 115, 22)
+            val accColor = when {
+                magneticFieldDisturbed -> Color.rgb(249, 115, 22)
+                accuracy == SensorManager.SENSOR_STATUS_ACCURACY_HIGH -> Color.rgb(34, 197, 94)
+                accuracy == SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM -> Color.rgb(250, 204, 21)
+                accuracy == SensorManager.SENSOR_STATUS_ACCURACY_LOW -> Color.rgb(249, 115, 22)
                 else -> Color.rgb(239, 68, 68)
             }
             dotPaint.color = accColor
@@ -720,17 +898,8 @@ class MainActivity : Activity() {
             labelPaint.color = secondaryColor
             canvas.drawText("Tilt: ${tilt.toInt()}°", cx, cy + dp(44), labelPaint)
 
-            val diff = ((qiblaBearing - azimuth + 360) % 360)
-            val aligned = (diff < 3f || diff > 357f) && accuracy >= SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM
-            if (aligned) {
-                labelPaint.color = Color.rgb(34, 197, 94)
-                labelPaint.textSize = dp(14).toFloat()
-                canvas.drawText("Aligned with Qibla", cx, height.toFloat() - dp(6), labelPaint)
-            } else if (accuracy < SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM) {
-                labelPaint.color = Color.rgb(239, 68, 68)
-                labelPaint.textSize = dp(12).toFloat()
-                canvas.drawText("Figure-8 to calibrate", cx, height.toFloat() - dp(6), labelPaint)
-            }
+            // The alignment message is rendered in the live status line above the dial.
+            // It is deliberately not inferred from one noisy frame here.
         }
     }
 
