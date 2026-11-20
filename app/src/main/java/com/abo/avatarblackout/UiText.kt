@@ -5,6 +5,7 @@ object UiText {
         "Lowery" to "لويري", "Sibha" to "السبحة", "Prayers" to "الصلاة",
         "Qibla" to "القبلة", "Settings" to "الإعدادات", "Language" to "اللغة",
         "App lock" to "قفل التطبيق",
+        "Lock app with fingerprint" to "قفل التطبيق بالبصمة",
         "Protect Swizy when you open it. It locks again after 60 seconds in the background." to "احمِ سويزي عند فتحه. يُقفل مجددًا بعد ٦٠ ثانية من بقائه في الخلفية.",
         "Swizy is locked" to "سويزي مقفل", "Authenticate to continue." to "أكّد هويتك للمتابعة.",
         "Unlock with fingerprint" to "فتح بالبصمة", "Use device PIN or password" to "استخدام رمز أو كلمة مرور الجهاز",
