@@ -134,22 +134,23 @@ class MainActivity : Activity() {
     }
 
     private fun updateHeadingFromMatrix(R: FloatArray) {
-        val fwdX: Float
-        val fwdY: Float
-        when (displayRotation) {
-            Surface.ROTATION_90 -> { fwdX = -R[0]; fwdY = -R[3] }
-            Surface.ROTATION_180 -> { fwdX = R[1]; fwdY = R[4] }
-            Surface.ROTATION_270 -> { fwdX = R[0]; fwdY = R[3] }
-            else -> { fwdX = -R[1]; fwdY = -R[4] }
+        val (xAxis, yAxis) = when (displayRotation) {
+            Surface.ROTATION_0 -> SensorManager.AXIS_X to SensorManager.AXIS_Y
+            Surface.ROTATION_90 -> SensorManager.AXIS_Y to SensorManager.AXIS_MINUS_X
+            Surface.ROTATION_180 -> SensorManager.AXIS_MINUS_X to SensorManager.AXIS_MINUS_Y
+            Surface.ROTATION_270 -> SensorManager.AXIS_MINUS_Y to SensorManager.AXIS_X
+            else -> SensorManager.AXIS_X to SensorManager.AXIS_Y
         }
-        val horizMag = Math.sqrt((fwdX * fwdX + fwdY * fwdY).toDouble()).toFloat()
-        if (horizMag < 0.01f) return
-        val rawAzimuth = (Math.toDegrees(
-            Math.atan2(fwdX.toDouble(), fwdY.toDouble())
-        ).toFloat() + 360) % 360
-        // Tilt: 0 = flat on table, 90 = upright
-        val rawTilt = Math.toDegrees(Math.acos(R[8].toDouble().coerceIn(-1.0, 1.0))).toFloat()
-        compassAzimuth = if (compassAzimuth == 0f) rawAzimuth else {
+        val remapped = FloatArray(9)
+        if (!SensorManager.remapCoordinateSystem(R, xAxis, yAxis, remapped)) return
+
+        val orientation = FloatArray(3)
+        SensorManager.getOrientation(remapped, orientation)
+
+        val rawAzimuth = (Math.toDegrees(orientation[0].toDouble()).toFloat() + 360) % 360
+        val rawTilt = Math.toDegrees(Math.acos(remapped[8].toDouble().coerceIn(-1.0, 1.0))).toFloat()
+
+        compassAzimuth = if (compassAzimuth == 0f && rawAzimuth == 0f) rawAzimuth else {
             val diff = ((rawAzimuth - compassAzimuth + 540) % 360) - 180
             compassAzimuth + diff * 0.2f
         }
@@ -526,7 +527,7 @@ class MainActivity : Activity() {
                 setPadding(0, dp(8), 0, dp(4))
             }
             it.addView(coords)
-            addText(it, "Hold your phone at any comfortable angle — flat on a table, tilted, or upright. The compass automatically compensates for tilt. Turn until the purple arrow points straight up and the green Aligned message appears.")
+            addText(it, "Point the top edge of your phone toward the purple arrow. Turn until the arrow points straight up and the green Aligned message appears. Hold your phone at any comfortable angle — the compass compensates for tilt.")
             if (rotationSensor == null && accelSensor == null) {
                 addText(it, "No compass sensor found on this device. The arrow shows the Qibla bearing from North but will not rotate with your phone.")
             }
@@ -686,7 +687,7 @@ class MainActivity : Activity() {
             canvas.drawText("Tilt: ${tilt.toInt()}°", cx, cy + dp(44), labelPaint)
 
             val diff = ((qiblaBearing - azimuth + 360) % 360)
-            val aligned = diff < 3f || diff > 357f
+            val aligned = (diff < 3f || diff > 357f) && accuracy >= SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM
             if (aligned) {
                 labelPaint.color = Color.rgb(34, 197, 94)
                 labelPaint.textSize = dp(14).toFloat()
