@@ -1677,10 +1677,12 @@ class AvatarService : AccessibilityService() {
                         val targetX = if (left) 0 else
                             (resources.displayMetrics.widthPixels - width).coerceAtLeast(0)
                         animate().cancel()
-                        animate().x(targetX.toFloat()).setDuration(170)
+                        val settleOffset = targetX - lp.x
+                        animate().translationX(settleOffset.toFloat()).setDuration(170)
                             .setInterpolator(android.view.animation.DecelerateInterpolator())
                             .withEndAction {
                                 lp.x = targetX
+                                translationX = 0f
                                 runCatching { wm.updateViewLayout(this, lp) }
                                 getSharedPreferences("avb", Context.MODE_PRIVATE).edit()
                                     .putInt("control_x_${this@AvatarService.orientationKey()}", lp.x)
