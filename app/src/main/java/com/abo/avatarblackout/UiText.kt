@@ -65,7 +65,20 @@ object UiText {
         "Enable location services or enter coordinates." to "فعّل خدمات الموقع أو أدخل الإحداثيات يدويًا.",
         "Finding your location…" to "جارٍ تحديد موقعك…",
         "Location unavailable. Enter coordinates instead." to "الموقع غير متاح. أدخل الإحداثيات يدويًا.",
-        "Open Qibla compass" to "فتح بوصلة القبلة"
+        "Open Qibla compass" to "فتح بوصلة القبلة",
+        "Fajr" to "الفجر", "Sunrise" to "الشروق", "Dhuhr" to "الظهر",
+        "Asr" to "العصر", "Maghrib" to "المغرب", "Isha" to "العشاء",
+        "Latitude, e.g. 30.0444" to "خط العرض، مثال 30.0444",
+        "Longitude, e.g. 31.2357" to "خط الطول، مثال 31.2357",
+        "Create profiles from the paw menu: choose Add profile in the target app, draw your boxes, then choose Save profile. swizy will apply that profile automatically whenever the app is open." to "أنشئ الملفات الشخصية من قائمة أداة سويزي داخل التطبيق المستهدف: اختر إضافة ملف، وارسم مناطق الإخفاء، ثم احفظ الملف. سيُطبّق سويزي الإعداد تلقائيًا عند فتح التطبيق.",
+        "swizy 1.7.0" to "سويزي 1.7.0",
+        "Changelog: faster scanning, rotation fixes, Qibla compass, refined UI, per-orientation control position." to "التغييرات: فحص أسرع، إصلاحات للدوران، بوصلة القبلة، وتحسينات للواجهة ومواقع عناصر التحكم.",
+        "Crash logs are stored locally and are never uploaded automatically." to "تُحفظ سجلات الأعطال على الجهاز ولا يتم رفعها تلقائيًا.",
+        "Layouts exported" to "تم تصدير الإعدادات", "Layouts imported" to "تم استيراد الإعدادات",
+        "Change the announcement voice" to "تغيير صوت الإعلان",
+        "Open Android Settings" to "فتح إعدادات أندرويد",
+        "Close" to "إغلاق",
+        "Open Android Settings, then search for Text-to-speech output." to "افتح إعدادات أندرويد ثم ابحث عن إخراج تحويل النص إلى كلام."
     )
 
     fun translate(value: String, language: String): String {
@@ -79,6 +92,7 @@ object UiText {
                 .replace("Field:", "المجال:").replace("Good", "جيد")
                 .replace("Medium", "متوسط").replace("Low", "ضعيف").replace("Unreliable", "غير موثوق")
             value.startsWith("Your location: ") -> value.replaceFirst("Your location:", "موقعك:")
+            value.startsWith("Qibla from true north: ") -> value.replaceFirst("Qibla from true north:", "اتجاه القبلة من الشمال الحقيقي:")
             value.startsWith("Magnetic interference suspected") -> "يُشتبه بوجود تداخل مغناطيسي. ابتعد عن الحاسوب والمعادن."
             value.startsWith("Backup failed: ") -> "فشل النسخ الاحتياطي: " + value.removePrefix("Backup failed: ")
             else -> value
