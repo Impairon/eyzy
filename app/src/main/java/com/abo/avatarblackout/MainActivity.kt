@@ -680,6 +680,30 @@ class MainActivity : Activity() {
             it.addView(compass, LinearLayout.LayoutParams(-1, dp(300)).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             })
+            val diagnosticsText = TextView(this).apply {
+                textSize = 11f
+                setTextColor(secondary)
+                gravity = Gravity.CENTER
+                setPadding(dp(4), dp(2), dp(4), dp(6))
+            }
+            it.addView(diagnosticsText)
+            fun updateCompassDiagnostics() {
+                val heading = if (compassInitialized) {
+                    String.format(Locale.US, "%.1f°", compassAzimuth)
+                } else "--"
+                val field = measuredMagneticFieldUt?.let {
+                    String.format(Locale.US, "%.1f", it)
+                } ?: "--"
+                val quality = when (compassAccuracy) {
+                    SensorManager.SENSOR_STATUS_ACCURACY_HIGH -> "Good"
+                    SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM -> "Medium"
+                    SensorManager.SENSOR_STATUS_ACCURACY_LOW -> "Low"
+                    else -> "Unreliable"
+                }
+                diagnosticsText.text =
+                    "Heading: $heading magnetic · Tilt: ${compassTilt.toInt()}° · Field: $field µT · $quality"
+            }
+            updateCompassDiagnostics()
             val coords = TextView(this).apply {
                 text = "Your location: ${String.format(Locale.US, "%.4f", lat)}, ${String.format(Locale.US, "%.4f", lon)}"
                 textSize = 13f
@@ -703,6 +727,7 @@ class MainActivity : Activity() {
                         message.contains("weak", true) || message.contains("unreliable", true)
                     ) Color.rgb(249, 115, 22) else secondary
                 )
+                updateCompassDiagnostics()
             }
             compass.setSensorAvailable(
                 rotationSensor != null || (accelSensor != null && magSensor != null)
