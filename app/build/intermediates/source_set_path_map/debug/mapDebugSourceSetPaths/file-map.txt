@@ -1,7 +1,0 @@
-com.abo.avatarblackout.app-pngs-0 /home/aboayman/blackopsy/avatar-blackout/eyzy/app/build/generated/res/pngs/debug
-com.abo.avatarblackout.app-resValues-1 /home/aboayman/blackopsy/avatar-blackout/eyzy/app/build/generated/res/resValues/debug
-com.abo.avatarblackout.app-packageDebugResources-2 /home/aboayman/blackopsy/avatar-blackout/eyzy/app/build/intermediates/incremental/debug/packageDebugResources/merged.dir
-com.abo.avatarblackout.app-packageDebugResources-3 /home/aboayman/blackopsy/avatar-blackout/eyzy/app/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
-com.abo.avatarblackout.app-debug-4 /home/aboayman/blackopsy/avatar-blackout/eyzy/app/build/intermediates/merged_res/debug/mergeDebugResources
-com.abo.avatarblackout.app-debug-5 /home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/debug/res
-com.abo.avatarblackout.app-main-6 /home/aboayman/blackopsy/avatar-blackout/eyzy/app/src/main/res
