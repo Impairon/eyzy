@@ -236,38 +236,26 @@ class AvatarService : AccessibilityService() {
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
         if (!Prefs.isEnabled(this)) return
         val eventPkg = e?.packageName?.toString() ?: ""
-        // Detect keyboard open/close instantly via input method window events
         val kbTop = keyboardTop() ?: 0
         if (kbTop != lastKeyboardTop) {
             lastKeyboardTop = kbTop
-            pending = true
-            handler.removeCallbacks(scan)
-            handler.post(scan)
+            scheduleScan(0L)
             return
         }
-        if (pending) return
+        // Event package names can arrive late during rapid app switching. Keep them as hints;
+        // the focused application window is resolved again in doScan().
         if (eventPkg.isNotBlank() &&
             eventPkg != applicationContext.packageName &&
             eventPkg != "com.android.systemui") {
-            if (eventPkg != lastEventPackage) {
-                lastEventPackage = eventPkg
-                activePackage = eventPkg
-                invalidateProfileCache()
-                if (hasProfileCached()) {
-                    Prefs.setManualHideVisible(this, true)
-                }
-            }
-            // For known target apps, scan immediately — no debounce
-            if (eventPkg in TARGETS || hasProfileCached()) {
-                pending = true
-                handler.removeCallbacks(scan)
-                handler.post(scan)
-                return
-            }
+            lastEventPackage = eventPkg
         }
+        scheduleScan(55L)
+    }
+
+    private fun scheduleScan(delay: Long) {
         pending = true
         handler.removeCallbacks(scan)
-        handler.postDelayed(scan, 30L)
+        if (delay <= 0L) handler.post(scan) else handler.postDelayed(scan, delay)
     }
 
     fun refresh() {
@@ -713,7 +701,8 @@ class AvatarService : AccessibilityService() {
         if (!Prefs.isEnabled(this) || !manualSessionActive) return
         val packageName = activePackage
         val hadProfile = Prefs.hasProfileForPackage(this, packageName)
-        val profile = Prefs.addProfile(
+        val existing = Prefs.profileForPackage(this, packageName)
+        val profile = if (hadProfile) existing else Prefs.addProfile(
             this,
             "Profile ${packageName.substringAfterLast('.')}",
             packageName
@@ -721,7 +710,10 @@ class AvatarService : AccessibilityService() {
         profileCreationId = profile.id
         profileCreationNew = !hadProfile
         manualSessionProfileId = profile.id
-        profileCaptureRects = mutableListOf()
+        profileCaptureRects = if (hadProfile) {
+            Prefs.profileHideRects(this, profile.id, orientationKey())
+                .map { Rect(it) }.toMutableList()
+        } else mutableListOf()
         removeControl()
         addControl()
         control?.invalidate()
@@ -844,25 +836,20 @@ class AvatarService : AccessibilityService() {
     private fun doScan() {
         try {
             ensureOverlay()
-            // If the last event already told us the package, trust it instead of the expensive
-            // windows scan. Only call foregroundPackage() as a fallback when we have no event info.
-            if (lastEventPackage.isNotBlank() && lastEventPackage != activePackage) {
-                activePackage = lastEventPackage
+            // Resolve the focused app every scan. Accessibility events are only hints and can
+            // be stale when the user leaves and re-enters an app quickly.
+            val detectedPackage = foregroundPackage()
+                ?: lastEventPackage.takeIf {
+                    it.isNotBlank() &&
+                    it != applicationContext.packageName &&
+                    it != "com.android.systemui"
+                }
+                ?: ""
+            if (detectedPackage != activePackage) {
+                activePackage = detectedPackage
                 invalidateProfileCache()
-                if (hasProfileCached()) {
-                    Prefs.setManualHideVisible(this, true)
-                }
+                if (hasProfileCached()) Prefs.setManualHideVisible(this, true)
                 Log.d(TAG, "foreground package changed to $activePackage")
-            } else if (lastEventPackage.isBlank()) {
-                val detectedPackage = foregroundPackage() ?: ""
-                if (detectedPackage != activePackage) {
-                    activePackage = detectedPackage
-                    invalidateProfileCache()
-                    if (hasProfileCached()) {
-                        Prefs.setManualHideVisible(this, true)
-                    }
-                    Log.d(TAG, "foreground package changed to $activePackage")
-                }
             }
             val out = ArrayList<Item>()
             val hasActiveProfile = hasProfileCached()
@@ -1462,11 +1449,18 @@ class AvatarService : AccessibilityService() {
         }
 
         private fun dock() {
-            if (menu) return
-            val lp = layoutParams as? WindowManager.LayoutParams
-            val onLeft = (lp?.x ?: 0) < resources.displayMetrics.widthPixels / 2
-            animate().translationX(if (onLeft) -dp(20).toFloat() else dp(20).toFloat())
-                .alpha(idleAlpha()).setDuration(300).start()
+            if (menu || dragging || !isAttachedToWindow) return
+            val lp = layoutParams as? WindowManager.LayoutParams ?: return
+            val screenWidth = resources.displayMetrics.widthPixels
+            val leftEdge = lp.x + width / 2 < screenWidth / 2
+            lp.x = if (leftEdge) 0 else (screenWidth - width).coerceAtLeast(0)
+            runCatching { wm.updateViewLayout(this, lp) }
+            animate().cancel()
+            animate()
+                .translationX(if (leftEdge) -dp(20).toFloat() else dp(20).toFloat())
+                .alpha(idleAlpha())
+                .setDuration(180)
+                .start()
         }
 
         override fun onDraw(canvas: Canvas) {
@@ -1509,12 +1503,11 @@ class AvatarService : AccessibilityService() {
                 paint.textSize = dp(13).toFloat()
                 canvas.drawText("Add hidden area", dp(51).toFloat(), dp(33).toFloat(), paint)
 
+                val hasProfile = Prefs.hasProfileForPackage(this@AvatarService, activePackage)
                 val rows = listOf(
-                    if (profileCreationId != null) "Save profile" else "Add profile",
+                    if (profileCreationId != null) "Save profile" else if (hasProfile) "Edit profile" else "Add profile",
                     "Remove last added area",
                     "Remove all black boxes",
-                    "Undo",
-                    "Redo",
                     if (Prefs.manualHideVisible(this@AvatarService)) "Hide all black boxes" else "Show all black boxes",
                     "Move black boxes",
                     "Resize black boxes",
@@ -1623,7 +1616,7 @@ class AvatarService : AccessibilityService() {
                         menuOriginX = lp.x
                         menuOriginY = lp.y
                         lp.width = dp(250)
-                        lp.height = dp(457)
+                        lp.height = dp(58 + 7 * 44)
                         lp.x = (lp.x - dp(192)).coerceAtLeast(0)
                         lp.y = (menuOriginY - (lp.height - dp(58)) / 2).coerceIn(
                             0, (resources.displayMetrics.heightPixels - lp.height).coerceAtLeast(0)
@@ -1651,11 +1644,9 @@ class AvatarService : AccessibilityService() {
                             }
                             y < dp(146) -> removeLastManualArea()
                             y < dp(190) -> removeAllManualAreas()
-                            y < dp(234) -> undoManualChange()
-                            y < dp(278) -> redoManualChange()
-                            y < dp(322) -> toggleManualAreas()
-                            y < dp(366) -> beginManualAreaMove()
-                            y < dp(410) -> beginManualAreaResize()
+                            y < dp(234) -> toggleManualAreas()
+                            y < dp(278) -> beginManualAreaMove()
+                            y < dp(322) -> beginManualAreaResize()
                             else -> closeManualSession()
                         }
                         if (control === this && manualSessionActive) {
