@@ -1320,7 +1320,7 @@ class MainActivity : Activity() {
         }
         header.addView(arrow)
         header.addView(TextView(this).apply {
-            text = title
+            text = translate(title)
             textSize = 18f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
@@ -1532,6 +1532,8 @@ class MainActivity : Activity() {
             it.addView(refresh)
         })
         if (Prefs.prayerDate(this) != date) updatePrayerTimes(Prefs.useGps(this), Prefs.latitude(this), Prefs.longitude(this))
+        localizeTree(content)
+        refreshNavigation()
     }
 
     private fun updatePrayerTimes(useGps: Boolean, latitudeText: String, longitudeText: String) {
@@ -1688,7 +1690,7 @@ class MainActivity : Activity() {
 
     private fun addText(parent: LinearLayout, text: String) {
         parent.addView(TextView(this).apply {
-            this.text = text
+            this.text = translate(text)
             textSize = 14f
             setTextColor(secondary)
             setPadding(0, dp(8), 0, dp(8))
@@ -1729,7 +1731,7 @@ class MainActivity : Activity() {
     }
 
     private fun actionButton(text: String) = Button(this).apply {
-        this.text = text
+        this.text = translate(text)
         isAllCaps = false
         minHeight = dp(48)
         setPadding(dp(14), 0, dp(14), 0)
@@ -1747,7 +1749,7 @@ class MainActivity : Activity() {
 
     private fun addMenuItem(text: String, action: () -> Unit) {
         menu.addView(Button(this).apply {
-            this.text = text
+            this.text = translate(text)
             textSize = 16f
             minHeight = dp(48)
             setTextColor(Color.WHITE)
@@ -1770,7 +1772,7 @@ class MainActivity : Activity() {
     private fun optionAdapter(values: Array<String>) =
         object : ArrayAdapter<String>(this, 0, values) {
             private fun row(position: Int) = TextView(this@MainActivity).apply {
-                text = values[position]
+                text = translate(values[position])
                 textSize = 15f
                 setTextColor(Color.WHITE)
                 gravity = Gravity.CENTER_VERTICAL
