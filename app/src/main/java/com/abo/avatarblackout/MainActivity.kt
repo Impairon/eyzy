@@ -215,6 +215,7 @@ class MainActivity : Activity() {
 
         if (!compassInitialized) {
             compassAzimuth = rawMagneticAzimuth
+            compassTilt = kotlin.math.abs(pitchDegrees)
             compassInitialized = true
         } else {
             val elapsedSeconds = ((now - lastHeadingTimestampNanos).coerceAtLeast(1L)) / 1_000_000_000f
@@ -662,6 +663,7 @@ class MainActivity : Activity() {
             }
             it.addView(info)
             val headingText = TextView(this).apply {
+                text = "Finding compass direction…"
                 textSize = 14f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(secondary)
@@ -697,6 +699,7 @@ class MainActivity : Activity() {
                     ) Color.rgb(249, 115, 22) else secondary
                 )
             }
+            compass.refreshStatus()
         })
         content.addView(card("About Qibla") {
             addText(it, "The Qibla is the direction faced during prayer, toward the Kaaba in Mecca. The compass shows this direction relative to north as detected by your phone.")
@@ -781,7 +784,7 @@ class MainActivity : Activity() {
                     "Compass is unreliable. Move away from electronics, then slowly move the phone in a figure-eight."
                 accuracy < SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM ->
                     "Compass signal is weak. Move away from metal and electronics."
-                absoluteDifference <= 5f -> {
+                absoluteDifference <= if (alignedSince == 0L) 5f else 8f -> {
                     if (alignedSince == 0L) alignedSince = now
                     if (now - alignedSince >= 900L) "Facing Qibla"
                     else "Hold steady — checking alignment…"
@@ -796,12 +799,13 @@ class MainActivity : Activity() {
                 }
             }
 
-            if (message != lastStatus) {
-                lastStatus = message
-                statusListener?.invoke(message, reliable && message == "Facing Qibla")
-            } else if (message == "Facing Qibla") {
-                statusListener?.invoke(message, true)
-            }
+            lastStatus = message
+            statusListener?.invoke(message, reliable && message == "Facing Qibla")
+        }
+
+        fun refreshStatus() {
+            lastStatus = ""
+            updateGuidance()
         }
 
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
