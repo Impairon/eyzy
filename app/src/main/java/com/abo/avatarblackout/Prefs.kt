@@ -32,6 +32,8 @@ object Prefs {
     private const val KEY_CONTROL_OPACITY = "control_opacity"
     private const val KEY_BOX_COLOR = "box_color"
     private const val KEY_HEADSET_TIME = "headset_time"
+    private const val KEY_APP_LOCK = "app_lock_enabled"
+    private const val KEY_APP_LOCK_BACKGROUND_AT = "app_lock_backgrounded_at"
 
     enum class TileAction { START_APP, START_APP_AND_PAW }
     enum class BoxColor { BLACK, PURPLE, WHITE }
@@ -71,6 +73,11 @@ object Prefs {
     fun setPerformanceMode(c: Context, enabled: Boolean) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_PERFORMANCE_MODE, enabled).apply()
+
+    fun appLockEnabled(c: Context) = c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_APP_LOCK, false)
+    fun setAppLockEnabled(c: Context, enabled: Boolean) = c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(KEY_APP_LOCK, enabled).apply()
+    fun appLockBackgroundedAt(c: Context) = c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getLong(KEY_APP_LOCK_BACKGROUND_AT, 0L)
+    fun setAppLockBackgroundedAt(c: Context, timestamp: Long) = c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putLong(KEY_APP_LOCK_BACKGROUND_AT, timestamp).apply()
 
     fun headsetTime(c: Context) =
         c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
