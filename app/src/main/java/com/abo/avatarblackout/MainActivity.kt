@@ -211,6 +211,110 @@ class MainActivity : FragmentActivity() {
         unregisterSensors()
     }
 
+    private fun enforceAppLock() {
+        if (!Prefs.appLockEnabled(this)) {
+            unlockedThisSession = true
+            Prefs.setAppLockBackgroundedAt(this, 0L)
+            removeLockOverlay()
+            return
+        }
+        if (deviceCredentialLauncherActive || lockPromptActive) return
+        val backgroundedAt = Prefs.appLockBackgroundedAt(this)
+        val expired = backgroundedAt > 0L && System.currentTimeMillis() - backgroundedAt >= appLockDelayMs
+        if (!unlockedThisSession || expired) {
+            unlockedThisSession = false
+            showLockOverlay()
+            authenticateForApp()
+        } else Prefs.setAppLockBackgroundedAt(this, 0L)
+    }
+
+    private fun showLockOverlay() {
+        if (lockOverlay != null || !::root.isInitialized) return
+        val overlay = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(32), dp(32), dp(32), dp(32))
+            setBackgroundColor(backgroundColor)
+            isClickable = true
+            isFocusable = true
+        }
+        val logo = ImageView(this).apply { setImageResource(R.drawable.swizy_logo); scaleType = ImageView.ScaleType.FIT_CENTER }
+        overlay.addView(logo, LinearLayout.LayoutParams(dp(88), dp(88)).apply { gravity = Gravity.CENTER; bottomMargin = dp(20) })
+        val title = TextView(this).apply { text = translate("Swizy is locked"); textSize = 23f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(Color.WHITE) }
+        overlay.addView(title, LinearLayout.LayoutParams(-1, -2))
+        val message = TextView(this).apply { text = translate("Authenticate to continue."); textSize = 14f; gravity = Gravity.CENTER; setTextColor(secondary); setPadding(0, dp(10), 0, dp(22)) }
+        lockMessage = message
+        overlay.addView(message, LinearLayout.LayoutParams(-1, -2))
+        val retry = actionButton(translate("Unlock with fingerprint")).apply { setOnClickListener { authenticateForApp() } }
+        overlay.addView(retry, LinearLayout.LayoutParams(-1, dp(50)).apply { bottomMargin = dp(10) })
+        val credential = actionButton(translate("Use device PIN or password")).apply { setOnClickListener { launchDeviceCredential() } }
+        overlay.addView(credential, LinearLayout.LayoutParams(-1, dp(50)))
+        root.addView(overlay, FrameLayout.LayoutParams(-1, -1))
+        lockOverlay = overlay
+    }
+
+    private fun showLockMessage(message: String) { if (lockOverlay == null) showLockOverlay(); lockMessage?.text = message }
+    private fun removeLockOverlay() { lockOverlay?.let { (it.parent as? android.view.ViewGroup)?.removeView(it) }; lockOverlay = null; lockMessage = null }
+    private fun unlockApp() {
+        unlockedThisSession = true
+        lockPromptActive = false
+        deviceCredentialLauncherActive = false
+        Prefs.setAppLockBackgroundedAt(this, 0L)
+        removeLockOverlay()
+    }
+
+    private fun isDeviceSecure(): Boolean = (getSystemService(KEYGUARD_SERVICE) as KeyguardManager).isDeviceSecure
+
+    private fun launchDeviceCredential() {
+        if (!Prefs.appLockEnabled(this) || unlockedThisSession || deviceCredentialLauncherActive) return
+        if (!isDeviceSecure()) { showLockMessage(translate("Set a PIN, pattern, or password in Android Settings first.")); return }
+        val intent = (getSystemService(KEYGUARD_SERVICE) as KeyguardManager).createConfirmDeviceCredentialIntent(translate("Unlock Swizy"), translate("Confirm it is you to continue"))
+        if (intent == null) { showLockMessage(translate("Device screen-lock authentication is unavailable.")); return }
+        lockPromptActive = false
+        deviceCredentialLauncherActive = true
+        startActivityForResult(intent, lockRequestCode)
+    }
+
+    private fun authenticateForApp() {
+        if (!Prefs.appLockEnabled(this) || unlockedThisSession || lockPromptActive) return
+        lockPromptActive = true
+        val authenticators = if (Build.VERSION.SDK_INT >= 30) BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL else BiometricManager.Authenticators.BIOMETRIC_STRONG
+        if (BiometricManager.from(this).canAuthenticate(authenticators) != BiometricManager.BIOMETRIC_SUCCESS) {
+            lockPromptActive = false
+            showLockMessage(translate("Fingerprint is unavailable. Use your device screen lock."))
+            if (isDeviceSecure()) launchDeviceCredential()
+            return
+        }
+        val prompt = BiometricPrompt(this, ContextCompat.getMainExecutor(this), object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) { unlockApp() }
+            override fun onAuthenticationFailed() { showLockMessage(translate("Fingerprint not recognized. Try again.")) }
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                lockPromptActive = false
+                if (errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON) launchDeviceCredential()
+                else showLockMessage(translate("Authentication required to open Swizy."))
+            }
+        })
+        val info = BiometricPrompt.PromptInfo.Builder().setTitle(translate("Unlock Swizy")).setSubtitle(translate("Confirm it is you to continue"))
+        if (Build.VERSION.SDK_INT >= 30) info.setAllowedAuthenticators(authenticators)
+        else info.setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG).setNegativeButtonText(translate("Use device PIN or password"))
+        prompt.authenticate(info.build())
+    }
+
+    private fun enableAppLock(enabled: Boolean): Boolean {
+        if (enabled) {
+            val auth = if (Build.VERSION.SDK_INT >= 30) BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL else BiometricManager.Authenticators.BIOMETRIC_STRONG
+            val biometricReady = BiometricManager.from(this).canAuthenticate(auth) == BiometricManager.BIOMETRIC_SUCCESS
+            if (!biometricReady && !isDeviceSecure()) {
+                AlertDialog.Builder(this).setTitle(translate("Set up device security first")).setMessage(translate("Add a fingerprint or a PIN, pattern, or password in Android Settings before enabling the app lock."))
+                    .setPositiveButton(translate("Open Settings")) { _, _ -> startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS)) }
+                    .setNegativeButton(translate("Cancel"), null).show()
+                return false
+            }
+        }
+        Prefs.setAppLockEnabled(this, enabled)
+        if (!enabled) { unlockedThisSession = true; Prefs.setAppLockBackgroundedAt(this, 0L); removeLockOverlay() }
+        return true
+    }
     private fun registerSensors() {
         if (sensorManager == null) {
             sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
