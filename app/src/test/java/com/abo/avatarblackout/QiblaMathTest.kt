@@ -30,7 +30,7 @@ class QiblaMathTest {
     fun normalizationAndSmoothingHandleNorthWraparound() {
         assertEquals(350f, QiblaMath.normalize360(-10f), 0.001f)
         assertEquals(-10f, QiblaMath.normalizeSigned(350f), 0.001f)
-        assertEquals(5f, QiblaMath.smoothAngle(359f, 1f, 0.5f), 0.001f)
+        assertEquals(0f, QiblaMath.smoothAngle(359f, 1f, 0.5f), 0.001f)
     }
 
     @Test(expected = IllegalArgumentException::class)
