@@ -806,9 +806,9 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun showLowery() {
-        pageTitle.text = "swizy"
+        pageTitle.text = "لويري"
         content.removeAllViews()
-        content.addView(card("swizy's touch ✨") {
+        content.addView(card("لويري ✨") {
             addText(it, "swizy protects profile pictures with a narrow bar while keeping chats, buttons, and the keyboard usable.")
             val enabled = Switch(this).apply {
                 text = "swizy is patrol"
