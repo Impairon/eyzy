@@ -128,8 +128,9 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33) {
             getSystemService(LocaleManager::class.java).applicationLocales =
                 LocaleList.forLanguageTags(language)
+        } else {
+            recreate()
         }
-        recreate()
     }
 
     private fun translate(value: String): String =
