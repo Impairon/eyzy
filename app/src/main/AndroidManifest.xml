@@ -13,9 +13,11 @@
     </queries>
 
     <application
-        android:label="swizy"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:icon="@drawable/swizy_logo_with_bg"
+        android:roundIcon="@drawable/swizy_logo_with_bg"
+        android:supportsRtl="true"
+        android:localeConfig="@xml/locales_config"
         android:theme="@style/AppTheme"
         android:allowBackup="false">
 
