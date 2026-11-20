@@ -1236,6 +1236,24 @@ class MainActivity : FragmentActivity() {
             it.addView(language, LinearLayout.LayoutParams(-1, dp(52)))
         }
         content.addView(languageCard)
+        val appLockCard = card("App lock") { cardContent ->
+            addText(cardContent, "Protect Swizy when you open it. It locks again after 60 seconds in the background.")
+            val appLock = Switch(this).apply {
+                text = "قفل التطبيق بالبصمة"
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                isChecked = Prefs.appLockEnabled(this@MainActivity)
+                setOnCheckedChangeListener { button, checked ->
+                    if (!enableAppLock(checked)) {
+                        button.setOnCheckedChangeListener(null)
+                        button.isChecked = false
+                        button.setOnCheckedChangeListener { _, next -> enableAppLock(next) }
+                    }
+                }
+            }
+            cardContent.addView(appLock)
+        }
+        content.addView(appLockCard)
         // Keep the existing controls intact while presenting them in a calmer visual hierarchy.
         content.addView(collapsibleSection("swizy", defaultOpen = true) { section ->
             addText(section, "Control how swizy masks profile pictures.")
