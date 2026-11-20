@@ -1488,7 +1488,8 @@ class AvatarService : AccessibilityService() {
                 paint.style = Paint.Style.FILL
 
                 // A branded first row: the same transparent mascot sits on a plum surface.
-                paint.color = Color.rgb(62, 43, 94)
+                paint.color = if (pressedMenuIndex == 0) Color.rgb(82, 58, 124)
+                    else Color.rgb(62, 43, 94)
                 canvas.drawRoundRect(
                     RectF(dp(7).toFloat(), dp(6).toFloat(), panelRight - dp(7), dp(52).toFloat()),
                     dp(12).toFloat(), dp(12).toFloat(), paint
@@ -1657,12 +1658,18 @@ class AvatarService : AccessibilityService() {
                             y < dp(410) -> beginManualAreaResize()
                             else -> closeManualSession()
                         }
-                        if (control != null && manualSessionActive) {
+                        if (control === this && manualSessionActive) {
                             collapseMenu()
                         }
-                        wake()
+                        if (control === this) wake()
                     }
 
+                    return true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    pressedMenuIndex = -1
+                    invalidate()
+                    if (control === this) postDelayed(fade, 900)
                     return true
                 }
             }
