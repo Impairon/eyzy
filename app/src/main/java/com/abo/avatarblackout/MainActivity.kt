@@ -71,6 +71,8 @@ class MainActivity : Activity() {
     private var compassAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
     private var measuredMagneticFieldUt: Float? = null
     private var expectedMagneticFieldUt: Float? = null
+    private var magneticDisturbanceSamples = 0
+    private var magneticClearSamples = 0
     private var magneticFieldDisturbed = false
     private var compassView: CompassView? = null
     private var displayRotation = Surface.ROTATION_0
@@ -121,6 +123,8 @@ class MainActivity : Activity() {
         lastHeadingTimestampNanos = 0L
         compassAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
         measuredMagneticFieldUt = null
+        magneticDisturbanceSamples = 0
+        magneticClearSamples = 0
         magneticFieldDisturbed = false
 
         rotationSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
@@ -179,10 +183,20 @@ class MainActivity : Activity() {
         measuredMagneticFieldUt = measured
 
         val expected = expectedMagneticFieldUt
-        // A broad tolerance avoids treating normal model/device variation as a fault.
-        // It detects strong anomalies, but cannot detect every directional magnetic distortion.
-        magneticFieldDisturbed = expected != null &&
-            kotlin.math.abs(measured - expected) > maxOf(15f, expected * 0.30f)
+        if (expected != null) {
+            // Require repeated out-of-range samples to avoid warnings flickering on noise.
+            // The broad tolerance detects gross anomalies, not every directional distortion.
+            val suspicious = kotlin.math.abs(measured - expected) > maxOf(12f, expected * 0.25f)
+            if (suspicious) {
+                magneticDisturbanceSamples++
+                magneticClearSamples = 0
+                if (magneticDisturbanceSamples >= 3) magneticFieldDisturbed = true
+            } else {
+                magneticClearSamples++
+                magneticDisturbanceSamples = 0
+                if (magneticClearSamples >= 5) magneticFieldDisturbed = false
+            }
+        }
 
         compassView?.setSensorState(
             compassInitialized, compassAccuracy, magneticFieldDisturbed
@@ -642,6 +656,8 @@ class MainActivity : Activity() {
             )
             expectedMagneticFieldUt = geo.fieldStrength / 1000f
             measuredMagneticFieldUt = null
+            magneticDisturbanceSamples = 0
+            magneticClearSamples = 0
             magneticFieldDisturbed = false
             val trueBearing = QiblaMath.initialBearing(lat, lon)
             // Android's orientation azimuth is magnetic. Compare it with a
