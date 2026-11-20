@@ -245,6 +245,7 @@ class MainActivity : Activity() {
         override fun onSensorChanged(event: SensorEvent) {
             if (event.sensor.type == Sensor.TYPE_ROTATION_VECTOR ||
                 event.sensor.type == Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR) {
+                compassAccuracy = event.accuracy
                 val matrix = FloatArray(9)
                 SensorManager.getRotationMatrixFromVector(matrix, event.values)
                 updateHeadingFromMatrix(matrix, event.timestamp)
@@ -272,10 +273,12 @@ class MainActivity : Activity() {
         private var magneticTimestamp = 0L
 
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-            compassAccuracy = accuracy
-            compassView?.setSensorState(
-                compassInitialized, compassAccuracy, magneticFieldDisturbed
-            )
+            if (sensor?.type == Sensor.TYPE_MAGNETIC_FIELD) {
+                compassAccuracy = accuracy
+                compassView?.setSensorState(
+                    compassInitialized, compassAccuracy, magneticFieldDisturbed
+                )
+            }
         }
         override fun onSensorChanged(event: SensorEvent) {
             when (event.sensor.type) {
@@ -292,6 +295,7 @@ class MainActivity : Activity() {
                 }
                 Sensor.TYPE_MAGNETIC_FIELD -> {
                     if (event.values.size < 3) return
+                    compassAccuracy = event.accuracy
                     System.arraycopy(event.values, 0, geomagnetic, 0, 3)
                     hasGeomagnetic = true
                     magneticTimestamp = event.timestamp
@@ -637,6 +641,8 @@ class MainActivity : Activity() {
                 lat.toFloat(), lon.toFloat(), 0f, System.currentTimeMillis()
             )
             expectedMagneticFieldUt = geo.fieldStrength / 1000f
+            measuredMagneticFieldUt = null
+            magneticFieldDisturbed = false
             val trueBearing = QiblaMath.initialBearing(lat, lon)
             // Android's orientation azimuth is magnetic. Compare it with a
             // magnetic Qibla target, not a true-north target.
@@ -799,7 +805,7 @@ class MainActivity : Activity() {
                     }
                 }
                 accuracy == SensorManager.SENSOR_STATUS_UNRELIABLE ->
-                    "Compass is unreliable. Move away from electronics, then slowly move the phone in a figure-eight."
+                    "Compass is unreliable. Move away from laptops, magnets and metal, then hold still while it settles."
                 accuracy < SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM ->
                     "Compass signal is weak. Move away from metal and electronics."
                 absoluteDifference <= (if (alignedSince == 0L) 5f else 8f) -> {
