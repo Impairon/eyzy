@@ -95,8 +95,15 @@ class MainActivity : Activity() {
     )
 
     override fun attachBaseContext(newBase: Context) {
-        val language = newBase.getSharedPreferences("avb", Context.MODE_PRIVATE)
+        val savedLanguage = newBase.getSharedPreferences("avb", Context.MODE_PRIVATE)
             .getString("app_language", "ar") ?: "ar"
+        val platformLanguage = if (Build.VERSION.SDK_INT >= 33) {
+            runCatching {
+                val locales = newBase.getSystemService(LocaleManager::class.java).applicationLocales
+                if (!locales.isEmpty) locales[0].language else null
+            }.getOrNull()
+        } else null
+        val language = platformLanguage?.takeIf { it.isNotBlank() } ?: savedLanguage
         val locale = Locale.forLanguageTag(language)
         Locale.setDefault(locale)
         val configuration = Configuration(newBase.resources.configuration).apply {
@@ -106,8 +113,13 @@ class MainActivity : Activity() {
         super.attachBaseContext(newBase.createConfigurationContext(configuration))
     }
 
-    private fun currentAppLanguage(): String =
-        getSharedPreferences("avb", MODE_PRIVATE).getString("app_language", "ar") ?: "ar"
+    private fun currentAppLanguage(): String {
+        if (Build.VERSION.SDK_INT >= 33) {
+            val locales = getSystemService(LocaleManager::class.java).applicationLocales
+            if (!locales.isEmpty) return locales[0].language
+        }
+        return getSharedPreferences("avb", MODE_PRIVATE).getString("app_language", "ar") ?: "ar"
+    }
 
     private fun changeAppLanguage(language: String) {
         if (language == currentAppLanguage()) return
