@@ -1,6 +1,7 @@
 package com.abo.avatarblackout
 
 import android.app.Activity
+import android.app.KeyguardManager
 import android.app.LocaleManager
 import android.app.AlertDialog
 import android.Manifest
@@ -53,8 +54,12 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.concurrent.thread
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 
-class MainActivity : Activity() {
+class MainActivity : FragmentActivity() {
     // Swizy's violet identity: deep plum surfaces keep the accent vivid without glare.
     private val purple = Color.rgb(139, 92, 246) // #8B5CF6
     private val backgroundColor = Color.rgb(17, 14, 27) // #110E1B
@@ -69,6 +74,13 @@ class MainActivity : Activity() {
     private lateinit var navigationBar: LinearLayout
     private val navigationItems = mutableListOf<Pair<Int, TextView>>()
     private var currentPage = 0
+    private var unlockedThisSession = false
+    private var lockPromptActive = false
+    private var deviceCredentialLauncherActive = false
+    private var lockOverlay: LinearLayout? = null
+    private var lockMessage: TextView? = null
+    private val appLockDelayMs = 60_000L
+    private val lockRequestCode = 4401
     private var sensorManager: SensorManager? = null
     private var rotationSensor: Sensor? = null
     private var compassAzimuth = 0f
