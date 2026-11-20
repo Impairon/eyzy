@@ -23,3 +23,24 @@ android {
 dependencies {
     testImplementation("junit:junit:4.13.2")
 }
+
+// Keep the brand artwork in the repository root as the single source of truth.
+// These generated Android resources are copied from the two supplied logo variants.
+val copySwizyBrandAssets by tasks.registering(Sync::class) {
+    from(rootProject.file("katakito_no_background.png")) {
+        into("drawable-nodpi")
+        rename { "swizy_logo.png" }
+    }
+    from(rootProject.file("katakito.png")) {
+        into("drawable-nodpi")
+        rename { "swizy_logo_with_bg.png" }
+    }
+    into(layout.buildDirectory.dir("generated/res/swizyBrand"))
+}
+
+android.sourceSets.getByName("main").res.srcDir(
+    layout.buildDirectory.dir("generated/res/swizyBrand")
+)
+tasks.named("preBuild").configure {
+    dependsOn(copySwizyBrandAssets)
+}
