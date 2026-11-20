@@ -804,8 +804,9 @@ class MainActivity : Activity() {
                     SensorManager.SENSOR_STATUS_ACCURACY_LOW -> "Low"
                     else -> "Unreliable"
                 }
-                diagnosticsText.text =
+                diagnosticsText.text = translate(
                     "Heading: $heading magnetic · Tilt: ${compassTilt.toInt()}° · Field: $field µT · $quality"
+                )
             }
             updateCompassDiagnostics()
             val coords = TextView(this).apply {
@@ -1054,7 +1055,7 @@ class MainActivity : Activity() {
             // Tilt indicator
             labelPaint.textSize = dp(12).toFloat()
             labelPaint.color = secondaryColor
-            canvas.drawText("Tilt: ${tilt.toInt()}°", cx, cy + dp(44), labelPaint)
+            canvas.drawText(if (currentAppLanguage() == "ar") "الميل: ${tilt.toInt()}°" else "Tilt: ${tilt.toInt()}°", cx, cy + dp(44), labelPaint)
 
             // The alignment message is rendered in the live status line above the dial.
             // It is deliberately not inferred from one noisy frame here.
@@ -1711,7 +1712,7 @@ class MainActivity : Activity() {
             setTextColor(secondary)
         }
         fun update(number: Int) {
-            value.text = "$label: ${number}${if (label.contains("opacity", true)) "%" else " dp"}"
+            value.text = "${translate(label)}: ${number}${if (label.contains("opacity", true)) "%" else " dp"}"
             onChanged(number)
         }
         val slider = SeekBar(this).apply {
