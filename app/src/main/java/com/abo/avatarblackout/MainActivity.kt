@@ -1239,7 +1239,7 @@ class MainActivity : FragmentActivity() {
         val appLockCard = card("App lock") { cardContent ->
             addText(cardContent, "Protect Swizy when you open it. It locks again after 60 seconds in the background.")
             val appLock = Switch(this).apply {
-                text = "قفل التطبيق بالبصمة"
+                text = translate("Lock app with fingerprint")
                 textSize = 16f
                 setTextColor(Color.WHITE)
                 isChecked = Prefs.appLockEnabled(this@MainActivity)
