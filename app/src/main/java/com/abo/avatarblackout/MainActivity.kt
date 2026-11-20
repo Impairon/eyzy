@@ -55,13 +55,13 @@ import java.util.Locale
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
-    // Warm, restrained ink palette: the logo supplies the personality.
-    private val purple = Color.rgb(194, 126, 91)
-    private val backgroundColor = Color.rgb(27, 25, 23)
-    private val panel = Color.rgb(38, 35, 32)
-    private val panelRaised = Color.rgb(49, 45, 41)
-    private val border = Color.rgb(76, 68, 60)
-    private val secondary = Color.rgb(190, 178, 164)
+    // Swizy's violet identity: deep plum surfaces keep the accent vivid without glare.
+    private val purple = Color.rgb(139, 92, 246) // #8B5CF6
+    private val backgroundColor = Color.rgb(17, 14, 27) // #110E1B
+    private val panel = Color.rgb(27, 23, 42) // #1B172A
+    private val panelRaised = Color.rgb(39, 33, 58) // #27213A
+    private val border = Color.rgb(65, 55, 91) // #41375B
+    private val secondary = Color.rgb(190, 181, 211) // soft lavender
     private lateinit var content: LinearLayout
     private lateinit var menu: LinearLayout
     private lateinit var pageTitle: TextView
@@ -692,7 +692,7 @@ class MainActivity : Activity() {
             setPadding(dp(20), dp(28), dp(20), dp(28))
             background = GradientDrawable().apply {
                 orientation = GradientDrawable.Orientation.TL_BR
-                colors = intArrayOf(Color.rgb(95, 60, 40), Color.rgb(60, 38, 25))
+                colors = intArrayOf(Color.rgb(61, 43, 103), Color.rgb(31, 24, 53))
                 cornerRadius = dp(18).toFloat()
             }
         }
@@ -700,7 +700,7 @@ class MainActivity : Activity() {
             text = "SIBHA"
             textSize = 14f
             letterSpacing = .18f
-            setTextColor(Color.rgb(244, 211, 157))
+            setTextColor(Color.rgb(220, 204, 255))
         }
         val count = TextView(this).apply {
             textSize = 64f
@@ -1763,8 +1763,8 @@ class MainActivity : Activity() {
         typeface = Typeface.DEFAULT_BOLD
         background = GradientDrawable().apply {
             cornerRadius = dp(14).toFloat()
-            setStroke(dp(1), Color.rgb(230, 176, 148))
-            colors = intArrayOf(purple, Color.rgb(153, 91, 67))
+            setStroke(dp(1), Color.rgb(183, 156, 255))
+            colors = intArrayOf(purple, Color.rgb(105, 65, 205))
         }
         layoutParams = LinearLayout.LayoutParams(-1, dp(48)).apply {
             setMargins(0, dp(5), 0, dp(5))
@@ -1789,7 +1789,7 @@ class MainActivity : Activity() {
 
     private fun styledSpinner() = Spinner(this).apply {
         background = outlined(panelRaised, border, 12)
-        setPopupBackgroundDrawable(outlined(Color.rgb(28, 23, 38), border, 12))
+        setPopupBackgroundDrawable(outlined(panel, border, 12))
         setPadding(dp(12), 0, dp(12), 0)
     }
 
