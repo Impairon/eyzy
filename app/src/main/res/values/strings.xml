@@ -1,3 +1,4 @@
 <resources>
-    <string name="service_desc">swizy protects profile pictures in supported apps when enabled.</string>
+    <string name="app_name">Swizy</string>
+    <string name="service_desc">Swizy protects profile pictures in supported apps when enabled.</string>
 </resources>
