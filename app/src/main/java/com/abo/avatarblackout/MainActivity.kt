@@ -189,6 +189,21 @@ class MainActivity : FragmentActivity() {
         } else {
             registerSensors()
         }
+        enforceAppLock()
+    }
+
+    override fun onStop() {
+        if (Prefs.appLockEnabled(this)) Prefs.setAppLockBackgroundedAt(this, System.currentTimeMillis())
+        super.onStop()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == lockRequestCode) {
+            deviceCredentialLauncherActive = false
+            if (resultCode == RESULT_OK) unlockApp()
+            else showLockMessage(translate("Authentication required to open Swizy."))
+        }
     }
 
     override fun onPause() {
