@@ -660,10 +660,10 @@ class MainActivity : Activity() {
             manual.setOnClickListener {
                 val service = AvatarService.instance
                 if (service == null || !Prefs.isEnabled(this)) {
-                    Toast.makeText(this, "Enable the swizy accessibility service first", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, translate("Enable the swizy accessibility service first"), Toast.LENGTH_LONG).show()
                 } else {
                     service.summonManualHideControl()
-                    Toast.makeText(this, "Use the ball menu, then choose Add", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, translate("Use the ball menu, then choose Add"), Toast.LENGTH_LONG).show()
                 }
             }
             it.addView(manual)
@@ -1192,7 +1192,7 @@ class MainActivity : Activity() {
             val save = actionButton("Save Sibha reminder")
             save.setOnClickListener {
                 Prefs.setSibhaPeepEvery(this@MainActivity, peep.text.toString().toIntOrNull() ?: 0)
-                Toast.makeText(this, "Sibha reminder saved", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, translate("Sibha reminder saved"), Toast.LENGTH_SHORT).show()
             }
             section.addView(save)
         })
@@ -1251,7 +1251,7 @@ class MainActivity : Activity() {
             testTime.setOnClickListener {
                 val service = AvatarService.instance
                 if (service != null) service.announceCurrentTime()
-                else Toast.makeText(this, "Turn on the swizy accessibility service first", Toast.LENGTH_SHORT).show()
+                else Toast.makeText(this, translate("Turn on the swizy accessibility service first"), Toast.LENGTH_SHORT).show()
             }
             section.addView(testTime)
         })
@@ -1415,7 +1415,7 @@ class MainActivity : Activity() {
                 contentResolver.openOutputStream(data.data!!)?.use { stream ->
                     OutputStreamWriter(stream).use { it.write(Prefs.exportData(this)) }
                 }
-                Toast.makeText(this, "Layouts exported", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, translate("Layouts exported"), Toast.LENGTH_SHORT).show()
             } else if (requestCode == IMPORT_REQUEST) {
                 val json = contentResolver.openInputStream(data.data!!)?.use {
                     InputStreamReader(it).use { reader -> reader.readText() }
@@ -1423,7 +1423,7 @@ class MainActivity : Activity() {
                 Prefs.importData(this, json)
                 AvatarService.instance?.refresh()
                 showSettings()
-                Toast.makeText(this, "Layouts imported", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, translate("Layouts imported"), Toast.LENGTH_SHORT).show()
             }
         }.onFailure {
             Toast.makeText(this, "Backup failed: ${it.message}", Toast.LENGTH_LONG).show()
@@ -1556,7 +1556,7 @@ class MainActivity : Activity() {
             val lat = latitudeText.toDoubleOrNull()
             val lon = longitudeText.toDoubleOrNull()
             if (lat == null || lon == null || lat !in -90.0..90.0 || lon !in -180.0..180.0) {
-                Toast.makeText(this, "Enter valid latitude and longitude", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, translate("Enter valid latitude and longitude"), Toast.LENGTH_LONG).show()
                 return
             }
             lat to lon
@@ -1569,16 +1569,16 @@ class MainActivity : Activity() {
     }
 
     private fun fetchPrayerTimesFor(latitude: Double, longitude: Double) {
-        Toast.makeText(this, "Updating prayer times…", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, translate("Updating prayer times…"), Toast.LENGTH_SHORT).show()
         thread(name = "prayer-update") {
             val result = fetchPrayerTimes(latitude, longitude)
             runOnUiThread {
                 if (result != null) {
                     Prefs.setPrayerCache(this, todayKey(), result.toString())
                     showPrayers()
-                    Toast.makeText(this, "Prayer times updated", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, translate("Prayer times updated"), Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(this, "Could not update. Cached times remain available.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, translate("Could not update. Cached times remain available."), Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -1589,10 +1589,10 @@ class MainActivity : Activity() {
                 val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
                     .filter { runCatching { manager.isProviderEnabled(it) }.getOrDefault(false) }
                 if (providers.isEmpty()) {
-                    Toast.makeText(this, "Enable location services or enter coordinates.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, translate("Enable location services or enter coordinates."), Toast.LENGTH_LONG).show()
                     return
                 }
-                Toast.makeText(this, "Finding your location…", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, translate("Finding your location…"), Toast.LENGTH_SHORT).show()
                 var finished = false
                 val listener = object : LocationListener {
                     override fun onLocationChanged(location: Location) {
@@ -1609,7 +1609,7 @@ class MainActivity : Activity() {
                     if (!finished) {
                         finished = true
                         runCatching { manager.removeUpdates(listener) }
-                        Toast.makeText(this, "Location unavailable. Enter coordinates instead.", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this, translate("Location unavailable. Enter coordinates instead."), Toast.LENGTH_LONG).show()
                     }
                 }, 15_000L)
     }
