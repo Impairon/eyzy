@@ -12,6 +12,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.drawable.GradientDrawable
+import android.hardware.GeomagneticField
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -64,6 +65,7 @@ class MainActivity : Activity() {
     private var rotationSensor: Sensor? = null
     private var compassAzimuth = 0f
     private var compassTilt = 0f
+    private var compassInitialized = false
     private var compassView: CompassView? = null
     private var displayRotation = Surface.ROTATION_0
     private var accelSensor: Sensor? = null
@@ -150,11 +152,14 @@ class MainActivity : Activity() {
         val rawAzimuth = (Math.toDegrees(orientation[0].toDouble()).toFloat() + 360) % 360
         val rawTilt = Math.toDegrees(Math.acos(remapped[8].toDouble().coerceIn(-1.0, 1.0))).toFloat()
 
-        compassAzimuth = if (compassAzimuth == 0f && rawAzimuth == 0f) rawAzimuth else {
+        compassAzimuth = if (!compassInitialized) {
+            compassInitialized = true
+            rawAzimuth
+        } else {
             val diff = ((rawAzimuth - compassAzimuth + 540) % 360) - 180
-            compassAzimuth + diff * 0.2f
+            compassAzimuth + diff * 0.35f
         }
-        compassTilt = if (compassTilt == 0f) rawTilt else compassTilt + (rawTilt - compassTilt) * 0.2f
+        compassTilt = if (!compassInitialized) rawTilt else compassTilt + (rawTilt - compassTilt) * 0.2f
         compassView?.setAzimuth(compassAzimuth % 360f)
         compassView?.setTilt(compassTilt)
     }
@@ -356,6 +361,15 @@ class MainActivity : Activity() {
 
     private fun openPage(page: Int) {
         if (currentPage == 3) compassView = null
+        if (page == 3) {
+            compassInitialized = false
+            displayRotation = if (Build.VERSION.SDK_INT >= 30) {
+                display?.rotation ?: Surface.ROTATION_0
+            } else {
+                @Suppress("DEPRECATION")
+                windowManager?.defaultDisplay?.rotation ?: Surface.ROTATION_0
+            }
+        }
         currentPage = page.mod(5)
         menu.visibility = View.GONE
         when (currentPage) {
@@ -508,14 +522,21 @@ class MainActivity : Activity() {
             }
             compassView = compass
             val info = TextView(this).apply {
-                text = "Qibla bearing: ${String.format(Locale.US, "%.1f", bearing)} degrees from North"
+                text = "Qibla bearing: ${String.format(Locale.US, "%.1f", bearing)}° from North"
                 textSize = 15f
                 setTextColor(purple)
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER
-                setPadding(0, dp(12), 0, dp(8))
+                setPadding(0, dp(12), 0, dp(4))
             }
             it.addView(info)
+            val headingText = TextView(this).apply {
+                textSize = 13f
+                setTextColor(secondary)
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, dp(8))
+            }
+            it.addView(headingText)
             it.addView(compass, LinearLayout.LayoutParams(-1, dp(300)).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             })
@@ -530,6 +551,9 @@ class MainActivity : Activity() {
             addText(it, "Point the top edge of your phone toward the purple arrow. Turn until the arrow points straight up and the green Aligned message appears. Hold your phone at any comfortable angle — the compass compensates for tilt.")
             if (rotationSensor == null && accelSensor == null) {
                 addText(it, "No compass sensor found on this device. The arrow shows the Qibla bearing from North but will not rotate with your phone.")
+            }
+            compass.headingListener = { az ->
+                headingText.text = "Your heading: ${String.format(Locale.US, "%.1f", az)}°"
             }
         })
         content.addView(card("About Qibla") {
@@ -546,8 +570,16 @@ class MainActivity : Activity() {
         val y = Math.sin(dLon) * Math.cos(kaabaLat)
         val x = Math.cos(userLat) * Math.sin(kaabaLat) -
             Math.sin(userLat) * Math.cos(kaabaLat) * Math.cos(dLon)
-        val bearing = Math.toDegrees(Math.atan2(y, x))
-        return (bearing + 360) % 360
+        val trueBearing = Math.toDegrees(Math.atan2(y, x))
+        val magNorthBearing = (trueBearing + 360) % 360
+        val geo = GeomagneticField(
+            lat.toFloat(),
+            lon.toFloat(),
+            0f,
+            System.currentTimeMillis()
+        )
+        val declination = geo.declination
+        return ((magNorthBearing - declination + 360) % 360)
     }
 
     private inner class CompassView(c: android.content.Context) : View(c) {
@@ -555,6 +587,7 @@ class MainActivity : Activity() {
         private var qiblaBearing = 0f
         private var tilt = 0f
         private var accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
+        var headingListener: ((Float) -> Unit)? = null
         private val accent = Color.rgb(139, 92, 246)
         private val secondaryColor = Color.rgb(177, 166, 194)
         private val borderColor = Color.rgb(79, 64, 99)
@@ -575,6 +608,7 @@ class MainActivity : Activity() {
 
         fun setAzimuth(deg: Float) {
             azimuth = deg
+            headingListener?.invoke(deg)
             invalidate()
         }
 
