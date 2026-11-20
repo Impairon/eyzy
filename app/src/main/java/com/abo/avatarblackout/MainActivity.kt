@@ -210,7 +210,6 @@ class MainActivity : Activity() {
             Math.toDegrees(orientation[0].toDouble()).toFloat()
         )
         val pitchDegrees = Math.toDegrees(orientation[1].toDouble()).toFloat()
-        val rollDegrees = Math.toDegrees(orientation[2].toDouble()).toFloat()
         val now = if (timestampNanos > 0L) timestampNanos else SystemClock.elapsedRealtimeNanos()
 
         if (!compassInitialized) {
@@ -699,6 +698,9 @@ class MainActivity : Activity() {
                     ) Color.rgb(249, 115, 22) else secondary
                 )
             }
+            compass.setSensorAvailable(
+                rotationSensor != null || (accelSensor != null && magSensor != null)
+            )
             compass.refreshStatus()
         })
         content.addView(card("About Qibla") {
@@ -712,6 +714,7 @@ class MainActivity : Activity() {
         private var tilt = 0f
         private var accuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
         private var hasLiveHeading = false
+        private var sensorAvailable = true
         private var magneticFieldDisturbed = false
         private var alignedSince = 0L
         private var lastStatus = ""
@@ -756,6 +759,12 @@ class MainActivity : Activity() {
             invalidate()
         }
 
+        fun setSensorAvailable(available: Boolean) {
+            sensorAvailable = available
+            updateGuidance()
+            invalidate()
+        }
+
         fun setSensorState(live: Boolean, sensorAccuracy: Int, fieldDisturbed: Boolean) {
             hasLiveHeading = live
             accuracy = sensorAccuracy
@@ -771,20 +780,29 @@ class MainActivity : Activity() {
             val now = SystemClock.elapsedRealtime()
             val difference = QiblaMath.relativeQiblaAngle(qiblaBearing, azimuth)
             val absoluteDifference = kotlin.math.abs(difference)
-            val reliable = hasLiveHeading &&
+            val reliable = sensorAvailable && hasLiveHeading &&
                 accuracy >= SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM &&
                 !magneticFieldDisturbed
 
             val message = when {
+                !sensorAvailable ->
+                    "Live compass unavailable — showing the calculated bearing only."
                 !hasLiveHeading ->
                     "Finding compass direction…"
-                magneticFieldDisturbed ->
-                    "Magnetic interference detected. Move away from your laptop, magnets or metal."
+                magneticFieldDisturbed -> {
+                    val measured = measuredMagneticFieldUt?.toInt()
+                    val expected = expectedMagneticFieldUt?.toInt()
+                    if (measured != null && expected != null) {
+                        "Magnetic interference suspected ($measured µT; expected about $expected µT). Move away from your laptop or metal."
+                    } else {
+                        "Magnetic interference detected. Move away from your laptop, magnets or metal."
+                    }
+                }
                 accuracy == SensorManager.SENSOR_STATUS_UNRELIABLE ->
                     "Compass is unreliable. Move away from electronics, then slowly move the phone in a figure-eight."
                 accuracy < SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM ->
                     "Compass signal is weak. Move away from metal and electronics."
-                absoluteDifference <= if (alignedSince == 0L) 5f else 8f -> {
+                absoluteDifference <= (if (alignedSince == 0L) 5f else 8f) -> {
                     if (alignedSince == 0L) alignedSince = now
                     if (now - alignedSince >= 900L) "Facing Qibla"
                     else "Hold steady — checking alignment…"
