@@ -628,7 +628,7 @@ class MainActivity : Activity() {
                 return@card
             }
             if (!lat.isFinite() || lat !in -90.0..90.0 ||
-                lon == null || !lon.isFinite() || lon !in -180.0..180.0
+                !lon.isFinite() || lon !in -180.0..180.0
             ) {
                 addText(it, "The saved location is invalid. Update it from the Prayers page.")
                 val help = actionButton("Go to Prayers")
