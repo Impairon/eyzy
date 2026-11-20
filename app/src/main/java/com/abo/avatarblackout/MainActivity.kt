@@ -197,12 +197,37 @@ class MainActivity : FragmentActivity() {
         super.onStop()
     }
 
+    @Suppress("DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+
         if (requestCode == lockRequestCode) {
             deviceCredentialLauncherActive = false
             if (resultCode == RESULT_OK) unlockApp()
             else showLockMessage(translate("Authentication required to open Swizy."))
+            return
+        }
+
+        if (requestCode != EXPORT_REQUEST && requestCode != IMPORT_REQUEST) return
+        if (resultCode != RESULT_OK || data?.data == null) return
+
+        runCatching {
+            if (requestCode == EXPORT_REQUEST) {
+                contentResolver.openOutputStream(data.data!!)?.use { stream ->
+                    OutputStreamWriter(stream).use { it.write(Prefs.exportData(this)) }
+                }
+                Toast.makeText(this, translate("Layouts exported"), Toast.LENGTH_SHORT).show()
+            } else {
+                val json = contentResolver.openInputStream(data.data!!)?.use {
+                    InputStreamReader(it).use { reader -> reader.readText() }
+                } ?: return
+                Prefs.importData(this, json)
+                AvatarService.instance?.refresh()
+                showSettings()
+                Toast.makeText(this, translate("Layouts imported"), Toast.LENGTH_SHORT).show()
+            }
+        }.onFailure {
+            Toast.makeText(this, "Backup failed: ${it.message}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -1568,30 +1593,6 @@ class MainActivity : FragmentActivity() {
             },
             IMPORT_REQUEST
         )
-    }
-
-    @Suppress("DEPRECATION")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (resultCode != RESULT_OK || data?.data == null) return
-        runCatching {
-            if (requestCode == EXPORT_REQUEST) {
-                contentResolver.openOutputStream(data.data!!)?.use { stream ->
-                    OutputStreamWriter(stream).use { it.write(Prefs.exportData(this)) }
-                }
-                Toast.makeText(this, translate("Layouts exported"), Toast.LENGTH_SHORT).show()
-            } else if (requestCode == IMPORT_REQUEST) {
-                val json = contentResolver.openInputStream(data.data!!)?.use {
-                    InputStreamReader(it).use { reader -> reader.readText() }
-                } ?: return
-                Prefs.importData(this, json)
-                AvatarService.instance?.refresh()
-                showSettings()
-                Toast.makeText(this, translate("Layouts imported"), Toast.LENGTH_SHORT).show()
-            }
-        }.onFailure {
-            Toast.makeText(this, "Backup failed: ${it.message}", Toast.LENGTH_LONG).show()
-        }
     }
 
     @Suppress("DEPRECATION")
