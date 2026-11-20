@@ -1,7 +1,0 @@
-int color icon_background 0x7f010000
-int drawable eyes 0x7f020000
-int drawable ic_tile 0x7f020001
-int mipmap ic_launcher 0x7f030000
-int string service_desc 0x7f040000
-int style AppTheme 0x7f050000
-int xml accessibility_config 0x7f060000
