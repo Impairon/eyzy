@@ -1,6 +1,7 @@
 package com.abo.avatarblackout
 
 import android.graphics.drawable.Icon
+import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.widget.Toast
@@ -44,10 +45,12 @@ class BlackoutTile : TileService() {
         val serviceConnected = AvatarService.instance != null
         val enabled = serviceConnected && Prefs.isEnabled(this)
         tile.label = if (enabled) "Swizy on" else "Swizy"
-        tile.subtitle = if (serviceConnected) {
-            if (enabled) "Protection active" else "Protection paused"
-        } else {
-            "Enable accessibility service"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            tile.subtitle = if (serviceConnected) {
+                if (enabled) "Protection active" else "Protection paused"
+            } else {
+                "Enable accessibility service"
+            }
         }
         tile.icon = Icon.createWithResource(this, R.drawable.ic_tile)
         tile.state = if (enabled) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
