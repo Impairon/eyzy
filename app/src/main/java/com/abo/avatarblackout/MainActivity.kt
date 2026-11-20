@@ -1,10 +1,13 @@
 package com.abo.avatarblackout
 
 import android.app.Activity
+import android.app.LocaleManager
 import android.app.AlertDialog
 import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.Context
+import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
@@ -23,6 +26,7 @@ import android.location.LocationManager
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Bundle
+import android.os.LocaleList
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -51,16 +55,19 @@ import java.util.Locale
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
-    private val purple = Color.rgb(139, 92, 246)
-    private val backgroundColor = Color.rgb(20, 17, 27)
-    private val panel = Color.rgb(35, 29, 46)
-    private val panelRaised = Color.rgb(45, 37, 59)
-    private val border = Color.rgb(79, 64, 99)
-    private val secondary = Color.rgb(177, 166, 194)
+    // Warm, restrained ink palette: the logo supplies the personality.
+    private val purple = Color.rgb(194, 126, 91)
+    private val backgroundColor = Color.rgb(27, 25, 23)
+    private val panel = Color.rgb(38, 35, 32)
+    private val panelRaised = Color.rgb(49, 45, 41)
+    private val border = Color.rgb(76, 68, 60)
+    private val secondary = Color.rgb(190, 178, 164)
     private lateinit var content: LinearLayout
     private lateinit var menu: LinearLayout
     private lateinit var pageTitle: TextView
     private lateinit var root: FrameLayout
+    private lateinit var navigationBar: LinearLayout
+    private val navigationItems = mutableListOf<Pair<Int, TextView>>()
     private var currentPage = 0
     private var sensorManager: SensorManager? = null
     private var rotationSensor: Sensor? = null
@@ -86,6 +93,45 @@ class MainActivity : Activity() {
         "Maghrib" to "Maghrib",
         "Isha" to "Isha"
     )
+
+    override fun attachBaseContext(newBase: Context) {
+        val language = newBase.getSharedPreferences("avb", Context.MODE_PRIVATE)
+            .getString("app_language", "ar") ?: "ar"
+        val locale = Locale.forLanguageTag(language)
+        Locale.setDefault(locale)
+        val configuration = Configuration(newBase.resources.configuration).apply {
+            setLocale(locale)
+            setLayoutDirection(locale)
+        }
+        super.attachBaseContext(newBase.createConfigurationContext(configuration))
+    }
+
+    private fun currentAppLanguage(): String =
+        getSharedPreferences("avb", MODE_PRIVATE).getString("app_language", "ar") ?: "ar"
+
+    private fun changeAppLanguage(language: String) {
+        if (language == currentAppLanguage()) return
+        getSharedPreferences("avb", MODE_PRIVATE).edit()
+            .putString("app_language", language).apply()
+        if (Build.VERSION.SDK_INT >= 33) {
+            getSystemService(LocaleManager::class.java).applicationLocales =
+                LocaleList.forLanguageTags(language)
+        }
+        recreate()
+    }
+
+    private fun translate(value: String): String =
+        UiText.translate(value, currentAppLanguage())
+
+    private fun localizeTree(view: View) {
+        if (view is TextView) {
+            view.text = translate(view.text.toString())
+            if (view is EditText) view.hint = translate(view.hint?.toString().orEmpty())
+        }
+        if (view is android.view.ViewGroup) {
+            for (index in 0 until view.childCount) localizeTree(view.getChildAt(index))
+        }
+    }
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -417,82 +463,105 @@ class MainActivity : Activity() {
     }
 
     private fun showShell() {
-        val pad = dp(20)
-        root = SwipeFrameLayout(this) { direction ->
-            navigate(if (direction < 0) 1 else -1)
-        }.apply {
+        root = FrameLayout(this).apply {
             setBackgroundColor(backgroundColor)
+            layoutDirection = if (currentAppLanguage() == "ar") View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR
         }
         val shell = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(backgroundColor)
         }
-        val title = TextView(this).apply {
-            text = "swizy"
-            textSize = 30f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.WHITE)
-            setPadding(pad, dp(18), pad, dp(4))
-        }
-        shell.addView(title)
+
         val header = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(pad, 0, pad, dp(8))
+            setPadding(dp(18), dp(12), dp(18), dp(10))
         }
-        val menuButton = Button(this).apply {
-            text = "☰"
-            textSize = 25f
-            setTextColor(Color.WHITE)
-            isAllCaps = false
-            background = outlined(panelRaised, purple, 14)
-            setOnClickListener { toggleMenu() }
+        val logo = ImageView(this).apply {
+            setImageResource(R.drawable.swizy_logo)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = "Swizy"
         }
-        header.addView(menuButton, LinearLayout.LayoutParams(dp(54), dp(48)))
+        header.addView(logo, LinearLayout.LayoutParams(dp(48), dp(48)))
         pageTitle = TextView(this).apply {
             text = "swizy"
-            textSize = 18f
+            textSize = 23f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
-            setPadding(dp(14), 0, 0, 0)
+            setPadding(dp(12), 0, dp(8), 0)
         }
         header.addView(pageTitle, LinearLayout.LayoutParams(0, dp(48), 1f))
+        val settings = TextView(this).apply {
+            text = "⚙"
+            textSize = 25f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = rounded(panelRaised, 14)
+            contentDescription = translate("Settings")
+            setOnClickListener { openPage(4) }
+        }
+        header.addView(settings, LinearLayout.LayoutParams(dp(48), dp(48)))
         shell.addView(header)
-        menu = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(pad, dp(18), pad, dp(14))
-            background = outlined(Color.rgb(28, 23, 38), border, 20)
-            visibility = View.GONE
-        }
-        val drawerParams = FrameLayout.LayoutParams(dp(292), -1).apply {
-            gravity = Gravity.START
-        }
-        root.addView(shell, FrameLayout.LayoutParams(-1, -1))
-        root.addView(menu, drawerParams)
-        menu.addView(TextView(this).apply {
-            text = "swizy menu"
-            textSize = 13f
-            letterSpacing = .12f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(secondary)
-            setPadding(dp(6), 0, dp(6), dp(12))
-        }, LinearLayout.LayoutParams(-1, dp(34)))
-        addMenuItem("swizy") { openPage(0) }
-        addMenuItem("Sibha") { openPage(1) }
-        addMenuItem("Prayers") { openPage(2) }
-        addMenuItem("Qibla") { openPage(3) }
-        addMenuItem("Settings") { openPage(4) }
+
         val scroll = ScrollView(this).apply {
             isFillViewport = true
+            clipToPadding = false
         }
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(pad, dp(8), pad, pad)
+            setPadding(dp(18), dp(8), dp(18), dp(20))
         }
         scroll.addView(content)
         shell.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        menu.bringToFront()
+
+        navigationBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(8), dp(12), dp(10))
+            background = GradientDrawable().apply {
+                setColor(panel)
+                setStroke(dp(1), border)
+                cornerRadius = dp(18).toFloat()
+            }
+        }
+        navigationItems.clear()
+        addNavigationItem("Lowery", 0)
+        addNavigationItem("Sibha", 1)
+        addNavigationItem("Prayers", 2)
+        val navHolder = LinearLayout(this).apply {
+            setPadding(dp(12), dp(4), dp(12), dp(10))
+            addView(navigationBar, LinearLayout.LayoutParams(-1, dp(58)))
+        }
+        shell.addView(navHolder)
+
+        menu = LinearLayout(this).apply { visibility = View.GONE }
+        root.addView(shell, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
         openPage(0)
+    }
+
+    private fun addNavigationItem(label: String, page: Int) {
+        val item = TextView(this).apply {
+            text = translate(label)
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            minHeight = dp(44)
+            setPadding(dp(8), 0, dp(8), 0)
+            setOnClickListener { openPage(page) }
+            contentDescription = translate(label)
+        }
+        navigationBar.addView(item, LinearLayout.LayoutParams(0, -1, 1f))
+        navigationItems.add(page to item)
+    }
+
+    private fun refreshNavigation() {
+        if (!::navigationBar.isInitialized) return
+        navigationItems.forEach { (page, item) ->
+            val selected = currentPage == page || (currentPage == 3 && page == 2)
+            item.setTextColor(if (selected) Color.WHITE else secondary)
+            item.background = if (selected) rounded(purple, 12) else rounded(Color.TRANSPARENT, 12)
+        }
+        if (::pageTitle.isInitialized) pageTitle.text = translate(pageTitle.text.toString())
     }
 
     private fun openPage(page: Int) {
@@ -522,6 +591,8 @@ class MainActivity : Activity() {
             3 -> showQibla()
             else -> showSettings()
         }
+        localizeTree(content)
+        refreshNavigation()
     }
 
     private fun navigate(step: Int) {
@@ -753,7 +824,7 @@ class MainActivity : Activity() {
                 addText(it, "A live compass sensor is unavailable. The calculated Qibla bearing is shown, but the arrow cannot track your phone.")
             }
             compass.statusListener = { message, reliable ->
-                headingText.text = message
+                headingText.text = translate(message)
                 headingText.setTextColor(
                     if (reliable) Color.rgb(34, 197, 94)
                     else if (message.contains("interference", true) ||
@@ -993,7 +1064,22 @@ class MainActivity : Activity() {
     private fun showSettings() {
         pageTitle.text = "Settings"
         content.removeAllViews()
-        // Collapsible sections in app order: swizy, Sibha, Prayers, then Profiles & Release
+        val languageCard = card("Language") {
+            addText(it, "Choose the language used by Swizy.")
+            val language = styledSpinner()
+            language.adapter = optionAdapter(arrayOf("العربية", "English"))
+            language.setSelection(if (currentAppLanguage() == "ar") 0 else 1)
+            language.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    val selected = if (position == 0) "ar" else "en"
+                    if (selected != currentAppLanguage()) changeAppLanguage(selected)
+                }
+            }
+            it.addView(language, LinearLayout.LayoutParams(-1, dp(52)))
+        }
+        content.addView(languageCard)
+        // Keep the existing controls intact while presenting them in a calmer visual hierarchy.
         content.addView(collapsibleSection("swizy", defaultOpen = true) { section ->
             addText(section, "Control how swizy masks profile pictures.")
             addText(section, "swizy mask mode")
@@ -1202,6 +1288,8 @@ class MainActivity : Activity() {
             addText(section, "Changelog: faster scanning, rotation fixes, Qibla compass, refined UI, per-orientation control position.")
             addText(section, "Crash logs are stored locally and are never uploaded automatically.")
         })
+        localizeTree(content)
+        refreshNavigation()
     }
 
     private fun collapsibleSection(
@@ -1213,12 +1301,11 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(14), dp(16), dp(14))
             background = GradientDrawable().apply {
-                orientation = GradientDrawable.Orientation.TOP_BOTTOM
-                colors = intArrayOf(panel, Color.rgb(28, 23, 38))
+                setColor(panel)
                 cornerRadius = dp(16).toFloat()
                 setStroke(dp(1), border)
             }
-            elevation = dp(3).toFloat()
+            elevation = dp(1).toFloat()
         }
         val arrow = TextView(this).apply {
             text = if (defaultOpen) "▼" else "▶"
@@ -1360,6 +1447,9 @@ class MainActivity : Activity() {
     private fun showPrayers() {
         pageTitle.text = "Prayers"
         content.removeAllViews()
+        val qiblaAction = actionButton("Open Qibla compass")
+        qiblaAction.setOnClickListener { openPage(3) }
+        content.addView(qiblaAction)
         val date = todayKey()
         val times = parsePrayerTimes(Prefs.prayerTimes(this))
         val timesCard = card("Today's prayer times") {
@@ -1575,12 +1665,11 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(14), dp(16), dp(14))
             background = GradientDrawable().apply {
-                orientation = GradientDrawable.Orientation.TOP_BOTTOM
-                colors = intArrayOf(panel, Color.rgb(28, 23, 38))
+                setColor(panel)
                 cornerRadius = dp(16).toFloat()
                 setStroke(dp(1), border)
             }
-            elevation = dp(3).toFloat()
+            elevation = dp(1).toFloat()
         }
         box.addView(TextView(this).apply {
             text = title
@@ -1649,7 +1738,7 @@ class MainActivity : Activity() {
         background = GradientDrawable().apply {
             cornerRadius = dp(14).toFloat()
             setStroke(dp(1), Color.rgb(188, 162, 255))
-            colors = intArrayOf(purple, Color.rgb(124, 77, 209))
+            colors = intArrayOf(purple, Color.rgb(153, 91, 67))
         }
         layoutParams = LinearLayout.LayoutParams(-1, dp(48)).apply {
             setMargins(0, dp(5), 0, dp(5))
