@@ -665,7 +665,7 @@ class MainActivity : FragmentActivity() {
         }
         header.addView(logo, LinearLayout.LayoutParams(dp(40), dp(40)))
         pageTitle = TextView(this).apply {
-            text = "swizy"
+            text = translate("Swizy")
             textSize = 23f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
@@ -807,11 +807,11 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun showLowery() {
-        pageTitle.text = "لويري"
+        pageTitle.text = translate("Lowery")
         content.removeAllViews()
 
         // A compact mascot-led introduction keeps the page recognizable without crowding it.
-        content.addView(card("لويري ✨") { section ->
+        content.addView(card(translate("Lowery") + " ✨") { section ->
             val intro = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
