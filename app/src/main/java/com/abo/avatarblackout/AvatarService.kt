@@ -797,7 +797,26 @@ class AvatarService : AccessibilityService() {
             p.textAlign = Paint.Align.CENTER
             p.textSize = dp(10).toFloat()
             p.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
-            canvas.drawText("Close", cx, height - dp(3).toFloat(), p)
+            canvas.drawText(menuLabel("Close"), cx, height - dp(3).toFloat(), p)
+        }
+    }
+
+    private fun menuLabel(value: String): String {
+        if (getSharedPreferences("avb", Context.MODE_PRIVATE).getString("app_language", "ar") != "ar") return value
+        return when (value) {
+            "Add hidden area" -> "إضافة منطقة إخفاء"
+            "Add profile" -> "إضافة ملف"
+            "Edit profile" -> "تعديل الملف"
+            "Save profile" -> "حفظ الملف"
+            "Cancel profile" -> "إلغاء التعديل"
+            "Remove last added area" -> "إزالة آخر منطقة"
+            "Remove all black boxes" -> "إزالة كل مناطق الإخفاء"
+            "Hide all black boxes" -> "إخفاء كل المناطق"
+            "Show all black boxes" -> "إظهار كل المناطق"
+            "Move black boxes" -> "تحريك مناطق الإخفاء"
+            "Resize black boxes" -> "تغيير حجم مناطق الإخفاء"
+            "Close" -> "إغلاق"
+            else -> value
         }
     }
 
@@ -1576,7 +1595,7 @@ class AvatarService : AccessibilityService() {
                     "sans-serif-medium", android.graphics.Typeface.BOLD
                 )
                 paint.textSize = dp(13).toFloat()
-                canvas.drawText("Add hidden area", dp(51).toFloat(), dp(33).toFloat(), paint)
+                canvas.drawText(menuLabel("Add hidden area"), dp(51).toFloat(), dp(33).toFloat(), paint)
 
                 val hasProfile = Prefs.hasProfileForPackage(this@AvatarService, activePackage)
                 val rows = buildList {
@@ -1611,7 +1630,7 @@ class AvatarService : AccessibilityService() {
                     paint.typeface = android.graphics.Typeface.create(
                         "sans-serif", android.graphics.Typeface.NORMAL
                     )
-                    canvas.drawText(label, dp(16).toFloat(), (top + dp(27)).toFloat(), paint)
+                    canvas.drawText(menuLabel(label), dp(16).toFloat(), (top + dp(27)).toFloat(), paint)
                     if (index < rows.lastIndex) {
                         paint.color = Color.argb(55, 190, 170, 225)
                         canvas.drawLine(
