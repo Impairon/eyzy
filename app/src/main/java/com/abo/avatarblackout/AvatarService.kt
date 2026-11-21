@@ -1582,9 +1582,10 @@ class AvatarService : AccessibilityService() {
                     RectF(dp(7).toFloat(), dp(6).toFloat(), panelRight - dp(7), dp(52).toFloat()),
                     dp(12).toFloat(), dp(12).toFloat(), paint
                 )
-                if (icon != null) {
+                val menuIcon = icon
+                if (menuIcon != null) {
                     canvas.drawBitmap(
-                        icon, null,
+                        menuIcon, null,
                         RectF(dp(13).toFloat(), dp(12).toFloat(), dp(43).toFloat(), dp(42).toFloat()),
                         paint
                     )
@@ -1649,9 +1650,10 @@ class AvatarService : AccessibilityService() {
             paint.color = Color.rgb(205, 183, 255)
             canvas.drawCircle(ballX, ballY, dp(27).toFloat(), paint)
             paint.style = Paint.Style.FILL
-            if (icon != null) {
+            val ballIcon = icon
+            if (ballIcon != null) {
                 canvas.drawBitmap(
-                    icon, null,
+                    ballIcon, null,
                     RectF(ballX - dp(16), ballY - dp(16), ballX + dp(16), ballY + dp(16)),
                     paint
                 )
