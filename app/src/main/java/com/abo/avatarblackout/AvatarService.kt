@@ -814,7 +814,14 @@ class AvatarService : AccessibilityService() {
             "Hide all black boxes" -> "إخفاء كل المناطق"
             "Show all black boxes" -> "إظهار كل المناطق"
             "Move black boxes" -> "تحريك مناطق الإخفاء"
-            "Resize black boxes" -> "تغيير حجم مناطق الإخفاء"
+            "Resize black boxes" -> "تغيير الحجم"
+            "Drag over the area to hide" -> "اسحب فوق المنطقة لإخفائها"
+            "Drag a black box to move it" -> "اسحب منطقة الإخفاء لتحريكها"
+            "Drag the lower-right corner to resize" -> "اسحب الزاوية السفلية اليمنى لتغيير الحجم"
+            "Remove all black boxes" -> "إزالة الكل"
+            "Hide all black boxes" -> "إخفاء الكل"
+            "Show all black boxes" -> "إظهار الكل"
+            "Move black boxes" -> "تحريك المناطق"
             "Close" -> "إغلاق"
             else -> value
         }
@@ -1473,14 +1480,14 @@ class AvatarService : AccessibilityService() {
                     )
                     canvas.drawRect(r, guidePaint)
                 }
-                canvas.drawText("Drag over the area to hide", dp(16).toFloat(), dp(48).toFloat(), textPaint)
+                canvas.drawText(menuLabel("Drag over the area to hide"), dp(16).toFloat(), dp(48).toFloat(), textPaint)
             }
             if (moveMode) {
-                canvas.drawText("Drag a black box to move it", dp(16).toFloat(), dp(48).toFloat(), textPaint)
+                canvas.drawText(menuLabel("Drag a black box to move it"), dp(16).toFloat(), dp(48).toFloat(), textPaint)
             }
             if (resizeMode) {
                 canvas.drawText(
-                    "Drag the lower-right corner to resize",
+                    menuLabel("Drag the lower-right corner to resize"),
                     dp(16).toFloat(), dp(48).toFloat(), textPaint
                 )
             }
