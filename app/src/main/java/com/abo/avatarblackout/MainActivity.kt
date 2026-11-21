@@ -289,6 +289,7 @@ class MainActivity : FragmentActivity() {
 
     private fun isDeviceSecure(): Boolean = (getSystemService(KEYGUARD_SERVICE) as KeyguardManager).isDeviceSecure
 
+    @Suppress("DEPRECATION") // Required only for the Android 10-and-older credential fallback.
     private fun launchDeviceCredential() {
         if (!Prefs.appLockEnabled(this) || unlockedThisSession || deviceCredentialLauncherActive || lockPromptActive) return
         if (!isDeviceSecure()) { showLockMessage(translate("Set a PIN, pattern, or password in Android Settings first.")); return }
