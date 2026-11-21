@@ -290,11 +290,45 @@ class MainActivity : FragmentActivity() {
     private fun isDeviceSecure(): Boolean = (getSystemService(KEYGUARD_SERVICE) as KeyguardManager).isDeviceSecure
 
     private fun launchDeviceCredential() {
-        if (!Prefs.appLockEnabled(this) || unlockedThisSession || deviceCredentialLauncherActive) return
+        if (!Prefs.appLockEnabled(this) || unlockedThisSession || deviceCredentialLauncherActive || lockPromptActive) return
         if (!isDeviceSecure()) { showLockMessage(translate("Set a PIN, pattern, or password in Android Settings first.")); return }
-        val intent = (getSystemService(KEYGUARD_SERVICE) as KeyguardManager).createConfirmDeviceCredentialIntent(translate("Unlock Swizy"), translate("Confirm it is you to continue"))
-        if (intent == null) { showLockMessage(translate("Device screen-lock authentication is unavailable.")); return }
-        lockPromptActive = false
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Modern Android presents the system credential screen through BiometricPrompt.
+            lockPromptActive = true
+            deviceCredentialLauncherActive = true
+            val prompt = BiometricPrompt(this, ContextCompat.getMainExecutor(this),
+                object : BiometricPrompt.AuthenticationCallback() {
+                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                        unlockApp()
+                    }
+
+                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                        lockPromptActive = false
+                        deviceCredentialLauncherActive = false
+                        showLockMessage(translate("Authentication required to open Swizy."))
+                    }
+                })
+            val info = BiometricPrompt.PromptInfo.Builder()
+                .setTitle(translate("Unlock Swizy"))
+                .setSubtitle(translate("Confirm it is you to continue"))
+                .setAllowedAuthenticators(BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+                .build()
+            prompt.authenticate(info)
+            return
+        }
+
+        // Android 10 and older have no DEVICE_CREDENTIAL-only BiometricPrompt flow.
+        @Suppress("DEPRECATION")
+        val intent = (getSystemService(KEYGUARD_SERVICE) as KeyguardManager)
+            .createConfirmDeviceCredentialIntent(
+                translate("Unlock Swizy"),
+                translate("Confirm it is you to continue")
+            )
+        if (intent == null) {
+            showLockMessage(translate("Device screen-lock authentication is unavailable."))
+            return
+        }
         deviceCredentialLauncherActive = true
         startActivityForResult(intent, lockRequestCode)
     }
