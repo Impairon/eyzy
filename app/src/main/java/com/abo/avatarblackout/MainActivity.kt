@@ -94,6 +94,7 @@ class MainActivity : FragmentActivity() {
     private var magneticClearSamples = 0
     private var magneticFieldDisturbed = false
     private var compassView: CompassView? = null
+    private var compassRefreshNote: TextView? = null
     private var displayRotation = Surface.ROTATION_0
     private var accelSensor: Sensor? = null
     private var magSensor: Sensor? = null
@@ -175,6 +176,30 @@ class MainActivity : FragmentActivity() {
         window.statusBarColor = backgroundColor
         window.navigationBarColor = backgroundColor
         showShell()
+        showStartupSplash()
+    }
+
+    private fun showStartupSplash() {
+        if (!::root.isInitialized) return
+        val splash = FrameLayout(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            isClickable = true
+            isFocusable = true
+        }
+        val mark = ImageView(this).apply {
+            setImageResource(R.drawable.swizy_logo)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = translate("Swizy")
+            alpha = 0f
+        }
+        splash.addView(mark, FrameLayout.LayoutParams(dp(124), dp(124), Gravity.CENTER))
+        root.addView(splash, FrameLayout.LayoutParams(-1, -1))
+        mark.animate().alpha(1f).setDuration(220).start()
+        Handler(Looper.getMainLooper()).postDelayed({
+            mark.animate().alpha(0f).setDuration(260).withEndAction {
+                (splash.parent as? android.view.ViewGroup)?.removeView(splash)
+            }.start()
+        }, 1250L)
     }
 
     override fun onDestroy() {
@@ -264,7 +289,7 @@ class MainActivity : FragmentActivity() {
             isFocusable = true
         }
         val logo = ImageView(this).apply { setImageResource(R.drawable.swizy_logo); scaleType = ImageView.ScaleType.FIT_CENTER }
-        overlay.addView(logo, LinearLayout.LayoutParams(dp(88), dp(88)).apply { gravity = Gravity.CENTER; bottomMargin = dp(20) })
+        overlay.addView(logo, LinearLayout.LayoutParams(dp(72), dp(72)).apply { gravity = Gravity.CENTER; bottomMargin = dp(20) })
         val title = TextView(this).apply { text = translate("Swizy is locked"); textSize = 23f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(Color.WHITE) }
         overlay.addView(title, LinearLayout.LayoutParams(-1, -2))
         val message = TextView(this).apply { text = translate("Authenticate to continue."); textSize = 14f; gravity = Gravity.CENTER; setTextColor(secondary); setPadding(0, dp(10), 0, dp(22)) }
@@ -346,6 +371,7 @@ class MainActivity : FragmentActivity() {
         }
         displayRotation = currentDisplayRotation()
         compassInitialized = false
+        compassRefreshNote?.visibility = View.VISIBLE
         lastHeadingTimestampNanos = 0L
         compassAccuracy = SensorManager.SENSOR_STATUS_UNRELIABLE
         measuredMagneticFieldUt = null
@@ -470,6 +496,7 @@ class MainActivity : FragmentActivity() {
         if (!compassTilt.isFinite()) compassTilt = kotlin.math.abs(pitchDegrees)
         lastHeadingTimestampNanos = now
 
+        compassRefreshNote?.visibility = View.GONE
         compassView?.setHeading(
             compassAzimuth, compassTilt, compassAccuracy, magneticFieldDisturbed
         )
@@ -662,7 +689,7 @@ class MainActivity : FragmentActivity() {
             scaleType = ImageView.ScaleType.FIT_CENTER
             contentDescription = "Swizy"
         }
-        header.addView(logo, LinearLayout.LayoutParams(dp(48), dp(48)))
+        header.addView(logo, LinearLayout.LayoutParams(dp(40), dp(40)))
         pageTitle = TextView(this).apply {
             text = "swizy"
             textSize = 23f
@@ -823,7 +850,7 @@ class MainActivity : FragmentActivity() {
                 background = rounded(panelRaised, 18)
                 setPadding(dp(5), dp(5), dp(5), dp(5))
             }
-            intro.addView(mascot, LinearLayout.LayoutParams(dp(88), dp(88)))
+            intro.addView(mascot, LinearLayout.LayoutParams(dp(68), dp(68)))
             val description = TextView(this).apply {
                 text = if (currentAppLanguage() == "ar") {
                     "يحمي صور الحسابات مع إبقاء المحادثات والأزرار ولوحة المفاتيح قابلة للاستخدام."
@@ -932,6 +959,15 @@ class MainActivity : FragmentActivity() {
         val lon = Prefs.longitude(this).toDoubleOrNull()
         content.addView(card("Qibla finder") {
             addText(it, "Point your phone to find the direction of the Kaaba in Mecca.")
+            val refreshNote = TextView(this@MainActivity).apply {
+                text = translate("Refreshing compass for a moment…")
+                textSize = 13f
+                setTextColor(purple)
+                gravity = Gravity.CENTER
+                setPadding(dp(8), dp(6), dp(8), dp(8))
+            }
+            compassRefreshNote = refreshNote
+            it.addView(refreshNote)
             if (lat == null || lon == null) {
                 addText(it, "Set your location in the Prayers page first, or enable GPS there, then come back.")
                 val help = actionButton("Go to Prayers")
@@ -1032,6 +1068,7 @@ class MainActivity : FragmentActivity() {
                 "Hold the phone at your comfortable upward angle (around 45° is fine). Keep the screen facing you and use the top edge as the forward direction. The compass compensates for tilt."
             )
             if (rotationSensor == null && (accelSensor == null || magSensor == null)) {
+                refreshNote.visibility = View.GONE
                 addText(it, "A live compass sensor is unavailable. The calculated Qibla bearing is shown, but the arrow cannot track your phone.")
             }
             compass.statusListener = { message, reliable ->
@@ -1511,11 +1548,6 @@ class MainActivity : FragmentActivity() {
             val import = actionButton("Import layouts")
             import.setOnClickListener { importBackup() }
             section.addView(import)
-        })
-        content.addView(collapsibleSection("Release", defaultOpen = false) { section ->
-            addText(section, "swizy 1.7.0")
-            addText(section, "Changelog: faster scanning, rotation fixes, Qibla compass, refined UI, per-orientation control position.")
-            addText(section, "Crash logs are stored locally and are never uploaded automatically.")
         })
         localizeTree(content)
         refreshNavigation()
