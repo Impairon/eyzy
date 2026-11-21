@@ -810,23 +810,18 @@ class AvatarService : AccessibilityService() {
             "Save profile" -> "حفظ الملف"
             "Cancel profile" -> "إلغاء التعديل"
             "Remove last added area" -> "إزالة آخر منطقة"
-            "Remove all black boxes" -> "إزالة كل مناطق الإخفاء"
-            "Hide all black boxes" -> "إخفاء كل المناطق"
-            "Show all black boxes" -> "إظهار كل المناطق"
-            "Move black boxes" -> "تحريك مناطق الإخفاء"
-            "Resize black boxes" -> "تغيير الحجم"
-            "Drag over the area to hide" -> "اسحب فوق المنطقة لإخفائها"
-            "Drag a black box to move it" -> "اسحب منطقة الإخفاء لتحريكها"
-            "Drag the lower-right corner to resize" -> "اسحب الزاوية السفلية اليمنى لتغيير الحجم"
             "Remove all black boxes" -> "إزالة الكل"
             "Hide all black boxes" -> "إخفاء الكل"
             "Show all black boxes" -> "إظهار الكل"
             "Move black boxes" -> "تحريك المناطق"
+            "Resize black boxes" -> "تغيير الحجم"
+            "Drag over the area to hide" -> "اسحب فوق المنطقة لإخفائها"
+            "Drag a black box to move it" -> "اسحب منطقة الإخفاء لتحريكها"
+            "Drag the lower-right corner to resize" -> "اسحب الزاوية السفلية اليمنى لتغيير الحجم"
             "Close" -> "إغلاق"
             else -> value
         }
     }
-
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     private fun ensureOverlay() {
