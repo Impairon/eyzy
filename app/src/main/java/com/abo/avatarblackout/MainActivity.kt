@@ -154,12 +154,10 @@ class MainActivity : FragmentActivity() {
             view.text = translate(view.text.toString())
             if (view is EditText) view.hint = translate(view.hint?.toString().orEmpty())
             if (currentAppLanguage() == "ar" && Build.VERSION.SDK_INT >= 26) {
-                val hasArabic = view.text.toString().any { it in '\u0600'..'\u06FF' }
                 val bold = view.typeface?.isBold == true
-                // Use Android's bundled Arabic-capable sans face; the old Katib font
-                // bundle was intentionally removed from this repository.
+                // Android's system sans family covers Arabic without external font assets.
                 view.typeface = Typeface.create(
-                    if (hasArabic) "sans-serif" else Typeface.DEFAULT,
+                    "sans-serif",
                     if (bold) Typeface.BOLD else Typeface.NORMAL
                 )
             }
