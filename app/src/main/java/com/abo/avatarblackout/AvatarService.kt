@@ -1527,32 +1527,34 @@ class AvatarService : AccessibilityService() {
             if (menu || dragging || !isAttachedToWindow) return
             val lp = layoutParams as? WindowManager.LayoutParams ?: return
 
-            // Use the ball's actual on-screen position. WindowManager x/y can be offset
-            // from screen coordinates by system bars, so comparing them directly with
-            // displayMetrics can incorrectly choose a distant edge/corner.
-            val location = IntArray(2)
-            getLocationOnScreen(location)
-            val screenWidth = resources.displayMetrics.widthPixels
-            val screenHeight = resources.displayMetrics.heightPixels
-            val currentX = location[0]
-            val currentY = location[1]
-            val maxX = (screenWidth - width).coerceAtLeast(0)
-            val maxY = (screenHeight - height).coerceAtLeast(0)
-
-            // Project the ball onto each edge and choose the shortest actual movement.
+            // This overlay uses TOP|START gravity, so lp.x/lp.y are already the
+            // screen-relative coordinates used by dragging and by the saved position.
+            // Project onto each edge while preserving the other coordinate.
+            val maxX = (resources.displayMetrics.widthPixels - lp.width).coerceAtLeast(0)
+            val maxY = (resources.displayMetrics.heightPixels - lp.height).coerceAtLeast(0)
+            val currentX = lp.x.coerceIn(0, maxX)
+            val currentY = lp.y.coerceIn(0, maxY)
             val candidates = listOf(
-                Triple(currentX.coerceIn(0, maxX), currentY.coerceIn(0, maxY), "left"),
-                Triple(maxX, currentY.coerceIn(0, maxY), "right"),
-                Triple(currentX.coerceIn(0, maxX), 0, "top"),
-                Triple(currentX.coerceIn(0, maxX), maxY, "bottom")
+                0 to currentY,
+                maxX to currentY,
+                currentX to 0,
+                currentX to maxY
             )
-            val target = candidates.minByOrNull { (x, y, _) ->
+            val target = candidates.minByOrNull { (x, y) ->
                 val dx = (x - currentX).toDouble()
                 val dy = (y - currentY).toDouble()
                 dx * dx + dy * dy
             } ?: return
-            val deltaX = target.first - currentX
-            val deltaY = target.second - currentY
+            val targetX = target.first
+            val targetY = target.second
+            val deltaX = targetX - lp.x
+            val deltaY = targetY - lp.y
+
+            // If already on an edge, don't animate or drift.
+            if (deltaX == 0 && deltaY == 0) {
+                alpha = idleAlpha()
+                return
+            }
 
             animate().cancel()
             animate()
@@ -1563,10 +1565,9 @@ class AvatarService : AccessibilityService() {
                 .setInterpolator(android.view.animation.DecelerateInterpolator())
                 .withEndAction {
                     if (!isAttachedToWindow || menu || dragging) return@withEndAction
-                    // Apply only the movement delta to the WindowManager position. This
-                    // preserves any system-bar offset in the window's coordinate space.
-                    lp.x += deltaX
-                    lp.y += deltaY
+                    // Commit the animated offset to the actual overlay window position.
+                    lp.x = targetX
+                    lp.y = targetY
                     translationX = 0f
                     translationY = 0f
                     runCatching { wm.updateViewLayout(this, lp) }
