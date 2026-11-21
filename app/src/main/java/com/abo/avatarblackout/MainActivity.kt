@@ -174,30 +174,6 @@ class MainActivity : FragmentActivity() {
         window.statusBarColor = backgroundColor
         window.navigationBarColor = backgroundColor
         showShell()
-        showStartupSplash()
-    }
-
-    private fun showStartupSplash() {
-        if (!::root.isInitialized) return
-        val splash = FrameLayout(this).apply {
-            setBackgroundColor(Color.TRANSPARENT)
-            isClickable = true
-            isFocusable = true
-        }
-        val mark = ImageView(this).apply {
-            setImageResource(R.drawable.swizy_logo)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            contentDescription = translate("Swizy")
-            alpha = 0f
-        }
-        splash.addView(mark, FrameLayout.LayoutParams(dp(124), dp(124), Gravity.CENTER))
-        root.addView(splash, FrameLayout.LayoutParams(-1, -1))
-        mark.animate().alpha(1f).setDuration(220).start()
-        Handler(Looper.getMainLooper()).postDelayed({
-            mark.animate().alpha(0f).setDuration(260).withEndAction {
-                (splash.parent as? android.view.ViewGroup)?.removeView(splash)
-            }.start()
-        }, 1250L)
     }
 
     override fun onDestroy() {
