@@ -102,15 +102,17 @@ object UiText {
 
     fun translate(value: String, language: String): String {
         // Brand and feature names are localized in both directions.
-        val names = mapOf(
-            "Swizy" to "سويزي",
-            "swizy" to "سويزي",
-            "سويزي" to "Swizy",
-            "Lowery" to "لويري",
-            "لويري" to "Lowery"
-        )
-        names[value]?.let { return if (language == "ar") it else names.entries
-            .firstOrNull { entry -> entry.value == value }?.key ?: value }
+        if (language == "ar") {
+            when (value) {
+                "Swizy", "swizy" -> return "سويزي"
+                "Lowery" -> return "لويري"
+            }
+        } else {
+            when (value) {
+                "سويزي" -> return "Swizy"
+                "لويري" -> return "Lowery"
+            }
+        }
         if (language != "ar") return value
         arabic[value]?.let { return it }
         return when {
