@@ -1526,42 +1526,47 @@ class AvatarService : AccessibilityService() {
         private fun dock() {
             if (menu || dragging || !isAttachedToWindow) return
             val lp = layoutParams as? WindowManager.LayoutParams ?: return
+
+            // Use the ball's actual on-screen position. WindowManager x/y can be offset
+            // from screen coordinates by system bars, so comparing them directly with
+            // displayMetrics can incorrectly choose a distant edge/corner.
+            val location = IntArray(2)
+            getLocationOnScreen(location)
             val screenWidth = resources.displayMetrics.widthPixels
             val screenHeight = resources.displayMetrics.heightPixels
+            val currentX = location[0]
+            val currentY = location[1]
             val maxX = (screenWidth - width).coerceAtLeast(0)
             val maxY = (screenHeight - height).coerceAtLeast(0)
 
-            // Dock to the closest of the four edges, not to a screen corner.
-            // Keep the coordinate parallel to that edge exactly where the user left it.
-            val distances = listOf(
-                lp.x.coerceAtLeast(0) to "left",
-                (screenWidth - (lp.x + width)).coerceAtLeast(0) to "right",
-                lp.y.coerceAtLeast(0) to "top",
-                (screenHeight - (lp.y + height)).coerceAtLeast(0) to "bottom"
+            // Project the ball onto each edge and choose the shortest actual movement.
+            val candidates = listOf(
+                Triple(currentX.coerceIn(0, maxX), currentY.coerceIn(0, maxY), "left"),
+                Triple(maxX, currentY.coerceIn(0, maxY), "right"),
+                Triple(currentX.coerceIn(0, maxX), 0, "top"),
+                Triple(currentX.coerceIn(0, maxX), maxY, "bottom")
             )
-            val nearestEdge = distances.minByOrNull { it.first }?.second ?: "left"
-            val targetX = when (nearestEdge) {
-                "left" -> 0
-                "right" -> maxX
-                else -> lp.x.coerceIn(0, maxX)
-            }
-            val targetY = when (nearestEdge) {
-                "top" -> 0
-                "bottom" -> maxY
-                else -> lp.y.coerceIn(0, maxY)
-            }
+            val target = candidates.minByOrNull { (x, y, _) ->
+                val dx = (x - currentX).toDouble()
+                val dy = (y - currentY).toDouble()
+                dx * dx + dy * dy
+            } ?: return
+            val deltaX = target.first - currentX
+            val deltaY = target.second - currentY
 
             animate().cancel()
             animate()
-                .translationX((targetX - lp.x).toFloat())
-                .translationY((targetY - lp.y).toFloat())
+                .translationX(deltaX.toFloat())
+                .translationY(deltaY.toFloat())
                 .alpha(idleAlpha())
                 .setDuration(240)
                 .setInterpolator(android.view.animation.DecelerateInterpolator())
                 .withEndAction {
                     if (!isAttachedToWindow || menu || dragging) return@withEndAction
-                    lp.x = targetX
-                    lp.y = targetY
+                    // Apply only the movement delta to the WindowManager position. This
+                    // preserves any system-bar offset in the window's coordinate space.
+                    lp.x += deltaX
+                    lp.y += deltaY
                     translationX = 0f
                     translationY = 0f
                     runCatching { wm.updateViewLayout(this, lp) }
