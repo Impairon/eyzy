@@ -114,12 +114,9 @@ class AvatarService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var pending = false
     private var lastRenderKey: String? = null
+    // Pre-sized high-resolution variant avoids decoding the full master artwork for the ball.
     private val controlIcon by lazy {
-        BitmapFactory.decodeResource(resources, R.drawable.swizy_logo)?.let { source ->
-            val scaled = android.graphics.Bitmap.createScaledBitmap(source, dp(128), dp(128), true)
-            if (scaled !== source) source.recycle()
-            scaled
-        }
+        BitmapFactory.decodeResource(resources, R.drawable.swizy_logo_small)
     }
     private val scan = Runnable { pending = false; doScan() }
     // safety net: rescan every second so a missed event or a dropped overlay recovers by itself
