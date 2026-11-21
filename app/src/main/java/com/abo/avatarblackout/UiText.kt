@@ -31,6 +31,7 @@ object UiText {
         "Set your location in the Prayers page first, or enable GPS there, then come back." to "حدّد موقعك من صفحة الصلاة أو فعّل GPS ثم عُد إلى هنا.",
         "Go to Prayers" to "الانتقال إلى الصلاة", "The saved location is invalid. Update it from the Prayers page." to "الموقع المحفوظ غير صالح. حدّثه من صفحة الصلاة.",
         "Finding compass direction…" to "جارٍ تحديد اتجاه البوصلة…",
+        "Refreshing compass for a moment…" to "لحظة، جارٍ تحديث البوصلة…",
         "Good" to "جيد", "Medium" to "متوسط", "Low" to "ضعيف", "Unreliable" to "غير موثوق",
         "Your location: " to "موقعك: ",
         "Hold the phone at your comfortable upward angle (around 45° is fine). Keep the screen facing you and use the top edge as the forward direction. The compass compensates for tilt." to "أمسك الهاتف بالزاوية المريحة لك (حوالي ٤٥ درجة مناسبة). اجعل الشاشة باتجاهك واستخدم الحافة العلوية كاتجاه أمامي. البوصلة تعوّض ميل الهاتف.",
