@@ -967,7 +967,11 @@ class MainActivity : FragmentActivity() {
                 setPadding(dp(8), dp(6), dp(8), dp(8))
             }
             compassRefreshNote = refreshNote
+            refreshNote.visibility = if (compassInitialized) View.GONE else View.VISIBLE
             it.addView(refreshNote)
+            refreshNote.postDelayed({
+                if (compassRefreshNote === refreshNote) refreshNote.visibility = View.GONE
+            }, 1800L)
             if (lat == null || lon == null) {
                 addText(it, "Set your location in the Prayers page first, or enable GPS there, then come back.")
                 val help = actionButton("Go to Prayers")
