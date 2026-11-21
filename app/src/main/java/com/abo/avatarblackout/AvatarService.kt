@@ -1528,10 +1528,29 @@ class AvatarService : AccessibilityService() {
             val lp = layoutParams as? WindowManager.LayoutParams ?: return
             val screenWidth = resources.displayMetrics.widthPixels
             val screenHeight = resources.displayMetrics.heightPixels
-            val left = lp.x + width / 2 < screenWidth / 2
-            val top = lp.y + height / 2 < screenHeight / 2
-            val targetX = if (left) 0 else (screenWidth - width).coerceAtLeast(0)
-            val targetY = if (top) 0 else (screenHeight - height).coerceAtLeast(0)
+            val maxX = (screenWidth - width).coerceAtLeast(0)
+            val maxY = (screenHeight - height).coerceAtLeast(0)
+
+            // Dock to the closest of the four edges, not to a screen corner.
+            // Keep the coordinate parallel to that edge exactly where the user left it.
+            val distances = listOf(
+                lp.x.coerceAtLeast(0) to "left",
+                (screenWidth - (lp.x + width)).coerceAtLeast(0) to "right",
+                lp.y.coerceAtLeast(0) to "top",
+                (screenHeight - (lp.y + height)).coerceAtLeast(0) to "bottom"
+            )
+            val nearestEdge = distances.minByOrNull { it.first }?.second ?: "left"
+            val targetX = when (nearestEdge) {
+                "left" -> 0
+                "right" -> maxX
+                else -> lp.x.coerceIn(0, maxX)
+            }
+            val targetY = when (nearestEdge) {
+                "top" -> 0
+                "bottom" -> maxY
+                else -> lp.y.coerceIn(0, maxY)
+            }
+
             animate().cancel()
             animate()
                 .translationX((targetX - lp.x).toFloat())
@@ -1550,8 +1569,6 @@ class AvatarService : AccessibilityService() {
                         .putInt("control_x_${this@AvatarService.orientationKey()}", lp.x)
                         .putInt("control_y_${this@AvatarService.orientationKey()}", lp.y)
                         .apply()
-                    animate().translationX(if (left) -dp(20).toFloat() else dp(20).toFloat())
-                        .setDuration(140).start()
                 }
                 .start()
         }
