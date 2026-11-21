@@ -66,7 +66,7 @@ val copySwizyBrandAssets by tasks.registering(Sync::class) {
             resized.flush()
         }
 
-        val drawableDir = brandResDir.get().dir("drawable-nodpi").get().asFile
+        val drawableDir = brandResDir.get().asFile.resolve("drawable-nodpi")
         writeOptimizedPng(rootProject.file("katakito_no_background.png"), drawableDir.resolve("swizy_logo.png"), 512)
         writeOptimizedPng(rootProject.file("katakito_no_background.png"), drawableDir.resolve("swizy_logo_small.png"), 384)
         writeOptimizedPng(rootProject.file("katakito.png"), drawableDir.resolve("swizy_logo_with_bg.png"), 512)
