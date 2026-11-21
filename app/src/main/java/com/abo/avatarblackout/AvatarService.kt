@@ -114,7 +114,13 @@ class AvatarService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private var pending = false
     private var lastRenderKey: String? = null
-    private val controlIcon by lazy { BitmapFactory.decodeResource(resources, R.drawable.swizy_logo) }
+    private val controlIcon by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.swizy_logo)?.let { source ->
+            val scaled = android.graphics.Bitmap.createScaledBitmap(source, dp(128), dp(128), true)
+            if (scaled !== source) source.recycle()
+            scaled
+        }
+    }
     private val scan = Runnable { pending = false; doScan() }
     // safety net: rescan every second so a missed event or a dropped overlay recovers by itself
     private val tick = object : Runnable {
@@ -1493,7 +1499,9 @@ class AvatarService : AccessibilityService() {
         private fun wake() {
             removeCallbacks(fade)
             animate().cancel()
-            animate().translationX(0f).alpha(1f).setDuration(120).start()
+            translationX = 0f
+            translationY = 0f
+            animate().alpha(1f).setDuration(120).start()
             postDelayed(fade, 2200)
         }
 
@@ -1501,14 +1509,32 @@ class AvatarService : AccessibilityService() {
             if (menu || dragging || !isAttachedToWindow) return
             val lp = layoutParams as? WindowManager.LayoutParams ?: return
             val screenWidth = resources.displayMetrics.widthPixels
-            val leftEdge = lp.x + width / 2 < screenWidth / 2
-            lp.x = if (leftEdge) 0 else (screenWidth - width).coerceAtLeast(0)
-            runCatching { wm.updateViewLayout(this, lp) }
+            val screenHeight = resources.displayMetrics.heightPixels
+            val left = lp.x + width / 2 < screenWidth / 2
+            val top = lp.y + height / 2 < screenHeight / 2
+            val targetX = if (left) 0 else (screenWidth - width).coerceAtLeast(0)
+            val targetY = if (top) 0 else (screenHeight - height).coerceAtLeast(0)
             animate().cancel()
             animate()
-                .translationX(if (leftEdge) -dp(20).toFloat() else dp(20).toFloat())
+                .translationX((targetX - lp.x).toFloat())
+                .translationY((targetY - lp.y).toFloat())
                 .alpha(idleAlpha())
-                .setDuration(180)
+                .setDuration(240)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .withEndAction {
+                    if (!isAttachedToWindow || menu || dragging) return@withEndAction
+                    lp.x = targetX
+                    lp.y = targetY
+                    translationX = 0f
+                    translationY = 0f
+                    runCatching { wm.updateViewLayout(this, lp) }
+                    getSharedPreferences("avb", Context.MODE_PRIVATE).edit()
+                        .putInt("control_x_${this@AvatarService.orientationKey()}", lp.x)
+                        .putInt("control_y_${this@AvatarService.orientationKey()}", lp.y)
+                        .apply()
+                    animate().translationX(if (left) -dp(20).toFloat() else dp(20).toFloat())
+                        .setDuration(140).start()
+                }
                 .start()
         }
 
@@ -1628,6 +1654,10 @@ class AvatarService : AccessibilityService() {
                         invalidate()
                     }
                     wake()
+                    animate().cancel()
+                    translationX = 0f
+                    translationY = 0f
+                    alpha = 1f
                     removeCallbacks(fade)
                     touchStartX = event.rawX
                     touchStartY = event.rawY
@@ -1672,22 +1702,11 @@ class AvatarService : AccessibilityService() {
                             .putInt("control_x_${this@AvatarService.orientationKey()}", lp.x)
                             .putInt("control_y_${this@AvatarService.orientationKey()}", lp.y)
                             .apply()
-                        // Settle gently to the nearest edge after the drag ends.
-                        val left = lp.x + width / 2 < resources.displayMetrics.widthPixels / 2
-                        val targetX = if (left) 0 else
-                            (resources.displayMetrics.widthPixels - width).coerceAtLeast(0)
+                        // A manual release is a true stop: keep the exact dropped position.
+                        // The delayed idle action may dock the ball later when it needs to hide.
                         animate().cancel()
-                        val settleOffset = targetX - lp.x
-                        animate().translationX(settleOffset.toFloat()).setDuration(170)
-                            .setInterpolator(android.view.animation.DecelerateInterpolator())
-                            .withEndAction {
-                                lp.x = targetX
-                                translationX = 0f
-                                runCatching { wm.updateViewLayout(this, lp) }
-                                getSharedPreferences("avb", Context.MODE_PRIVATE).edit()
-                                    .putInt("control_x_${this@AvatarService.orientationKey()}", lp.x)
-                                    .apply()
-                            }.start()
+                        translationX = 0f
+                        translationY = 0f
                         postDelayed(fade, 2200)
                     } else if (!menu) {
                         menu = true
