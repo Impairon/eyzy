@@ -292,15 +292,6 @@ object Prefs {
         store(c).edit()
             .putString(KEY_PRAYER_DATE, date).putString(KEY_PRAYER_TIMES, timesJson).apply()
 
-    fun manualHideRect(c: Context): android.graphics.Rect? {
-        return manualHideRects(c).lastOrNull()
-    }
-
-    fun setManualHideRect(c: Context, rect: android.graphics.Rect) =
-        store(c).edit()
-            .putString(KEY_MANUAL_RECT, "${rect.left},${rect.top},${rect.right},${rect.bottom}")
-            .putBoolean(KEY_MANUAL_VISIBLE, true).apply()
-
     fun manualHideRects(c: Context): List<android.graphics.Rect> {
         val raw = store(c)
             .getString(KEY_MANUAL_RECT, null) ?: return emptyList()
@@ -310,35 +301,6 @@ object Prefs {
                 android.graphics.Rect(values[0], values[1], values[2], values[3])
             } else null
         }
-    }
-
-    fun addManualHideRect(c: Context, rect: android.graphics.Rect) {
-        val all = manualHideRects(c) + rect
-        store(c).edit()
-            .putString(KEY_MANUAL_RECT, all.joinToString(";") {
-                "${it.left},${it.top},${it.right},${it.bottom}"
-            })
-            .putBoolean(KEY_MANUAL_VISIBLE, true).apply()
-    }
-
-    fun removeLastManualHideRect(c: Context) {
-        val all = manualHideRects(c).dropLast(1)
-        store(c).edit().apply {
-            if (all.isEmpty()) remove(KEY_MANUAL_RECT)
-            else putString(KEY_MANUAL_RECT, all.joinToString(";") {
-                "${it.left},${it.top},${it.right},${it.bottom}"
-            })
-        }.apply()
-    }
-
-    fun replaceManualHideRect(c: Context, index: Int, rect: android.graphics.Rect) {
-        val all = manualHideRects(c).toMutableList()
-        if (index !in all.indices) return
-        all[index] = rect
-        store(c).edit()
-            .putString(KEY_MANUAL_RECT, all.joinToString(";") {
-                "${it.left},${it.top},${it.right},${it.bottom}"
-            }).apply()
     }
 
     fun manualHideVisible(c: Context) =
@@ -362,11 +324,6 @@ object Prefs {
                 Rect(values[0], values[1], values[2], values[3])
             } else null
         }
-    }
-
-    fun hasManualHideRects(c: Context, profileId: String, orientation: String): Boolean {
-        return store(c)
-            .contains("manual_hide_rect_${profileId}_${orientation}")
     }
 
     fun profileHideRects(c: Context, profileId: String, orientation: String): List<Rect> {
