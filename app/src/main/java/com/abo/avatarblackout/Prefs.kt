@@ -292,16 +292,8 @@ object Prefs {
         store(c).edit()
             .putString(KEY_PRAYER_DATE, date).putString(KEY_PRAYER_TIMES, timesJson).apply()
 
-    fun manualHideRects(c: Context): List<android.graphics.Rect> {
-        val raw = store(c)
-            .getString(KEY_MANUAL_RECT, null) ?: return emptyList()
-        return raw.split(';').mapNotNull { encoded ->
-            val values = encoded.split(',').mapNotNull { it.toIntOrNull() }
-            if (values.size == 4 && values[2] > values[0] && values[3] > values[1]) {
-                android.graphics.Rect(values[0], values[1], values[2], values[3])
-            } else null
-        }
-    }
+    fun manualHideRects(c: Context): List<Rect> =
+        decodeRects(store(c).getString(KEY_MANUAL_RECT, null))
 
     fun manualHideVisible(c: Context) =
         store(c).getBoolean(KEY_MANUAL_VISIBLE, true)
@@ -314,29 +306,11 @@ object Prefs {
         store(c).edit()
             .remove(KEY_MANUAL_RECT).remove(KEY_MANUAL_VISIBLE).apply()
 
-    fun manualHideRects(c: Context, profileId: String, orientation: String): List<Rect> {
-        val key = "manual_hide_rect_${profileId}_${orientation}"
-        val raw = store(c).getString(key, null)
-            ?: return emptyList()
-        return raw.split(';').mapNotNull { encoded ->
-            val values = encoded.split(',').mapNotNull { it.toIntOrNull() }
-            if (values.size == 4 && values[2] > values[0] && values[3] > values[1]) {
-                Rect(values[0], values[1], values[2], values[3])
-            } else null
-        }
-    }
+    fun manualHideRects(c: Context, profileId: String, orientation: String): List<Rect> =
+        decodeRects(store(c).getString("manual_hide_rect_${profileId}_${orientation}", null))
 
-    fun profileHideRects(c: Context, profileId: String, orientation: String): List<Rect> {
-        val key = "profile_hide_rect_${profileId}_${orientation}"
-        val raw = store(c).getString(key, null)
-            ?: return emptyList()
-        return raw.split(';').mapNotNull { encoded ->
-            val values = encoded.split(',').mapNotNull { it.toIntOrNull() }
-            if (values.size == 4 && values[2] > values[0] && values[3] > values[1]) {
-                Rect(values[0], values[1], values[2], values[3])
-            } else null
-        }
-    }
+    fun profileHideRects(c: Context, profileId: String, orientation: String): List<Rect> =
+        decodeRects(store(c).getString("profile_hide_rect_${profileId}_${orientation}", null))
 
     fun saveProfileHideRects(
         c: Context,
@@ -345,10 +319,7 @@ object Prefs {
         rects: List<Rect>
     ) {
         val key = "profile_hide_rect_${profileId}_${orientation}"
-        store(c).edit()
-            .putString(key, rects.joinToString(";") {
-                "${it.left},${it.top},${it.right},${it.bottom}"
-            }).apply()
+        store(c).edit().putString(key, encodeRects(rects)).apply()
     }
 
     fun saveManualHideRects(
@@ -358,16 +329,29 @@ object Prefs {
         rects: List<Rect>
     ) {
         val key = "manual_hide_rect_${profileId}_${orientation}"
-        store(c).edit()
-            .putString(key, rects.joinToString(";") {
-                "${it.left},${it.top},${it.right},${it.bottom}"
-            }).apply()
+        store(c).edit().putString(key, encodeRects(rects)).apply()
     }
 
     fun clearManualHideRects(c: Context, profileId: String, orientation: String) {
         store(c).edit()
                 .remove("manual_hide_rect_${profileId}_${orientation}").apply()
     }
+
+    private fun decodeRects(raw: String?): List<Rect> =
+        raw?.split(';')?.mapNotNull { encoded ->
+            val parts = encoded.split(',')
+            if (parts.size != 4) return@mapNotNull null
+            val left = parts[0].toIntOrNull() ?: return@mapNotNull null
+            val top = parts[1].toIntOrNull() ?: return@mapNotNull null
+            val right = parts[2].toIntOrNull() ?: return@mapNotNull null
+            val bottom = parts[3].toIntOrNull() ?: return@mapNotNull null
+            if (right <= left || bottom <= top) null else Rect(left, top, right, bottom)
+        } ?: emptyList()
+
+    private fun encodeRects(rects: List<Rect>): String =
+        rects.asSequence()
+            .filter { it.width() > 0 && it.height() > 0 }
+            .joinToString(";") { "${it.left},${it.top},${it.right},${it.bottom}" }
 
     fun exportData(c: Context): String {
         val prefs = store(c)
