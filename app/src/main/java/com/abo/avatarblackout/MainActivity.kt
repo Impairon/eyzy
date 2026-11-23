@@ -74,6 +74,9 @@ class MainActivity : FragmentActivity() {
     private lateinit var navigationBar: LinearLayout
     private val navigationItems = mutableListOf<Pair<Int, TextView>>()
     private var currentPage = 0
+    private var prayerRequestInFlight = false
+    private var prayerRequestId = 0L
+    private var activeLocationListener: LocationListener? = null
     private var unlockedThisSession = false
     private var lockPromptActive = false
     private var deviceCredentialLauncherActive = false
@@ -181,6 +184,14 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onDestroy() {
+        prayerRequestId++
+        prayerRequestInFlight = false
+        activeLocationListener?.let { listener ->
+            runCatching {
+                (getSystemService(LOCATION_SERVICE) as LocationManager).removeUpdates(listener)
+            }
+        }
+        activeLocationListener = null
         if (instance === this) instance = null
         super.onDestroy()
     }
@@ -1494,6 +1505,9 @@ class MainActivity : FragmentActivity() {
                     parent: AdapterView<*>?, view: View?, position: Int, id: Long
                 ) {
                     if (Prefs.prayerMethod(this@MainActivity) != methodValues[position]) {
+                        // A response calculated with the previous method must not overwrite this one.
+                        prayerRequestId++
+                        prayerRequestInFlight = false
                         Prefs.setPrayerMethod(this@MainActivity, methodValues[position])
                     }
                 }
@@ -1796,9 +1810,19 @@ class MainActivity : FragmentActivity() {
         refreshNavigation()
     }
 
+    private fun hasLocationPermission(): Boolean =
+        checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
     private fun updatePrayerTimes(useGps: Boolean, latitudeText: String, longitudeText: String) {
-        if (useGps && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), LOCATION_REQUEST)
+        if (useGps && !hasLocationPermission()) {
+            requestPermissions(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                ),
+                LOCATION_REQUEST
+            )
             return
         }
         val coordinates = if (useGps) currentLocation() else {
@@ -1818,13 +1842,21 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun fetchPrayerTimesFor(latitude: Double, longitude: Double) {
+        if (prayerRequestInFlight) return
+        prayerRequestInFlight = true
+        val requestId = ++prayerRequestId
+        val method = Prefs.prayerMethod(this)
         Toast.makeText(this, translate("Updating prayer times…"), Toast.LENGTH_SHORT).show()
         thread(name = "prayer-update") {
-            val result = fetchPrayerTimes(latitude, longitude)
+            val result = fetchPrayerTimes(latitude, longitude, method)
             runOnUiThread {
+                if (requestId != prayerRequestId) return@runOnUiThread
+                prayerRequestInFlight = false
+                if (isFinishing || isDestroyed) return@runOnUiThread
                 if (result != null) {
                     Prefs.setPrayerCache(this, todayKey(), result.toString())
-                    showPrayers()
+                    // A background response should never pull the user away from another page.
+                    if (currentPage == 2) showPrayers()
                     Toast.makeText(this, translate("Prayer times updated"), Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(this, translate("Could not update. Cached times remain available."), Toast.LENGTH_LONG).show()
@@ -1834,33 +1866,47 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun requestCurrentLocation() {
-                val manager = getSystemService(LOCATION_SERVICE) as LocationManager
-                val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
-                    .filter { runCatching { manager.isProviderEnabled(it) }.getOrDefault(false) }
-                if (providers.isEmpty()) {
-                    Toast.makeText(this, translate("Enable location services or enter coordinates."), Toast.LENGTH_LONG).show()
-                    return
-                }
-                Toast.makeText(this, translate("Finding your location…"), Toast.LENGTH_SHORT).show()
-                var finished = false
-                val listener = object : LocationListener {
-                    override fun onLocationChanged(location: Location) {
-                        if (finished) return
-                        finished = true
-                        runCatching { manager.removeUpdates(this) }
-                        fetchPrayerTimesFor(location.latitude, location.longitude)
-                    }
-                }
-                providers.forEach { provider ->
-                    runCatching { manager.requestLocationUpdates(provider, 0L, 0f, listener, Looper.getMainLooper()) }
-                }
-                Handler(Looper.getMainLooper()).postDelayed({
-                    if (!finished) {
-                        finished = true
-                        runCatching { manager.removeUpdates(listener) }
-                        Toast.makeText(this, translate("Location unavailable. Enter coordinates instead."), Toast.LENGTH_LONG).show()
-                    }
-                }, 15_000L)
+        if (activeLocationListener != null) return
+        val manager = getSystemService(LOCATION_SERVICE) as LocationManager
+        val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            .filter { runCatching { manager.isProviderEnabled(it) }.getOrDefault(false) }
+        if (providers.isEmpty()) {
+            Toast.makeText(this, translate("Enable location services or enter coordinates."), Toast.LENGTH_LONG).show()
+            return
+        }
+
+        Toast.makeText(this, translate("Finding your location…"), Toast.LENGTH_SHORT).show()
+        val listener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                if (activeLocationListener !== this) return
+                activeLocationListener = null
+                runCatching { manager.removeUpdates(this) }
+                fetchPrayerTimesFor(location.latitude, location.longitude)
+            }
+        }
+        activeLocationListener = listener
+        var requested = false
+        providers.forEach { provider ->
+            if (runCatching {
+                manager.requestLocationUpdates(provider, 0L, 0f, listener, Looper.getMainLooper())
+                true
+            }.getOrDefault(false)) {
+                requested = true
+            }
+        }
+        if (!requested) {
+            activeLocationListener = null
+            Toast.makeText(this, translate("Location unavailable. Enter coordinates instead."), Toast.LENGTH_LONG).show()
+            return
+        }
+
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (activeLocationListener === listener) {
+                activeLocationListener = null
+                runCatching { manager.removeUpdates(listener) }
+                Toast.makeText(this, translate("Location unavailable. Enter coordinates instead."), Toast.LENGTH_LONG).show()
+            }
+        }, 15_000L)
     }
 
     private fun currentLocation(): Pair<Double, Double>? {
@@ -1871,11 +1917,11 @@ class MainActivity : FragmentActivity() {
         }.maxByOrNull { it.time }?.let { it.latitude to it.longitude }
     }
 
-    private fun fetchPrayerTimes(latitude: Double, longitude: Double): JSONObject? {
+    private fun fetchPrayerTimes(latitude: Double, longitude: Double, method: Int): JSONObject? {
         val date = SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date())
         val url = URL(
             "https://api.aladhan.com/v1/timings/$date?latitude=${encode(latitude)}" +
-                "&longitude=${encode(longitude)}&method=${Prefs.prayerMethod(this)}"
+                "&longitude=${encode(longitude)}&method=$method"
         )
         val connection = url.openConnection() as HttpURLConnection
         return try {
@@ -1919,7 +1965,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, results: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, results)
-        if (requestCode == LOCATION_REQUEST && results.firstOrNull() == PackageManager.PERMISSION_GRANTED) showPrayers()
+        if (requestCode == LOCATION_REQUEST && hasLocationPermission()) showPrayers()
     }
 
     private fun card(title: String, body: (LinearLayout) -> Unit): View {
