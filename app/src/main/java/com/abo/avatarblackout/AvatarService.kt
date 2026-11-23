@@ -255,8 +255,13 @@ class AvatarService : AccessibilityService() {
             scheduleScan(0L)
             return
         }
-        // Coalesce noisy content updates; window changes still resolve immediately on the next scan.
-        scheduleScan(55L)
+        // Window switches should be handled immediately; scrolling and content churn can wait.
+        val delay = when (e?.eventType) {
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> 0L
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> 65L
+            else -> 100L
+        }
+        scheduleScan(delay)
     }
 
     private fun scheduleScan(delay: Long) {
@@ -982,9 +987,7 @@ class AvatarService : AccessibilityService() {
                         b.rect.area() * 2 >= a.rect.area()
                 }
             }
-            val uniqueItems = finalItems.distinctBy {
-                "${it.rect.left},${it.rect.top},${it.rect.right},${it.rect.bottom}"
-            }.toMutableList()
+            val uniqueItems = finalItems.distinctBy { it.rect }.toMutableList()
             manualItems.asReversed().forEach { manual ->
                 if (uniqueItems.none { it.rect == manual.rect }) uniqueItems.add(0, manual)
             }
@@ -1020,7 +1023,7 @@ class AvatarService : AccessibilityService() {
         // Telegram draws avatars itself and exposes no avatar nodes, so we work from its list rows
         val telegramList = n.packageName?.toString() in TELEGRAM &&
             n.className?.contains("RecyclerView") == true
-        val listBounds = if (telegramList) Rect().also { n.getBoundsInScreen(it) } else null
+        val listBounds = if (telegramList) bounds else null
         if (listBounds != null) {
             val cur = sc.listRect
             if (cur == null || listBounds.area() > cur.area()) sc.listRect = listBounds
@@ -1247,7 +1250,7 @@ class AvatarService : AccessibilityService() {
                             ) to (
                                 screenY - area.top.toFloat()
                             )
-                            movingPreview = Rect(areas[movingAreaIndex])
+                            movingPreview = manualStoredRect(areas[movingAreaIndex], movingAreaIndex)
                             invalidate()
                         }
                     }
@@ -1295,7 +1298,7 @@ class AvatarService : AccessibilityService() {
                             ) to (
                                 screenY - area.bottom.toFloat()
                             )
-                            resizingPreview = Rect(area)
+                            resizingPreview = manualStoredRect(area, resizingAreaIndex)
                             invalidate()
                         }
                     }
