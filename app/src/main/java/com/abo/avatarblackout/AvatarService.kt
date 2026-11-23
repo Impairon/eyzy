@@ -811,7 +811,7 @@ class AvatarService : AccessibilityService() {
         return when (value) {
             "Add hidden area" -> "إضافة منطقة إخفاء"
             "Add profile" -> "إضافة ملف"
-            "Open the app you want to configure first" -> "افتح التطبيق الذي تريد ضبطه أولًا",
+            "Open the app you want to configure first" -> "افتح التطبيق الذي تريد ضبطه أولًا"
             "Return to the app being configured before saving" -> "عُد إلى التطبيق الذي تعدّل ملفه قبل الحفظ"
             "Edit profile" -> "تعديل الملف"
             "Save profile" -> "حفظ الملف"
