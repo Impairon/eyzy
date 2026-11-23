@@ -421,7 +421,6 @@ class AvatarService : AccessibilityService() {
     private fun removeLastManualArea() {
         val areas = editableRects()
         if (areas.isEmpty()) return
-        rememberEditableChange(areas)
         saveEditableRects(areas.dropLast(1))
         doScan()
     }
@@ -429,7 +428,6 @@ class AvatarService : AccessibilityService() {
     private fun removeAllManualAreas() {
         val areas = editableRects()
         if (areas.isEmpty()) return
-        rememberEditableChange(areas)
         if (profileCreationId != null ||
             (profileRects().isNotEmpty() && manualRects().isEmpty())
         ) {
