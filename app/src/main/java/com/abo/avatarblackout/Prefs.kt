@@ -306,6 +306,9 @@ object Prefs {
         store(c).edit()
             .remove(KEY_MANUAL_RECT).remove(KEY_MANUAL_VISIBLE).apply()
 
+    fun clearLegacyManualHideRects(c: Context) =
+        store(c).edit().remove(KEY_MANUAL_RECT).apply()
+
     fun manualHideRects(c: Context, profileId: String, orientation: String): List<Rect> =
         decodeRects(store(c).getString("manual_hide_rect_${profileId}_${orientation}", null))
 
