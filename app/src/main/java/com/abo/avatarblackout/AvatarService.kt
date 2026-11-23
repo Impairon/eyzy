@@ -681,6 +681,14 @@ class AvatarService : AccessibilityService() {
     private fun beginProfileCreation() {
         if (!Prefs.isEnabled(this) || !manualSessionActive) return
         val packageName = activePackage
+        if (!isExternalPackage(packageName)) {
+            Toast.makeText(
+                this,
+                menuLabel("Open the app you want to configure first"),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
         val hadProfile = Prefs.hasProfileForPackage(this, packageName)
         val existing = Prefs.profileForPackage(this, packageName)
         val profile = if (hadProfile) existing else Prefs.addProfile(
@@ -787,6 +795,7 @@ class AvatarService : AccessibilityService() {
         return when (value) {
             "Add hidden area" -> "إضافة منطقة إخفاء"
             "Add profile" -> "إضافة ملف"
+            "Open the app you want to configure first" -> "افتح التطبيق الذي تريد ضبطه أولًا"
             "Edit profile" -> "تعديل الملف"
             "Save profile" -> "حفظ الملف"
             "Cancel profile" -> "إلغاء التعديل"
