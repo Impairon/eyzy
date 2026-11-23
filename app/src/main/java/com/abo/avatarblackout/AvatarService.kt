@@ -966,6 +966,9 @@ class AvatarService : AccessibilityService() {
                 if (legacyProfileRects.isNotEmpty()) {
                     saveProfileRects(legacyProfileRects)
                     Prefs.clearManualHideRects(this, profileId(), orientationKey())
+                    if (profileCreationId != null && profileCreationPackage == activePackage) {
+                        profileCaptureRects = legacyProfileRects.map { Rect(it) }.toMutableList()
+                    }
                     currentProfileRects = legacyProfileRects
                 }
             }
