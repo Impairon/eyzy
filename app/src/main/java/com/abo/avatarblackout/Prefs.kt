@@ -7,6 +7,7 @@ import org.json.JSONObject
 
 object Prefs {
     private const val FILE = "avb"
+    private fun store(c: Context) = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
     private const val KEY = "enabled"
     private const val KEY_SIBHA_COUNT = "sibha_count"
     private const val KEY_SIBHA_PEEP_EVERY = "sibha_peep_every"
@@ -40,82 +41,82 @@ object Prefs {
     data class Profile(val id: String, val name: String, val packageName: String)
 
     fun isEnabled(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY, false)
+        store(c).getBoolean(KEY, false)
 
     fun set(c: Context, on: Boolean) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(KEY, on).apply()
+        store(c).edit().putBoolean(KEY, on).apply()
 
     fun tileAction(c: Context): TileAction =
         runCatching {
             TileAction.valueOf(
-                c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                store(c)
                     .getString(KEY_TILE_ACTION, TileAction.START_APP.name)
                     ?: TileAction.START_APP.name
             )
         }.getOrDefault(TileAction.START_APP)
 
     fun setTileAction(c: Context, action: TileAction) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        store(c)
             .edit().putString(KEY_TILE_ACTION, action.name).apply()
 
     fun privacyIndicator(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        store(c)
             .getBoolean(KEY_PRIVACY_INDICATOR, false)
 
     fun setPrivacyIndicator(c: Context, enabled: Boolean) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        store(c)
             .edit().putBoolean(KEY_PRIVACY_INDICATOR, enabled).apply()
 
     fun performanceMode(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        store(c)
             .getBoolean(KEY_PERFORMANCE_MODE, false)
 
     fun setPerformanceMode(c: Context, enabled: Boolean) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        store(c)
             .edit().putBoolean(KEY_PERFORMANCE_MODE, enabled).apply()
 
-    fun appLockEnabled(c: Context) = c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_APP_LOCK, false)
-    fun setAppLockEnabled(c: Context, enabled: Boolean) = c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(KEY_APP_LOCK, enabled).apply()
-    fun appLockBackgroundedAt(c: Context) = c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getLong(KEY_APP_LOCK_BACKGROUND_AT, 0L)
-    fun setAppLockBackgroundedAt(c: Context, timestamp: Long) = c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putLong(KEY_APP_LOCK_BACKGROUND_AT, timestamp).apply()
+    fun appLockEnabled(c: Context) = store(c).getBoolean(KEY_APP_LOCK, false)
+    fun setAppLockEnabled(c: Context, enabled: Boolean) = store(c).edit().putBoolean(KEY_APP_LOCK, enabled).apply()
+    fun appLockBackgroundedAt(c: Context) = store(c).getLong(KEY_APP_LOCK_BACKGROUND_AT, 0L)
+    fun setAppLockBackgroundedAt(c: Context, timestamp: Long) = store(c).edit().putLong(KEY_APP_LOCK_BACKGROUND_AT, timestamp).apply()
 
     fun headsetTime(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        store(c)
             .getBoolean(KEY_HEADSET_TIME, false)
 
     fun setHeadsetTime(c: Context, enabled: Boolean) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        store(c)
             .edit().putBoolean(KEY_HEADSET_TIME, enabled).apply()
 
     fun boxOpacity(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_BOX_OPACITY, 100)
+        store(c).getInt(KEY_BOX_OPACITY, 100)
 
     fun setBoxOpacity(c: Context, value: Int) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        store(c)
             .edit().putInt(KEY_BOX_OPACITY, value.coerceIn(25, 100)).apply()
 
     fun controlOpacity(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        store(c)
             .getInt(KEY_CONTROL_OPACITY, 65)
 
     fun setControlOpacity(c: Context, value: Int) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        store(c)
             .edit().putInt(KEY_CONTROL_OPACITY, value.coerceIn(35, 100)).apply()
 
     fun boxColor(c: Context): BoxColor =
         runCatching {
             BoxColor.valueOf(
-                c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                store(c)
                     .getString(KEY_BOX_COLOR, BoxColor.BLACK.name) ?: BoxColor.BLACK.name
             )
         }.getOrDefault(BoxColor.BLACK)
 
     fun setBoxColor(c: Context, color: BoxColor) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        store(c)
             .edit().putString(KEY_BOX_COLOR, color.name).apply()
 
     fun profiles(c: Context): List<Profile> {
-        val raw = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        val raw = store(c)
             .getString(KEY_PROFILES, null)
         val parsed = runCatching {
             JSONArray(raw ?: "[]").let { array ->
@@ -170,7 +171,7 @@ object Prefs {
     }
 
     fun deleteProfile(c: Context, id: String) {
-        val prefs = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        val prefs = store(c)
         saveProfiles(c, profiles(c).filterNot { it.id == id })
         prefs.edit().apply {
             prefs.all.keys
@@ -207,88 +208,88 @@ object Prefs {
                 put("packageName", it.packageName)
             })
         }
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        store(c).edit()
             .putString(KEY_PROFILES, array.toString()).apply()
     }
 
     fun maskMode(c: Context): MaskMode =
         runCatching {
             MaskMode.valueOf(
-                c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                store(c)
                     .getString(KEY_MASK_MODE, MaskMode.SIMPLE.name) ?: MaskMode.SIMPLE.name
             )
         }.getOrDefault(MaskMode.SIMPLE)
 
     fun setMaskMode(c: Context, mode: MaskMode) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        store(c)
             .edit().putString(KEY_MASK_MODE, mode.name).apply()
 
     fun lineThicknessDp(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_LINE_THICKNESS, 10)
+        store(c).getInt(KEY_LINE_THICKNESS, 10)
 
     fun setLineThicknessDp(c: Context, value: Int) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        store(c).edit()
             .putInt(KEY_LINE_THICKNESS, value.coerceIn(4, 64)).apply()
 
     fun circleSizeDp(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_CIRCLE_SIZE, 42)
+        store(c).getInt(KEY_CIRCLE_SIZE, 42)
 
     fun setCircleSizeDp(c: Context, value: Int) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        store(c).edit()
             .putInt(KEY_CIRCLE_SIZE, value.coerceIn(24, 96)).apply()
 
     fun sibhaCount(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_SIBHA_COUNT, 0)
+        store(c).getInt(KEY_SIBHA_COUNT, 0)
 
     fun setSibhaCount(c: Context, count: Int) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        store(c).edit()
             .putInt(KEY_SIBHA_COUNT, count.coerceAtLeast(0)).apply()
 
     fun sibhaPeepEvery(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_SIBHA_PEEP_EVERY, 0)
+        store(c).getInt(KEY_SIBHA_PEEP_EVERY, 0)
 
     fun setSibhaPeepEvery(c: Context, count: Int) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        store(c).edit()
             .putInt(KEY_SIBHA_PEEP_EVERY, count.coerceAtLeast(0)).apply()
 
     fun prayer24Hour(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_24_HOUR, false)
+        store(c).getBoolean(KEY_24_HOUR, false)
 
     fun setPrayer24Hour(c: Context, enabled: Boolean) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        store(c).edit()
             .putBoolean(KEY_24_HOUR, enabled).apply()
 
     fun prayerMethod(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getInt(KEY_PRAYER_METHOD, 5)
+        store(c).getInt(KEY_PRAYER_METHOD, 5)
 
     fun setPrayerMethod(c: Context, method: Int) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        store(c).edit()
             .putInt(KEY_PRAYER_METHOD, method).remove(KEY_PRAYER_DATE).apply()
 
     fun useGps(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_USE_GPS, true)
+        store(c).getBoolean(KEY_USE_GPS, true)
 
     fun setUseGps(c: Context, enabled: Boolean) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean(KEY_USE_GPS, enabled).apply()
+        store(c).edit().putBoolean(KEY_USE_GPS, enabled).apply()
 
     fun latitude(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(KEY_LATITUDE, "") ?: ""
+        store(c).getString(KEY_LATITUDE, "") ?: ""
 
     fun longitude(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(KEY_LONGITUDE, "") ?: ""
+        store(c).getString(KEY_LONGITUDE, "") ?: ""
 
     fun setCoordinates(c: Context, latitude: String, longitude: String) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        store(c).edit()
             .putString(KEY_LATITUDE, latitude).putString(KEY_LONGITUDE, longitude).apply()
 
     fun prayerDate(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(KEY_PRAYER_DATE, "") ?: ""
+        store(c).getString(KEY_PRAYER_DATE, "") ?: ""
 
     fun prayerTimes(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(KEY_PRAYER_TIMES, "") ?: ""
+        store(c).getString(KEY_PRAYER_TIMES, "") ?: ""
 
     fun setPrayerCache(c: Context, date: String, timesJson: String) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        store(c).edit()
             .putString(KEY_PRAYER_DATE, date).putString(KEY_PRAYER_TIMES, timesJson).apply()
 
     fun manualHideRect(c: Context): android.graphics.Rect? {
@@ -296,12 +297,12 @@ object Prefs {
     }
 
     fun setManualHideRect(c: Context, rect: android.graphics.Rect) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        store(c).edit()
             .putString(KEY_MANUAL_RECT, "${rect.left},${rect.top},${rect.right},${rect.bottom}")
             .putBoolean(KEY_MANUAL_VISIBLE, true).apply()
 
     fun manualHideRects(c: Context): List<android.graphics.Rect> {
-        val raw = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        val raw = store(c)
             .getString(KEY_MANUAL_RECT, null) ?: return emptyList()
         return raw.split(';').mapNotNull { encoded ->
             val values = encoded.split(',').mapNotNull { it.toIntOrNull() }
@@ -313,7 +314,7 @@ object Prefs {
 
     fun addManualHideRect(c: Context, rect: android.graphics.Rect) {
         val all = manualHideRects(c) + rect
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        store(c).edit()
             .putString(KEY_MANUAL_RECT, all.joinToString(";") {
                 "${it.left},${it.top},${it.right},${it.bottom}"
             })
@@ -322,7 +323,7 @@ object Prefs {
 
     fun removeLastManualHideRect(c: Context) {
         val all = manualHideRects(c).dropLast(1)
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().apply {
+        store(c).edit().apply {
             if (all.isEmpty()) remove(KEY_MANUAL_RECT)
             else putString(KEY_MANUAL_RECT, all.joinToString(";") {
                 "${it.left},${it.top},${it.right},${it.bottom}"
@@ -334,26 +335,26 @@ object Prefs {
         val all = manualHideRects(c).toMutableList()
         if (index !in all.indices) return
         all[index] = rect
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        store(c).edit()
             .putString(KEY_MANUAL_RECT, all.joinToString(";") {
                 "${it.left},${it.top},${it.right},${it.bottom}"
             }).apply()
     }
 
     fun manualHideVisible(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_MANUAL_VISIBLE, true)
+        store(c).getBoolean(KEY_MANUAL_VISIBLE, true)
 
     fun setManualHideVisible(c: Context, visible: Boolean) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        store(c).edit()
             .putBoolean(KEY_MANUAL_VISIBLE, visible).apply()
 
     fun clearManualHide(c: Context) =
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        store(c).edit()
             .remove(KEY_MANUAL_RECT).remove(KEY_MANUAL_VISIBLE).apply()
 
     fun manualHideRects(c: Context, profileId: String, orientation: String): List<Rect> {
         val key = "manual_hide_rect_${profileId}_${orientation}"
-        val raw = c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(key, null)
+        val raw = store(c).getString(key, null)
             ?: return emptyList()
         return raw.split(';').mapNotNull { encoded ->
             val values = encoded.split(',').mapNotNull { it.toIntOrNull() }
@@ -364,13 +365,13 @@ object Prefs {
     }
 
     fun hasManualHideRects(c: Context, profileId: String, orientation: String): Boolean {
-        return c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        return store(c)
             .contains("manual_hide_rect_${profileId}_${orientation}")
     }
 
     fun profileHideRects(c: Context, profileId: String, orientation: String): List<Rect> {
         val key = "profile_hide_rect_${profileId}_${orientation}"
-        val raw = c.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(key, null)
+        val raw = store(c).getString(key, null)
             ?: return emptyList()
         return raw.split(';').mapNotNull { encoded ->
             val values = encoded.split(',').mapNotNull { it.toIntOrNull() }
@@ -387,7 +388,7 @@ object Prefs {
         rects: List<Rect>
     ) {
         val key = "profile_hide_rect_${profileId}_${orientation}"
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        store(c).edit()
             .putString(key, rects.joinToString(";") {
                 "${it.left},${it.top},${it.right},${it.bottom}"
             }).apply()
@@ -400,19 +401,19 @@ object Prefs {
         rects: List<Rect>
     ) {
         val key = "manual_hide_rect_${profileId}_${orientation}"
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        store(c).edit()
             .putString(key, rects.joinToString(";") {
                 "${it.left},${it.top},${it.right},${it.bottom}"
             }).apply()
     }
 
     fun clearManualHideRects(c: Context, profileId: String, orientation: String) {
-        c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        store(c).edit()
                 .remove("manual_hide_rect_${profileId}_${orientation}").apply()
     }
 
     fun exportData(c: Context): String {
-        val prefs = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        val prefs = store(c)
         val root = JSONObject()
         prefs.all.forEach { (key, value) ->
             when (value) {
@@ -425,7 +426,7 @@ object Prefs {
 
     fun importData(c: Context, json: String) {
         val root = JSONObject(json)
-        val edit = c.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
+        val edit = store(c).edit()
         root.keys().forEach { key ->
             when (val value = root.get(key)) {
                 is Boolean -> edit.putBoolean(key, value)
