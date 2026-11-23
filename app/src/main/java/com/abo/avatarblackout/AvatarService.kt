@@ -30,7 +30,6 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.content.res.Configuration
 import kotlin.math.max
-import java.util.ArrayDeque
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -86,7 +85,6 @@ class AvatarService : AccessibilityService() {
     private var profileCreationId: String? = null
     private var profileCaptureRects = mutableListOf<Rect>()
     private var profileCreationNew = false
-    private var manualSessionProfileId: String? = null
     private var activePackage = ""
     private var lastEventPackage = ""
     private var lastEventPackageAt = 0L
@@ -111,16 +109,13 @@ class AvatarService : AccessibilityService() {
     }
     private var resumeAfterTime = false
     private var speakingTime = false
-    private val undoStack = ArrayDeque<List<Rect>>()
-    private val redoStack = ArrayDeque<List<Rect>>()
     private val handler = Handler(Looper.getMainLooper())
-    private var pending = false
     private var lastRenderKey: String? = null
     // Pre-sized high-resolution variant avoids decoding the full master artwork for the ball.
     private val controlIcon by lazy {
         BitmapFactory.decodeResource(resources, R.drawable.swizy_logo_small)
     }
-    private val scan = Runnable { pending = false; doScan() }
+    private val scan = Runnable { doScan() }
     // safety net: rescan every second so a missed event or a dropped overlay recovers by itself
     private val tick = object : Runnable {
         override fun run() {
@@ -161,7 +156,6 @@ class AvatarService : AccessibilityService() {
         profileCreationId = null
         profileCaptureRects = mutableListOf()
         profileCreationNew = false
-        manualSessionProfileId = null
         return super.onUnbind(intent)
     }
 
@@ -266,7 +260,6 @@ class AvatarService : AccessibilityService() {
     }
 
     private fun scheduleScan(delay: Long) {
-        pending = true
         handler.removeCallbacks(scan)
         if (delay <= 0L) handler.post(scan) else handler.postDelayed(scan, delay)
     }
@@ -275,7 +268,6 @@ class AvatarService : AccessibilityService() {
         applyHeadsetFilter()
         handler.removeCallbacks(scan)
         handler.removeCallbacks(tick)
-        pending = false
         lastRenderKey = null
         invalidateProfileCache()
         control?.refreshOpacity()
@@ -283,12 +275,19 @@ class AvatarService : AccessibilityService() {
             doScan()
             handler.postDelayed(
                 tick,
-                if (Prefs.performanceMode(this)) 1500 else 600
+                if (Prefs.performanceMode(this)) 2000 else 1000
             )
         } else {
             overlay?.setItems(emptyList())
             removeControl()
         }
+    }
+
+    /** Repaint settings changes without restarting detection or traversing accessibility nodes. */
+    fun refreshAppearance(rescan: Boolean = false) {
+        control?.refreshOpacity()
+        overlay?.invalidate()
+        if (rescan && Prefs.isEnabled(this)) scheduleScan(100L)
     }
 
     /** Says the time out loud. Also used by the "Say the time now" button in Settings. */
@@ -388,8 +387,6 @@ class AvatarService : AccessibilityService() {
         if (!Prefs.isEnabled(this)) return
         doScan()
         manualSessionActive = true
-        if (manualSessionProfileId == null) {
-            manualSessionProfileId = Prefs.profileForPackage(this, activePackage).id
         }
         addControl()
         doScan()
@@ -410,7 +407,6 @@ class AvatarService : AccessibilityService() {
             addControl()
             return
         }
-        rememberManualChange()
         if (profileCreationId != null) {
             profileCaptureRects.add(Rect(rect))
         } else {
@@ -449,16 +445,6 @@ class AvatarService : AccessibilityService() {
         doScan()
     }
 
-    private fun rememberManualChange() {
-        rememberEditableChange(editableRects())
-    }
-
-    private fun rememberEditableChange(areas: List<Rect>) {
-        undoStack.addLast(areas.map { Rect(it) })
-        while (undoStack.size > 20) undoStack.removeFirst()
-        redoStack.clear()
-    }
-
     private fun editableRects(): List<Rect> {
         if (profileCreationId != null) return profileCaptureRects
         val profile = profileRects()
@@ -466,25 +452,15 @@ class AvatarService : AccessibilityService() {
     }
 
     private fun saveEditableRects(rects: List<Rect>) {
-        if (profileCreationId != null) profileCaptureRects = rects.map { Rect(it) }.toMutableList()
-        else if (profileRects().isNotEmpty() && manualRects().isEmpty()) saveProfileRects(rects)
-        else saveManualRects(rects)
-    }
-
-    private fun undoManualChange() {
-        if (undoStack.isEmpty()) return
-        val current = editableRects()
-        redoStack.addLast(current.map { Rect(it) })
-        saveEditableRects(undoStack.removeLast())
-        doScan()
-    }
-
-    private fun redoManualChange() {
-        if (redoStack.isEmpty()) return
-        val current = editableRects()
-        undoStack.addLast(current.map { Rect(it) })
-        saveEditableRects(redoStack.removeLast())
-        doScan()
+        if (profileCreationId != null) {
+            profileCaptureRects = rects.map { Rect(it) }.toMutableList()
+            cachedProfileRects = null
+            cachedProfilePackage = ""
+        } else if (profileRects().isNotEmpty() && manualRects().isEmpty()) {
+            saveProfileRects(rects)
+        } else {
+            saveManualRects(rects)
+        }
     }
 
     private fun toggleManualAreas() {
@@ -498,7 +474,6 @@ class AvatarService : AccessibilityService() {
         movingAreaStart = null
         movingTouchOffset = null
         movingPreview = null
-        rememberManualChange()
         removeControl()
         overlay?.setMoveMode(true)
         setOverlayTouchable(true)
@@ -509,7 +484,6 @@ class AvatarService : AccessibilityService() {
         resizingAreaIndex = -1
         resizingTouchOffset = null
         resizingPreview = null
-        rememberManualChange()
         removeControl()
         overlay?.setResizeMode(true)
         setOverlayTouchable(true)
@@ -714,11 +688,11 @@ class AvatarService : AccessibilityService() {
         )
         profileCreationId = profile.id
         profileCreationNew = !hadProfile
-        manualSessionProfileId = profile.id
         profileCaptureRects = if (hadProfile) {
             Prefs.profileHideRects(this, profile.id, orientationKey())
                 .map { Rect(it) }.toMutableList()
         } else mutableListOf()
+        invalidateProfileCache()
         removeControl()
         addControl()
         control?.invalidate()
@@ -744,6 +718,7 @@ class AvatarService : AccessibilityService() {
         profileCreationId = null
         profileCaptureRects = mutableListOf()
         profileCreationNew = false
+        invalidateProfileCache()
     }
 
     private fun removeControl() {
@@ -776,7 +751,6 @@ class AvatarService : AccessibilityService() {
     private fun closeManualSession() {
         cancelProfileCreation()
         manualSessionActive = false
-        manualSessionProfileId = null
         removeControl()
         doScan()
     }
@@ -1017,7 +991,6 @@ class AvatarService : AccessibilityService() {
             manualItems.asReversed().forEach { manual ->
                 if (uniqueItems.none { it.rect == manual.rect }) uniqueItems.add(0, manual)
             }
-            Log.d(TAG, "rendering ${uniqueItems.size} avatar bars")
             val renderKey = uniqueItems.joinToString("|") {
                 "${it.rect.left},${it.rect.top},${it.rect.right},${it.rect.bottom}," +
                 "${it.clip?.left},${it.clip?.top},${it.clip?.right},${it.clip?.bottom},${it.forceRect}"
@@ -1229,6 +1202,7 @@ class AvatarService : AccessibilityService() {
             color = Color.WHITE
             textSize = dp(16).toFloat()
         }
+        private val indicatorPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private var items: List<Item> = emptyList()
         private var selection = false
         private var moveMode = false
@@ -1388,54 +1362,56 @@ class AvatarService : AccessibilityService() {
             paint.alpha = (Prefs.boxOpacity(context) * 255 / 100).coerceIn(0, 255)
             getLocationOnScreen(loc)
             val dx = loc[0]; val dy = loc[1]
-            for (it in items) {
+            val editableDisplay = if (movingAreaIndex >= 0 || resizingAreaIndex >= 0) {
+                editableDisplayRects()
+            } else {
+                emptyList()
+            }
+            val movingSource = editableDisplay.getOrNull(movingAreaIndex)
+            val resizingSource = editableDisplay.getOrNull(resizingAreaIndex)
+            for (item in items) {
                 canvas.save()
-                it.clip?.let { k ->
-                    canvas.clipRect(
-                        (k.left - dx).toFloat(), (k.top - dy).toFloat(),
-                        (k.right - dx).toFloat(), (k.bottom - dy).toFloat()
-                    )
-                }
-                val r = it.rect
-                if (it.forceRect && movingAreaIndex >= 0 && movingPreview != null) {
-                    val manualIndex = editableRects().indexOfFirst { area -> manualDisplayRect(area) == r }
-                    if (manualIndex == movingAreaIndex) continue
-                }
-                if (it.forceRect && resizingAreaIndex >= 0 && resizingPreview != null) {
-                    val manualIndex = editableRects().indexOfFirst { area -> manualDisplayRect(area) == r }
-                    if (manualIndex == resizingAreaIndex) continue
-                }
-                val left = (r.left - dx).toFloat()
-                val top = (r.top - dy).toFloat()
-                val right = (r.right - dx).toFloat()
-                val bottom = (r.bottom - dy).toFloat()
-                if (!it.forceRect && Prefs.maskMode(context) == Prefs.MaskMode.DYNAMIC) {
-                    canvas.drawOval(RectF(left, top, right, bottom), paint)
-                } else {
-                    canvas.drawRect(left, top, right, bottom, paint)
-                }
-                canvas.restore()
-            }
-            movingPreview?.let { preview ->
-                if (movingAreaIndex >= 0) {
-                    canvas.drawRect(
-                        preview.left - dx.toFloat(), preview.top - dy.toFloat(),
-                        preview.right - dx.toFloat(), preview.bottom - dy.toFloat(), paint
-                    )
+                try {
+                    val rect = item.rect
+                    val isPreviewed = item.forceRect &&
+                        (rect == movingSource || rect == resizingSource)
+                    if (!isPreviewed) {
+                        item.clip?.let { clip ->
+                            canvas.clipRect(
+                                (clip.left - dx).toFloat(), (clip.top - dy).toFloat(),
+                                (clip.right - dx).toFloat(), (clip.bottom - dy).toFloat()
+                            )
+                        }
+                        val left = (rect.left - dx).toFloat()
+                        val top = (rect.top - dy).toFloat()
+                        val right = (rect.right - dx).toFloat()
+                        val bottom = (rect.bottom - dy).toFloat()
+                        if (!item.forceRect && Prefs.maskMode(context) == Prefs.MaskMode.DYNAMIC) {
+                            canvas.drawOval(RectF(left, top, right, bottom), paint)
+                        } else {
+                            canvas.drawRect(left, top, right, bottom, paint)
+                        }
+                    }
+                } finally {
+                    canvas.restore()
                 }
             }
-            resizingPreview?.let { preview ->
-                if (resizingAreaIndex >= 0) {
-                    canvas.drawRect(
-                        preview.left - dx.toFloat(), preview.top - dy.toFloat(),
-                        preview.right - dx.toFloat(), preview.bottom - dy.toFloat(), paint
-                    )
-                }
+            movingPreview?.takeIf { movingAreaIndex >= 0 }?.let { preview ->
+                val displayed = manualDisplayRect(preview)
+                canvas.drawRect(
+                    displayed.left - dx.toFloat(), displayed.top - dy.toFloat(),
+                    displayed.right - dx.toFloat(), displayed.bottom - dy.toFloat(), paint
+                )
+            }
+            resizingPreview?.takeIf { resizingAreaIndex >= 0 }?.let { preview ->
+                val displayed = manualDisplayRect(preview)
+                canvas.drawRect(
+                    displayed.left - dx.toFloat(), displayed.top - dy.toFloat(),
+                    displayed.right - dx.toFloat(), displayed.bottom - dy.toFloat(), paint
+                )
             }
             if (Prefs.isEnabled(context) && Prefs.privacyIndicator(context)) {
-                val indicatorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = Color.argb(220, 35, 29, 46)
-                }
+                indicatorPaint.color = Color.argb(220, 35, 29, 46)
                 canvas.drawRoundRect(
                     dp(12).toFloat(), dp(12).toFloat(),
                     dp(106).toFloat(), dp(42).toFloat(),
@@ -1453,7 +1429,7 @@ class AvatarService : AccessibilityService() {
                 editableRects().forEachIndexed { index, area ->
                     val displayedArea = manualDisplayRect(area)
                     val handleArea = if (index == activeIndex && activePreview != null) {
-                        activePreview
+                        manualDisplayRect(activePreview)
                     } else {
                         displayedArea
                     }
@@ -1502,8 +1478,6 @@ class AvatarService : AccessibilityService() {
         private val icon get() = controlIcon
         private var menu = false
         private var pressedMenuIndex = -1
-        private var downX = 0f
-        private var downY = 0f
         private var dragging = false
         private var menuOriginX = 0
         private var menuOriginY = 0
@@ -1715,8 +1689,6 @@ class AvatarService : AccessibilityService() {
                     removeCallbacks(fade)
                     touchStartX = event.rawX
                     touchStartY = event.rawY
-                    downX = event.rawX
-                    downY = event.rawY
                     val start = layoutParams as WindowManager.LayoutParams
                     controlStartX = start.x
                     controlStartY = start.y
