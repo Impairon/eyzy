@@ -18,6 +18,7 @@ import android.text.format.DateFormat
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
@@ -88,6 +89,7 @@ class AvatarService : AccessibilityService() {
     private var manualSessionProfileId: String? = null
     private var activePackage = ""
     private var lastEventPackage = ""
+    private var lastEventPackageAt = 0L
     private var cachedProfileRects: List<Rect>? = null
     private var cachedProfilePackage = ""
     private var cachedManualRects: List<Rect>? = null
@@ -124,7 +126,8 @@ class AvatarService : AccessibilityService() {
         override fun run() {
             if (Prefs.isEnabled(this@AvatarService)) {
                 doScan()
-                handler.postDelayed(this, if (Prefs.performanceMode(this@AvatarService)) 1500 else 600)
+                // Accessibility events are the fast path; this slower tick is recovery only.
+                handler.postDelayed(this, if (Prefs.performanceMode(this@AvatarService)) 2000 else 1000)
             }
         }
     }
@@ -139,6 +142,7 @@ class AvatarService : AccessibilityService() {
     override fun onUnbind(intent: Intent?): Boolean {
         instance = null
         handler.removeCallbacks(tick)
+        handler.removeCallbacks(scan)
         overlay?.let { try { wm.removeView(it) } catch (_: Exception) {} }
         overlay = null
         control?.let { try { wm.removeView(it) } catch (_: Exception) {} }
@@ -226,6 +230,7 @@ class AvatarService : AccessibilityService() {
         overlay = null
         lastRenderKey = null
         lastEventPackage = ""
+        lastEventPackageAt = 0L
         lastKeyboardTop = 0
         cachedKeyboardTop = null
         invalidateProfileCache()
@@ -240,20 +245,23 @@ class AvatarService : AccessibilityService() {
 
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
         if (!Prefs.isEnabled(this)) return
-        val eventPkg = e?.packageName?.toString() ?: ""
+        val eventPkg = e?.packageName?.toString().orEmpty()
+        if (eventPkg.isNotBlank()) {
+            // Our own/System UI events invalidate an older app hint instead of leaving it stale.
+            lastEventPackage = eventPkg
+            lastEventPackageAt = if (isExternalPackage(eventPkg)) {
+                SystemClock.elapsedRealtime()
+            } else {
+                0L
+            }
+        }
         val kbTop = keyboardTop() ?: 0
         if (kbTop != lastKeyboardTop) {
             lastKeyboardTop = kbTop
             scheduleScan(0L)
             return
         }
-        // Event package names can arrive late during rapid app switching. Keep them as hints;
-        // the focused application window is resolved again in doScan().
-        if (eventPkg.isNotBlank() &&
-            eventPkg != applicationContext.packageName &&
-            eventPkg != "com.android.systemui") {
-            lastEventPackage = eventPkg
-        }
+        // Coalesce noisy content updates; window changes still resolve immediately on the next scan.
         scheduleScan(55L)
     }
 
@@ -853,26 +861,34 @@ class AvatarService : AccessibilityService() {
 
     private fun Rect.area() = width() * height()
 
-    private fun foregroundPackage(): String? {
-        return windows.asSequence()
+    private fun isExternalPackage(packageName: String?): Boolean =
+        !packageName.isNullOrBlank() &&
+            packageName != applicationContext.packageName &&
+            packageName != "com.android.systemui"
+
+    /**
+     * Resolve only the top application window. Returning its root lets detection and masking
+     * share the same node tree, and prevents us from walking background app windows.
+     */
+    private fun foregroundWindow(): Pair<String, AccessibilityNodeInfo>? {
+        val window = windows.asSequence()
             .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
             .sortedWith(
                 compareByDescending<AccessibilityWindowInfo> { it.isFocused }
                     .thenByDescending { it.isActive }
                     .thenByDescending { it.layer }
             )
-            .mapNotNull { window ->
-                runCatching {
-                    val root = if (Build.VERSION.SDK_INT >= 33) {
-                        window.getRoot(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
-                    } else {
-                        window.root
-                    }
-                    root?.packageName?.toString()
-                }.getOrNull()
-            }
-            .firstOrNull()
-            ?.takeUnless { it == applicationContext.packageName || it == "com.android.systemui" }
+            .firstOrNull() ?: return null
+
+        return runCatching {
+            val root = if (Build.VERSION.SDK_INT >= 33) {
+                window.getRoot(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
+            } else {
+                window.root
+            } ?: return@runCatching null
+            val packageName = root.packageName?.toString() ?: return@runCatching null
+            packageName to root
+        }.getOrNull()
     }
 
     private fun invalidateProfileCache() {
@@ -909,15 +925,19 @@ class AvatarService : AccessibilityService() {
     private fun doScan() {
         try {
             ensureOverlay()
-            // Resolve the focused app every scan. Accessibility events are only hints and can
-            // be stale when the user leaves and re-enters an app quickly.
-            val detectedPackage = foregroundPackage()
-                ?: lastEventPackage.takeIf {
-                    it.isNotBlank() &&
-                    it != applicationContext.packageName &&
-                    it != "com.android.systemui"
-                }
-                ?: ""
+            // Prefer the actual top window. Use a recent event package only during the brief
+            // transition where Android has not exposed a root yet.
+            val foreground = foregroundWindow()
+            val topPackage = foreground?.first
+            val hintAge = SystemClock.elapsedRealtime() - lastEventPackageAt
+            val eventPackage = lastEventPackage.takeIf {
+                topPackage == null && isExternalPackage(it) &&
+                    lastEventPackageAt > 0L && hintAge in 0L..1500L
+            }
+            val detectedPackage = when {
+                topPackage != null -> topPackage.takeIf(::isExternalPackage).orEmpty()
+                else -> eventPackage.orEmpty()
+            }
             if (detectedPackage != activePackage) {
                 activePackage = detectedPackage
                 invalidateProfileCache()
@@ -926,18 +946,16 @@ class AvatarService : AccessibilityService() {
             }
             val out = ArrayList<Item>()
             val hasActiveProfile = hasProfileCached()
-            val currentProfileRects = profileRectsCached()
+            var currentProfileRects = profileRectsCached()
             val currentManualRects = manualRectsCached()
-            val legacyProfileRects = if (hasActiveProfile) {
-                Prefs.manualHideRects(this, profileId(), orientationKey())
-            } else {
-                emptyList()
-            }
-            if (hasActiveProfile && currentProfileRects.isEmpty() && legacyProfileRects.isNotEmpty()) {
-                saveProfileRects(legacyProfileRects)
-                Prefs.clearManualHideRects(this, profileId(), orientationKey())
-                cachedProfileRects = null
-                cachedProfilePackage = ""
+            // Legacy profile data is only consulted when the current profile has no saved areas.
+            if (hasActiveProfile && currentProfileRects.isEmpty()) {
+                val legacyProfileRects = Prefs.manualHideRects(this, profileId(), orientationKey())
+                if (legacyProfileRects.isNotEmpty()) {
+                    saveProfileRects(legacyProfileRects)
+                    Prefs.clearManualHideRects(this, profileId(), orientationKey())
+                    currentProfileRects = legacyProfileRects
+                }
             }
             val manualVisible = Prefs.manualHideVisible(this)
             val maskMode = Prefs.maskMode(this)
@@ -966,29 +984,25 @@ class AvatarService : AccessibilityService() {
             out.addAll(manualItems)
             out.addAll(profileItems)
             if (maskMode != Prefs.MaskMode.NONE) {
-              for (w in windows) {
-                if (w.type != AccessibilityWindowInfo.TYPE_APPLICATION) continue
-                val root = (if (Build.VERSION.SDK_INT >= 33)
-                    w.getRoot(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
-                else w.root) ?: continue
-                val packageName = root.packageName?.toString() ?: continue
-                if (packageName in TARGETS) {
+                val activeRoot = foreground?.takeIf {
+                    it.first == activePackage && it.first in TARGETS
+                }?.second
+                if (activeRoot != null) {
                     val sc = Scan()
-                    walk(root, sc, 0)
+                    walk(activeRoot, sc, 0)
                     if (maskMode == Prefs.MaskMode.SIMPLE) {
-                        if (packageName in TELEGRAM) {
+                        if (activePackage in TELEGRAM) {
                             if (!sc.hasInput) tgListLine(sc, out) else tgChat(sc, out)
                         } else {
                             lineFor(sc)?.let { out.add(it) }
                         }
                     } else {
                         out.addAll(sc.items)
-                        if (packageName in TELEGRAM) {
-                        if (!sc.hasInput) out.addAll(sc.tgRows) else tgChat(sc, out)
+                        if (activePackage in TELEGRAM) {
+                            if (!sc.hasInput) out.addAll(sc.tgRows) else tgChat(sc, out)
                         }
                     }
                 }
-              }
             }
             // if a big container and a bigger-than-half child both matched, keep the child
             val finalItems = out.filter { a ->
@@ -1018,19 +1032,16 @@ class AvatarService : AccessibilityService() {
     }
 
     private fun walk(n: AccessibilityNodeInfo, sc: Scan, depth: Int) {
-        if (depth > 45) return
+        if (depth > 45 || !n.isVisibleToUser) return
         if (n.className?.contains("EditText") == true) sc.hasInput = true
         val bounds = Rect().also { n.getBoundsInScreen(it) }
         val cls = n.className?.toString() ?: ""
-        if (n.isVisibleToUser) {
-            avatarItem(n)?.let {
-                sc.items.add(it)
-                sc.avatarRects.add(Rect(bounds))
-            }
+        avatarItem(n, bounds)?.let {
+            sc.items.add(it)
+            sc.avatarRects.add(Rect(bounds))
         }
-        if (n.isVisibleToUser &&
-            (n.isScrollable || cls.contains("RecyclerView") ||
-                cls.contains("ListView") || cls.contains("ScrollView"))
+        if (n.isScrollable || cls.contains("RecyclerView") ||
+            cls.contains("ListView") || cls.contains("ScrollView")
         ) {
             if (sc.scrollRect == null || bounds.area() > sc.scrollRect!!.area()) {
                 sc.scrollRect = bounds
@@ -1054,8 +1065,8 @@ class AvatarService : AccessibilityService() {
         }
     }
 
-    private fun avatarItem(n: AccessibilityNodeInfo): Item? {
-        val r = Rect(); n.getBoundsInScreen(r)
+    private fun avatarItem(n: AccessibilityNodeInfo, bounds: Rect): Item? {
+        val r = bounds
         val w = r.width(); val h = r.height()
         if (w <= 0 || h <= 0) return null
         val dp = resources.displayMetrics.density
