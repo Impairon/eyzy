@@ -149,11 +149,13 @@ class MainActivity : FragmentActivity() {
     private fun translate(value: String): String =
         UiText.translate(value, currentAppLanguage())
 
-    private fun localizeTree(view: View) {
+    private fun localizeTree(view: View, language: String = currentAppLanguage()) {
         if (view is TextView) {
-            view.text = translate(view.text.toString())
-            if (view is EditText) view.hint = translate(view.hint?.toString().orEmpty())
-            if (currentAppLanguage() == "ar" && Build.VERSION.SDK_INT >= 26) {
+            view.text = UiText.translate(view.text.toString(), language)
+            if (view is EditText) {
+                view.hint = UiText.translate(view.hint?.toString().orEmpty(), language)
+            }
+            if (language == "ar" && Build.VERSION.SDK_INT >= 26) {
                 val bold = view.typeface?.isBold == true
                 // Android's system sans family covers Arabic without external font assets.
                 view.typeface = Typeface.create(
@@ -163,7 +165,9 @@ class MainActivity : FragmentActivity() {
             }
         }
         if (view is android.view.ViewGroup) {
-            for (index in 0 until view.childCount) localizeTree(view.getChildAt(index))
+            for (index in 0 until view.childCount) {
+                localizeTree(view.getChildAt(index), language)
+            }
         }
     }
 
@@ -1372,8 +1376,11 @@ class MainActivity : FragmentActivity() {
                 override fun onItemSelected(
                     parent: AdapterView<*>?, view: View?, position: Int, id: Long
                 ) {
-                    Prefs.setMaskMode(this@MainActivity, Prefs.MaskMode.entries[position])
-                    AvatarService.instance?.refresh()
+                    val selected = Prefs.MaskMode.entries[position]
+                    if (selected != Prefs.maskMode(this@MainActivity)) {
+                        Prefs.setMaskMode(this@MainActivity, selected)
+                        AvatarService.instance?.refreshAppearance(rescan = true)
+                    }
                 }
             })
             section.addView(mode, LinearLayout.LayoutParams(-1, dp(52)))
@@ -1388,26 +1395,29 @@ class MainActivity : FragmentActivity() {
                 override fun onItemSelected(
                     parent: AdapterView<*>?, view: View?, position: Int, id: Long
                 ) {
-                    Prefs.setBoxColor(this@MainActivity, Prefs.BoxColor.entries[position])
-                    AvatarService.instance?.refresh()
+                    val selected = Prefs.BoxColor.entries[position]
+                    if (selected != Prefs.boxColor(this@MainActivity)) {
+                        Prefs.setBoxColor(this@MainActivity, selected)
+                        AvatarService.instance?.refreshAppearance()
+                    }
                 }
             })
             section.addView(color, LinearLayout.LayoutParams(-1, dp(52)))
             addSlider(section, "Mask opacity (black boxes)", 25, 100, Prefs.boxOpacity(this)) {
                 Prefs.setBoxOpacity(this, it)
-                AvatarService.instance?.refresh()
+                AvatarService.instance?.refreshAppearance()
             }
             addSlider(section, "Paw opacity when idle", 35, 100, Prefs.controlOpacity(this)) {
                 Prefs.setControlOpacity(this, it)
-                AvatarService.instance?.refresh()
+                AvatarService.instance?.refreshAppearance()
             }
             addSlider(section, "Line thickness", 4, 64, Prefs.lineThicknessDp(this)) {
                 Prefs.setLineThicknessDp(this, it)
-                AvatarService.instance?.refresh()
+                AvatarService.instance?.refreshAppearance(rescan = true)
             }
             addSlider(section, "Dynamic circle size", 24, 96, Prefs.circleSizeDp(this)) {
                 Prefs.setCircleSizeDp(this, it)
-                AvatarService.instance?.refresh()
+                AvatarService.instance?.refreshAppearance(rescan = true)
             }
             val indicator = Switch(this).apply {
                 text = "Show privacy indicator while masking"
@@ -1416,7 +1426,7 @@ class MainActivity : FragmentActivity() {
                 isChecked = Prefs.privacyIndicator(this@MainActivity)
                 setOnCheckedChangeListener { _, checked ->
                     Prefs.setPrivacyIndicator(this@MainActivity, checked)
-                    AvatarService.instance?.refresh()
+                    AvatarService.instance?.refreshAppearance()
                 }
             }
             section.addView(indicator)
@@ -1960,22 +1970,23 @@ class MainActivity : FragmentActivity() {
             textSize = 14f
             setTextColor(secondary)
         }
-        fun update(number: Int) {
+        fun renderValue(number: Int) {
             value.text = "${translate(label)}: ${number}${if (label.contains("opacity", true)) "%" else " dp"}"
-            onChanged(number)
         }
         val slider = SeekBar(this).apply {
             this.max = max - min
             progress = initial.coerceIn(min, max) - min
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    update(min + progress)
+                    val selected = min + progress
+                    renderValue(selected)
+                    if (fromUser) onChanged(selected)
                 }
                 override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
                 override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
             })
         }
-        update(initial.coerceIn(min, max))
+        renderValue(initial.coerceIn(min, max))
         parent.addView(value)
         parent.addView(slider, LinearLayout.LayoutParams(-1, dp(42)))
     }
