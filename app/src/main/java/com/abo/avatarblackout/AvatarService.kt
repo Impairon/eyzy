@@ -257,7 +257,8 @@ class AvatarService : AccessibilityService() {
         }
         // Window switches should be handled immediately; scrolling and content churn can wait.
         val delay = when (e?.eventType) {
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> 0L
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> 0L
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> 65L
             else -> 100L
         }
