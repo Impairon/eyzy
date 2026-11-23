@@ -84,6 +84,7 @@ class AvatarService : AccessibilityService() {
     private var resizingTouchOffset: Pair<Float, Float>? = null
     private var resizingPreview: Rect? = null
     private var profileCreationId: String? = null
+    private var profileCreationPackage: String? = null
     private var profileCaptureRects = mutableListOf<Rect>()
     private var profileCreationNew = false
     private var activePackage = ""
@@ -155,6 +156,7 @@ class AvatarService : AccessibilityService() {
         speakingTime = false
         manualSessionActive = false
         profileCreationId = null
+        profileCreationPackage = null
         profileCaptureRects = mutableListOf()
         profileCreationNew = false
         return super.onUnbind(intent)
@@ -699,6 +701,7 @@ class AvatarService : AccessibilityService() {
             packageName
         )
         profileCreationId = profile.id
+        profileCreationPackage = packageName
         profileCreationNew = !hadProfile
         profileCaptureRects = if (hadProfile) {
             Prefs.profileHideRects(this, profile.id, orientationKey())
@@ -713,12 +716,22 @@ class AvatarService : AccessibilityService() {
 
     private fun saveProfileCreation() {
         val id = profileCreationId ?: return
-        val packageName = activePackage
+        val packageName = profileCreationPackage
+        if (packageName == null || packageName != activePackage) {
+            Toast.makeText(
+                this,
+                menuLabel("Return to the app being configured before saving"),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
         saveProfileRects(profileCaptureRects)
         Prefs.renameProfile(this, id, packageName.substringAfterLast('.').ifBlank { "Profile" })
         profileCreationId = null
+        profileCreationPackage = null
         profileCaptureRects = mutableListOf()
         profileCreationNew = false
+        invalidateProfileCache()
         control?.invalidate()
         doScan()
     }
@@ -728,6 +741,7 @@ class AvatarService : AccessibilityService() {
             profileCreationId?.let { Prefs.deleteProfile(this, it) }
         }
         profileCreationId = null
+        profileCreationPackage = null
         profileCaptureRects = mutableListOf()
         profileCreationNew = false
         invalidateProfileCache()
@@ -797,7 +811,8 @@ class AvatarService : AccessibilityService() {
         return when (value) {
             "Add hidden area" -> "إضافة منطقة إخفاء"
             "Add profile" -> "إضافة ملف"
-            "Open the app you want to configure first" -> "افتح التطبيق الذي تريد ضبطه أولًا"
+            "Open the app you want to configure first" -> "افتح التطبيق الذي تريد ضبطه أولًا",
+            "Return to the app being configured before saving" -> "عُد إلى التطبيق الذي تعدّل ملفه قبل الحفظ"
             "Edit profile" -> "تعديل الملف"
             "Save profile" -> "حفظ الملف"
             "Cancel profile" -> "إلغاء التعديل"
@@ -944,7 +959,9 @@ class AvatarService : AccessibilityService() {
                 }
             }
             // Legacy profile data is only consulted when the current profile has no saved areas.
-            if (hasActiveProfile && currentProfileRects.isEmpty()) {
+            if (hasActiveProfile && currentProfileRects.isEmpty() &&
+                (profileCreationId == null || profileCreationPackage == activePackage)
+            ) {
                 val legacyProfileRects = Prefs.manualHideRects(this, profileId(), orientationKey())
                 if (legacyProfileRects.isNotEmpty()) {
                     saveProfileRects(legacyProfileRects)
@@ -970,8 +987,10 @@ class AvatarService : AccessibilityService() {
             val manualItems = if (manualVisible && currentManualRects.isNotEmpty()) {
                 currentManualRects.map { Item(manualDisplayRect(it), forceRect = true) }
             } else emptyList()
+            val isEditingThisApp =
+                profileCreationId != null && profileCreationPackage == activePackage
             val profileItems = if (manualVisible &&
-                (hasActiveProfile || profileCreationId != null) &&
+                (isEditingThisApp || (profileCreationId == null && hasActiveProfile)) &&
                 currentProfileRects.isNotEmpty()
             ) {
                 currentProfileRects.map { Item(manualDisplayRect(it), forceRect = true) }
