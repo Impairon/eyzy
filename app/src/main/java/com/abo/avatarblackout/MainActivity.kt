@@ -2054,22 +2054,6 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    private fun addMenuItem(text: String, action: () -> Unit) {
-        menu.addView(Button(this).apply {
-            this.text = translate(text)
-            textSize = 16f
-            minHeight = dp(48)
-            setTextColor(Color.WHITE)
-            isAllCaps = false
-            gravity = Gravity.START or Gravity.CENTER_VERTICAL
-            setPadding(dp(16), 0, dp(12), 0)
-            background = outlined(panelRaised, border, 12)
-            setOnClickListener { action() }
-        }, LinearLayout.LayoutParams(-1, dp(52)).apply {
-            setMargins(0, dp(4), 0, dp(4))
-        })
-    }
-
     private fun styledSpinner() = Spinner(this).apply {
         background = outlined(panelRaised, border, 12)
         setPopupBackgroundDrawable(outlined(panel, border, 12))
