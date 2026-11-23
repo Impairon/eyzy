@@ -860,12 +860,11 @@ class AvatarService : AccessibilityService() {
     private fun foregroundWindow(): Pair<String, AccessibilityNodeInfo>? {
         val window = windows.asSequence()
             .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
-            .sortedWith(
-                compareByDescending<AccessibilityWindowInfo> { it.isFocused }
-                    .thenByDescending { it.isActive }
-                    .thenByDescending { it.layer }
-            )
-            .firstOrNull() ?: return null
+            .maxWithOrNull(
+                compareBy<AccessibilityWindowInfo> { it.isFocused }
+                    .thenBy { it.isActive }
+                    .thenBy { it.layer }
+            ) ?: return null
 
         return runCatching {
             val root = if (Build.VERSION.SDK_INT >= 33) {
@@ -1374,6 +1373,9 @@ class AvatarService : AccessibilityService() {
         }
 
         override fun onDraw(canvas: Canvas) {
+            val dynamicMask = Prefs.maskMode(context) == Prefs.MaskMode.DYNAMIC
+            val showPrivacyIndicator =
+                Prefs.isEnabled(context) && Prefs.privacyIndicator(context)
             paint.color = when (Prefs.boxColor(context)) {
                 Prefs.BoxColor.BLACK -> Color.BLACK
                 Prefs.BoxColor.PURPLE -> Color.rgb(139, 92, 246)
@@ -1406,7 +1408,7 @@ class AvatarService : AccessibilityService() {
                         val top = (rect.top - dy).toFloat()
                         val right = (rect.right - dx).toFloat()
                         val bottom = (rect.bottom - dy).toFloat()
-                        if (!item.forceRect && Prefs.maskMode(context) == Prefs.MaskMode.DYNAMIC) {
+                        if (!item.forceRect && dynamicMask) {
                             canvas.drawOval(RectF(left, top, right, bottom), paint)
                         } else {
                             canvas.drawRect(left, top, right, bottom, paint)
@@ -1430,7 +1432,7 @@ class AvatarService : AccessibilityService() {
                     displayed.right - dx.toFloat(), displayed.bottom - dy.toFloat(), paint
                 )
             }
-            if (Prefs.isEnabled(context) && Prefs.privacyIndicator(context)) {
+            if (showPrivacyIndicator) {
                 indicatorPaint.color = Color.argb(220, 35, 29, 46)
                 canvas.drawRoundRect(
                     dp(12).toFloat(), dp(12).toFloat(),
