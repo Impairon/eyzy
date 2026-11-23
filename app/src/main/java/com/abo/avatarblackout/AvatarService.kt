@@ -387,7 +387,6 @@ class AvatarService : AccessibilityService() {
         if (!Prefs.isEnabled(this)) return
         doScan()
         manualSessionActive = true
-        }
         addControl()
         doScan()
     }
