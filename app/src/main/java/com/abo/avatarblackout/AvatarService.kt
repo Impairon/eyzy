@@ -923,7 +923,16 @@ class AvatarService : AccessibilityService() {
             val out = ArrayList<Item>()
             val hasActiveProfile = hasProfileCached()
             var currentProfileRects = profileRectsCached()
-            val currentManualRects = manualRectsCached()
+            var currentManualRects = manualRectsCached()
+            // Migrate the pre-profile global rectangle once, preserving its visibility setting.
+            if (currentManualRects.isEmpty()) {
+                val legacyManualRects = Prefs.manualHideRects(this)
+                if (legacyManualRects.isNotEmpty()) {
+                    saveManualRects(legacyManualRects)
+                    Prefs.clearLegacyManualHideRects(this)
+                    currentManualRects = legacyManualRects
+                }
+            }
             // Legacy profile data is only consulted when the current profile has no saved areas.
             if (hasActiveProfile && currentProfileRects.isEmpty()) {
                 val legacyProfileRects = Prefs.manualHideRects(this, profileId(), orientationKey())
