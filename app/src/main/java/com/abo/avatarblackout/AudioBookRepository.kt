@@ -259,7 +259,6 @@ internal object AudioBookRepository {
     }
 
     fun delete(context: Context, bookId: String) {
-        val book = load(context, bookId)
         val store = prefs(context)
         val ids = runCatching {
             val array = JSONArray(store.getString(BOOK_IDS, "[]"))
