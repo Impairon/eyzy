@@ -204,6 +204,7 @@ internal fun VoiceAddContentScreen(
 @Composable
 internal fun VoiceBooksScreen(
     books: List<AudioBook>,
+    loadingBooks: Boolean = false,
     searchQuery: String,
     playerBook: AudioBook?,
     playing: Boolean,
@@ -237,6 +238,7 @@ internal fun VoiceBooksScreen(
         if (playerBook == null) {
             BookOverviewScreen(
                 books = books,
+                loadingBooks = loadingBooks,
                 searchQuery = searchQuery,
                 onSearchChange = onSearchChange,
                 onAddBook = onAddBook,
@@ -307,6 +309,7 @@ internal fun VoiceBooksScreen(
 @Composable
 private fun BookOverviewScreen(
     books: List<AudioBook>,
+    loadingBooks: Boolean,
     searchQuery: String,
     onSearchChange: (String) -> Unit,
     onAddBook: () -> Unit,
@@ -416,7 +419,11 @@ private fun BookOverviewScreen(
                 if (filtered.isEmpty()) {
                     item {
                         Text(
-                            if (books.isEmpty()) "Your library is empty" else "No matching books",
+                            when {
+                                loadingBooks -> "Loading your library…"
+                                books.isEmpty() -> "Your library is empty"
+                                else -> "No matching books"
+                            },
                             modifier = Modifier.padding(24.dp),
                             style = MaterialTheme.typography.bodyMedium,
                         )
