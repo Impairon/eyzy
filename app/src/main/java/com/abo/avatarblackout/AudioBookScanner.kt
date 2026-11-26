@@ -37,6 +37,7 @@ internal data class AudioBookCandidate(
 
 internal object AudioBookScanner {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val metadataLimit = Semaphore(5)
 
     fun preview(context: Context, uri: Uri, callback: (Result<AudioBookFolderPreview>) -> Unit) {
         scope.launch {
@@ -94,7 +95,6 @@ internal object AudioBookScanner {
     private suspend fun scanBook(context: Context, candidate: AudioBookCandidate): AudioBook? {
         val files = candidate.file.audioFilesInOrder()
         if (files.isEmpty()) return null
-        val metadataLimit = Semaphore(5)
         val tracks = coroutineScope {
             files.map { file ->
                 async {
