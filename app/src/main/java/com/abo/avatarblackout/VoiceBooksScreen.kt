@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.abo.avatarblackout
 
 import androidx.compose.foundation.background
