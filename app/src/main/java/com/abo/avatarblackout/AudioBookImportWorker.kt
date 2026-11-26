@@ -138,7 +138,7 @@ class AudioBookImportWorker(
                     val treeUri = Uri.parse(sourceUriText)
                     val folder = DocumentFile.fromTreeUri(applicationContext, treeUri)
                         ?: throw IllegalArgumentException("The selected folder is no longer available.")
-                    collectFolderTracks(folder, tracksDirectory, available)
+                    collectFolderTracks(folder, tracksDirectory)
                 }
                 else -> emptyList()
             }
@@ -251,12 +251,15 @@ class AudioBookImportWorker(
                         throw IllegalStateException("The selected file is larger than the available storage.")
                     }
                     output.write(buffer, 0, read)
-                    if (size != null && size > 0L) {
+                    if (size != null && size > 0L &&
+                        android.os.SystemClock.elapsedRealtime() - lastProgressAt > 450L
+                    ) {
                         val fraction = (copied * progressSpan / size).toInt().coerceIn(0, progressSpan)
                         setProgress(workDataOf(
                             KEY_PROGRESS to (progressStart + fraction),
                             KEY_STAGE to "copy"
                         ))
+                        lastProgressAt = android.os.SystemClock.elapsedRealtime()
                     }
                 }
             }
@@ -266,17 +269,18 @@ class AudioBookImportWorker(
 
     private suspend fun collectFolderTracks(
         root: DocumentFile,
-        outputDirectory: File,
-        availableBytes: Long
+        outputDirectory: File
     ): List<PendingTrack> {
         if (!root.isDirectory) throw IllegalArgumentException("Choose a folder containing audio files.")
         val result = mutableListOf<PendingTrack>()
         var sequence = 0
         var visited = 0
 
-        fun visit(folder: DocumentFile) {
+        suspend fun visit(folder: DocumentFile) {
             ensureActive()
-            folder.listFiles().sortedBy { it.name.orEmpty().lowercase(Locale.ROOT) }.forEach { file ->
+            val children = folder.listFiles()
+                .sortedBy { it.name.orEmpty().lowercase(Locale.ROOT) }
+            for (file in children) {
                 ensureActive()
                 visited++
                 if (visited > MAX_ARCHIVE_ENTRIES) {
@@ -284,13 +288,13 @@ class AudioBookImportWorker(
                 }
                 if (file.isDirectory) {
                     visit(file)
-                    return@forEach
+                    continue
                 }
-                if (!file.isFile) return@forEach
-                val name = file.name ?: return@forEach
+                if (!file.isFile) continue
+                val name = file.name ?: continue
                 val extension = extensionOf(name)
                 if (extension !in SUPPORTED_AUDIO_EXTENSIONS && extension !in ARCHIVE_EXTENSIONS) {
-                    return@forEach
+                    continue
                 }
                 sequence++
                 if (extension in SUPPORTED_AUDIO_EXTENSIONS) {
@@ -301,7 +305,14 @@ class AudioBookImportWorker(
                     val archive = File(outputDirectory, "folder_archive_$sequence.$extension")
                     copyContentUri(file.uri, archive, 20, 65)
                     val extractedDir = File(outputDirectory, "folder_archive_$sequence").apply { mkdirs() }
-                    result.addAll(extractAudio(archive, name, extractedDir, StatFs(outputDirectory.absolutePath).availableBytes))
+                    result.addAll(
+                        extractAudio(
+                            archive,
+                            name,
+                            extractedDir,
+                            StatFs(outputDirectory.absolutePath).availableBytes
+                        )
+                    )
                     archive.delete()
                 }
             }
