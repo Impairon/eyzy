@@ -1460,8 +1460,9 @@ class MainActivity : FragmentActivity() {
                                     Toast.makeText(this, translate("Books added.") + " " + books.size, Toast.LENGTH_SHORT).show()
                                 }
                             }.onFailure { error ->
-                                audioImportStatusText?.text = translate(error.message ?: "The audio book could not be added.")
-                                Toast.makeText(this, audioImportStatusText?.text, Toast.LENGTH_LONG).show()
+                                val message = translate(error.message ?: "The audio book could not be added.")
+                                audioImportStatusText?.text = message
+                                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
                             }
                         }
                     }
