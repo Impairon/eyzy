@@ -936,13 +936,18 @@ class MainActivity : FragmentActivity() {
         root.addView(shell, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
         openPage(currentPage, preserveScroll = true, restoreScrollY = savedScrollY)
-        // Load the small local catalogue and warm the Books composition after the
-        // first screen is visible, instead of making the first tab tap pay that cost.
-        content.post {
+
+        // Begin reading the lightweight local catalogue immediately at app startup.
+        // The first screen remains responsive because repository work runs off-main.
+        loadAudioBooksAsync()
+
+        // After the first frame, compose and measure Books at the real app dimensions
+        // while hidden. Catalogue results can arrive during this warm-up, allowing
+        // visible book rows and their thumbnail loaders to be prepared in advance.
+        root.post {
             if (!isFinishing && !isDestroyed && booksLibraryComposeView == null) {
                 prepareBooksLibrary()
             }
-            loadAudioBooksAsync()
         }
     }
 
@@ -1188,8 +1193,14 @@ class MainActivity : FragmentActivity() {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         }.also { booksLibraryComposeView = it }
         if (compose.parent == null) {
+            // Keep the screen attached at the real app size while hidden. INVISIBLE
+            // views are still measured, so Compose can build and lay out the actual
+            // Books UI before the user opens the tab.
             compose.visibility = View.INVISIBLE
-            root.addView(compose, FrameLayout.LayoutParams(1, 1))
+            compose.isClickable = false
+            compose.isFocusable = false
+            compose.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            root.addView(compose, FrameLayout.LayoutParams(-1, -1))
         }
         booksComposeView = compose
         refreshBooksCompose()
