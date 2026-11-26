@@ -322,11 +322,18 @@ class AudioBookImportWorker(
         return result
     }
 
+    private fun uiText(value: String): String {
+        val language = applicationContext
+            .getSharedPreferences("avb", Context.MODE_PRIVATE)
+            .getString("app_language", "en") ?: "en"
+        return UiText.translate(value, language)
+    }
+
     private fun createForegroundInfo(progress: Int): ForegroundInfo {
         val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26) {
             manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Audio book imports", NotificationManager.IMPORTANCE_LOW)
+                NotificationChannel(CHANNEL_ID, uiText("Audio book imports"), NotificationManager.IMPORTANCE_LOW)
             )
         }
         val notification = if (Build.VERSION.SDK_INT >= 26) {
@@ -335,8 +342,8 @@ class AudioBookImportWorker(
             @Suppress("DEPRECATION")
             Notification.Builder(applicationContext)
         }.setSmallIcon(R.drawable.ic_tile)
-            .setContentTitle(inputData.getString(KEY_BOOK_NAME) ?: "Audio book")
-            .setContentText("Downloading and organizing audio · $progress%")
+            .setContentTitle(inputData.getString(KEY_BOOK_NAME) ?: uiText("Audio book"))
+            .setContentText(uiText("Downloading and organizing audio") + " · $progress%")
             .setOngoing(true)
             .setProgress(100, progress.coerceIn(0, 100), false)
             .build()
