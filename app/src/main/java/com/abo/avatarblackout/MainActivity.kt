@@ -1149,9 +1149,9 @@ class MainActivity : FragmentActivity() {
             ?: playerBook?.currentTrackIndex ?: 0
         compose.setContent {
             val liveTrackIndex = booksTrackIndexState.value
-            val livePlayerBook = playerBook?.copy(
-                currentTrackIndex = liveTrackIndex.coerceIn(0, playerBook.tracks.lastIndex)
-            )
+            val livePlayerBook = playerBook?.let { book ->
+                book.copy(currentTrackIndex = liveTrackIndex.coerceIn(0, book.tracks.lastIndex))
+            }
             VoiceBooksScreen(
                 books = AudioBookRepository.all(this),
                 activeBookId = AudioBookRepository.activeBookId(this),
