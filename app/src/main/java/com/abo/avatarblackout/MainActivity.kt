@@ -220,9 +220,30 @@ class MainActivity : FragmentActivity() {
         super.onCreate(b)
         instance = this
         installCrashLogger()
+        currentPage = b?.getInt(STATE_PAGE, 0)?.coerceIn(0, 5) ?: 0
+        savedScrollY = b?.getInt(STATE_SCROLL_Y, 0)?.coerceAtLeast(0) ?: 0
         window.statusBarColor = backgroundColor
         window.navigationBarColor = backgroundColor
         showShell()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        savedScrollY = if (::mainScrollView.isInitialized) mainScrollView.scrollY else savedScrollY
+        outState.putInt(STATE_PAGE, currentPage)
+        outState.putInt(STATE_SCROLL_Y, savedScrollY)
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (!::content.isInitialized || !::mainScrollView.isInitialized) return
+        val scrollY = mainScrollView.scrollY
+        root.layoutDirection = if (currentAppLanguage() == "ar") {
+            View.LAYOUT_DIRECTION_RTL
+        } else {
+            View.LAYOUT_DIRECTION_LTR
+        }
+        openPage(currentPage, preserveScroll = true, restoreScrollY = scrollY)
     }
 
     override fun onDestroy() {
@@ -234,6 +255,11 @@ class MainActivity : FragmentActivity() {
             }
         }
         activeLocationListener = null
+        quranProgressHandler.removeCallbacks(quranProgressTicker)
+        quranController?.removeListener(quranPlayerListener)
+        quranControllerFuture?.let { MediaController.releaseFuture(it) }
+        quranControllerFuture = null
+        quranController = null
         if (instance === this) instance = null
         super.onDestroy()
     }
@@ -241,7 +267,8 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         if (::content.isInitialized) {
-            openPage(currentPage)
+            val scrollY = if (::mainScrollView.isInitialized) mainScrollView.scrollY else savedScrollY
+            openPage(currentPage, preserveScroll = true, restoreScrollY = scrollY)
         } else {
             registerSensors()
         }
