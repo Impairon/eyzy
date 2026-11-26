@@ -606,7 +606,7 @@ private fun BookPlayView(
                                 showChapters = false
                             }.padding(vertical = 14.dp),
                         )
-                        Divider()
+                        HorizontalDivider()
                     }
                 }
             },
