@@ -860,7 +860,7 @@ class MainActivity : FragmentActivity() {
         addNavigationItem("Lowery", 0)
         addNavigationItem("Sibha", 1)
         addNavigationItem("Prayers", 2)
-        addNavigationItem("Quran", 4)
+        addNavigationItem("Books", 4)
         val navHolder = LinearLayout(this).apply {
             setPadding(dp(12), dp(4), dp(12), dp(10))
             addView(navigationBar, LinearLayout.LayoutParams(-1, dp(58)))
@@ -1091,201 +1091,42 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun showQuranAudio() {
-        pageTitle.text = "Quran"
+        pageTitle.text = translate("Books")
         content.removeAllViews()
 
-        content.addView(card("Main Quran") { section ->
-            addText(section, "The main Quran and side surah keep separate saved positions.")
-            mainTimelineSummary = TextView(this).apply {
-                textSize = 14f
-                setTextColor(secondary)
-                setPadding(0, dp(4), 0, dp(8))
-            }
-            section.addView(mainTimelineSummary)
-            section.addView(actionButton("Continue main Quran").apply {
-                setOnClickListener { playMainQuran() }
-            })
+        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        header.addView(TextView(this).apply {
+            text = translate("Your library")
+            textSize = 21f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(actionButton("Add folder").apply {
+            setOnClickListener { openAudioBookFolderPicker() }
         })
+        content.addView(header)
 
-        content.addView(card("Side listening") { section ->
-            addText(section, "Choose a surah for side listening.")
-            val surahs = (1..114).map {
-                QuranSurahs.name(it, currentAppLanguage())
-            }.toTypedArray()
-            val selector = styledSpinner().apply {
-                adapter = optionAdapter(surahs)
-                setSelection(QuranAudioRepository.selectedSideSurah(this@MainActivity) - 1)
-                onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                    override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-                    override fun onItemSelected(
-                        parent: AdapterView<*>?, view: View?, position: Int, id: Long
-                    ) {
-                        QuranAudioRepository.setSelectedSideSurah(this@MainActivity, position + 1)
-                    }
-                }
-            }
-            quranSurahSpinner = selector
-            section.addView(selector, LinearLayout.LayoutParams(-1, dp(52)))
-            sideTimelineSummary = TextView(this).apply {
-                textSize = 14f
-                setTextColor(secondary)
-                setPadding(0, dp(8), 0, dp(8))
-            }
-            section.addView(sideTimelineSummary)
-            section.addView(actionButton("Play selected side surah").apply {
-                setOnClickListener {
-                    val surah = quranSurahSpinner?.selectedItemPosition?.plus(1)
-                        ?: QuranAudioRepository.selectedSideSurah(this@MainActivity)
-                    playSideSurah(surah)
-                }
-            })
-            section.addView(actionButton("Random side surah").apply {
-                setOnClickListener {
-                    val randomSurah = kotlin.random.Random.nextInt(1, 115)
-                    quranSurahSpinner?.setSelection(randomSurah - 1)
-                    playSideSurah(randomSurah)
-                }
-            })
+        content.addView(TextView(this).apply {
+            text = translate("Continue listening")
+            textSize = 17f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            setPadding(0, dp(18), 0, dp(10))
         })
-
-        content.addView(card("Your books") { section ->
-            addText(section, "Add a folder, audio file, archive, or direct download link.")
-            section.addView(actionButton("Add new book").apply {
-                setOnClickListener { showNewAudioBookSourceDialog() }
-            })
-            audioImportStatusText = TextView(this).apply {
-                textSize = 13f
-                setTextColor(secondary)
-                setPadding(0, dp(6), 0, dp(6))
-            }
-            section.addView(audioImportStatusText)
-            audioBookListContainer = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-            }
-            section.addView(audioBookListContainer)
-        })
-
-        content.addView(card("Player controls") { section ->
-            addText(section, "Playback continues in the background.")
-            addText(section, "Reciter")
-            quranReciterSpinner = styledSpinner().apply {
-                adapter = optionAdapter(arrayOf("Loading reciters…"))
-            }
-            section.addView(quranReciterSpinner, LinearLayout.LayoutParams(-1, dp(52)))
-
-            quranNowPlayingText = TextView(this).apply {
-                text = translate("No audio playing")
-                textSize = 18f
-                typeface = Typeface.DEFAULT_BOLD
-                gravity = Gravity.CENTER
-                setTextColor(Color.WHITE)
-                setPadding(0, dp(12), 0, dp(4))
-            }
-            section.addView(quranNowPlayingText)
-
-            quranStatusText = TextView(this).apply {
-                text = translate("Loading reciters…")
-                textSize = 13f
-                gravity = Gravity.CENTER
-                setTextColor(secondary)
-                setPadding(0, 0, 0, dp(8))
-            }
-            section.addView(quranStatusText)
-
-            quranSeekBar = SeekBar(this).apply {
-                max = 1000
-                progress = 0
-                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                        quranSeeking = true
-                    }
-
-                    override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                        val controller = quranController
-                        val duration = controller?.duration ?: 0L
-                        if (controller != null && duration > 0L) {
-                            controller.seekTo(duration * (seekBar?.progress ?: 0) / 1000L)
-                        }
-                        quranSeeking = false
-                        updateQuranPlaybackUi()
-                    }
-
-                    override fun onProgressChanged(
-                        seekBar: SeekBar?, progress: Int, fromUser: Boolean
-                    ) {
-                        if (fromUser && quranSeeking) {
-                            val duration = quranController?.duration ?: 0L
-                            if (duration > 0L) {
-                                quranPositionText?.text =
-                                    formatQuranDuration(duration * progress / 1000L)
-                            }
-                        }
-                    }
-                })
-            }
-            section.addView(quranSeekBar)
-
-            val timeRow = LinearLayout(this).apply {
-                gravity = Gravity.CENTER_VERTICAL
-            }
-            quranPositionText = TextView(this).apply {
-                text = "00:00"
-                textSize = 12f
-                setTextColor(secondary)
-            }
-            quranDurationText = TextView(this).apply {
-                text = "--:--"
-                textSize = 12f
-                setTextColor(secondary)
-                gravity = Gravity.END
-            }
-            timeRow.addView(quranPositionText, LinearLayout.LayoutParams(0, -2, 1f))
-            timeRow.addView(quranDurationText, LinearLayout.LayoutParams(0, -2, 1f))
-            section.addView(timeRow)
-
-            val controls = LinearLayout(this).apply {
-                gravity = Gravity.CENTER
-            }
-            val previous = Button(this).apply {
-                text = "◀|"
-                isAllCaps = false
-                setTextColor(Color.WHITE)
-                background = rounded(panelRaised, 12)
-                setOnClickListener { quranController?.seekToPreviousMediaItem() }
-            }
-            quranPlayPauseButton = Button(this).apply {
-                text = translate("Play")
-                isAllCaps = false
-                setTextColor(Color.WHITE)
-                typeface = Typeface.DEFAULT_BOLD
-                background = rounded(purple, 12)
-                setOnClickListener { toggleQuranPlayback() }
-            }
-            val next = Button(this).apply {
-                text = "|▶"
-                isAllCaps = false
-                setTextColor(Color.WHITE)
-                background = rounded(panelRaised, 12)
-                setOnClickListener { quranController?.seekToNextMediaItem() }
-            }
-            controls.addView(previous, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
-                marginEnd = dp(6)
-            })
-            controls.addView(quranPlayPauseButton, LinearLayout.LayoutParams(0, dp(48), 1.4f).apply {
-                marginEnd = dp(6)
-            })
-            controls.addView(next, LinearLayout.LayoutParams(0, dp(48), 1f))
-            section.addView(controls)
-        })
+        audioImportStatusText = TextView(this).apply {
+            textSize = 12f
+            setTextColor(secondary)
+        }
+        content.addView(audioImportStatusText)
+        audioBookListContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(audioBookListContainer)
 
         connectQuranController()
-        loadQuranRecitations()
-        updateQuranTimelineSummaries()
+        renderAudioBookLibrary()
+        observeAudioBookImports()
         updateQuranPlaybackUi()
         quranProgressHandler.removeCallbacks(quranProgressTicker)
         quranProgressHandler.post(quranProgressTicker)
-        renderAudioBookLibrary()
-        observeAudioBookImports()
     }
 
     private fun connectQuranController() {
@@ -1763,53 +1604,79 @@ class MainActivity : FragmentActivity() {
         container.removeAllViews()
         val books = AudioBookRepository.all(this)
         if (books.isEmpty()) {
-            val empty = TextView(this).apply {
-                text = translate("No books yet. Add a folder, archive, audio file, or direct link.")
-                textSize = 13f
-                setTextColor(secondary)
-                setPadding(0, dp(8), 0, dp(8))
-            }
-            container.addView(empty)
+            container.addView(card("Your library is empty") { section ->
+                addText(section, "Choose your audiobook folder to add it here.")
+                section.addView(actionButton("Add folder").apply {
+                    setOnClickListener { openAudioBookFolderPicker() }
+                })
+            })
             return
         }
-        books.forEach { book ->
-            val bookCard = card("Audio book") { section ->
+
+        val activeId = AudioBookRepository.activeBookId(this)
+        val continueBook = books.firstOrNull { it.id == activeId }
+            ?: books.firstOrNull { it.lastPlayedAt > 0L }
+        if (continueBook != null) {
+            container.addView(card("Continue listening") { section ->
                 val title = TextView(this).apply {
-                    text = book.name
+                    text = continueBook.name
                     tag = USER_CONTENT_TAG
-                    textSize = 17f
+                    textSize = 20f
                     typeface = Typeface.DEFAULT_BOLD
                     setTextColor(Color.WHITE)
-                    setPadding(0, dp(3), 0, dp(5))
+                    setPadding(0, dp(4), 0, dp(4))
                 }
                 section.addView(title)
-                val currentTrack = book.currentTrack
-                val details = TextView(this).apply {
-                    text = book.tracks.size.toString() + " · " +
-                        (currentTrack?.title.orEmpty()) + " · " +
-                        formatQuranDuration(book.positionMs)
-                    tag = USER_CONTENT_TAG
-                    textSize = 13f
-                    setTextColor(secondary)
-                    setPadding(0, 0, 0, dp(6))
-                }
-                section.addView(details)
-                val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-                val resume = actionButton("Resume book").apply {
-                    setOnClickListener { resumeAudioBook(book.id) }
-                    layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply {
-                        marginEnd = dp(6)
-                    }
-                }
-                val options = actionButton("Manage").apply {
-                    setOnClickListener { showAudioBookOptions(book.id) }
-                    layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f)
-                }
-                controls.addView(resume)
-                controls.addView(options)
-                section.addView(controls)
+                addText(section, continueBook.currentTrack?.title.orEmpty())
+                val resume = actionButton("Continue listening")
+                resume.setOnClickListener { resumeAudioBook(continueBook.id) }
+                section.addView(resume)
+            })
+        }
+
+        books.forEach { book ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(12), dp(10), dp(8), dp(10))
+                background = rounded(panel, 14)
             }
-            container.addView(bookCard)
+            val cover = TextView(this).apply {
+                text = "♫"
+                textSize = 28f
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                background = rounded(panelRaised, 12)
+            }
+            row.addView(cover, LinearLayout.LayoutParams(dp(62), dp(72)).apply { marginEnd = dp(12) })
+            val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            details.addView(TextView(this).apply {
+                text = book.name
+                tag = USER_CONTENT_TAG
+                textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.WHITE)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            details.addView(TextView(this).apply {
+                text = book.currentTrack?.title.orEmpty().ifBlank { book.tracks.size.toString() + " " + translate("tracks") }
+                tag = USER_CONTENT_TAG
+                textSize = 12f
+                setTextColor(secondary)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
+            row.addView(TextView(this).apply {
+                text = "⋮"
+                textSize = 25f
+                gravity = Gravity.CENTER
+                setTextColor(secondary)
+                setOnClickListener { showAudioBookOptions(book.id) }
+            }, LinearLayout.LayoutParams(dp(42), dp(52)))
+            row.setOnClickListener { resumeAudioBook(book.id) }
+            container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
         }
     }
 
