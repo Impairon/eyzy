@@ -697,6 +697,7 @@ private fun BookPlayView(
 }
 
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun VoiceWavySeekBar(
     progress: Float,
