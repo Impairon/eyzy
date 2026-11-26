@@ -106,7 +106,7 @@ class MainActivity : FragmentActivity() {
     private var quranSeeking = false
     private var audioBookListContainer: LinearLayout? = null
     private var audioImportStatusText: TextView? = null
-    private var lastObservedImportMessage = ""
+    private var audioImportObservationAttached = false
     private val quranProgressHandler = Handler(Looper.getMainLooper())
     private val quranProgressTicker = object : Runnable {
         override fun run() {
@@ -295,6 +295,29 @@ class MainActivity : FragmentActivity() {
             deviceCredentialLauncherActive = false
             if (resultCode == RESULT_OK) unlockApp()
             else showLockMessage(translate("Authentication required to open Swizy."))
+            return
+        }
+
+        if (requestCode == AUDIO_BOOK_FILE_REQUEST ||
+            requestCode == AUDIO_BOOK_FOLDER_REQUEST
+        ) {
+            if (resultCode != RESULT_OK) return
+            val uri = data?.data ?: return
+            runCatching {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            val isFolder = requestCode == AUDIO_BOOK_FOLDER_REQUEST
+            val sourceType = if (isFolder) {
+                AudioBookImportWorker.TYPE_FOLDER
+            } else {
+                AudioBookImportWorker.TYPE_FILE
+            }
+            val displayName = if (isFolder) "" else displayNameForUri(uri)
+                .substringBeforeLast('.', displayNameForUri(uri))
+            askAudioBookName(sourceType, uri.toString(), displayName)
             return
         }
 
