@@ -114,6 +114,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.layout.onSizeChanged
 import android.os.Build
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
@@ -710,6 +711,7 @@ private fun VoiceWavySeekBar(
 ) {
     val colors = MaterialTheme.colorScheme
     val hostView = LocalView.current
+    var seekBarWidthPx by remember { mutableFloatStateOf(0f) }
     val phase by rememberInfiniteTransition(label = "seekWave")
         .animateFloat(
             initialValue = 0f,
@@ -727,36 +729,28 @@ private fun VoiceWavySeekBar(
     )
     Canvas(
         modifier = modifier.height(64.dp)
+            .onSizeChanged { seekBarWidthPx = it.width.toFloat() }
             .pointerInteropFilter { event ->
-                // Keep the app-level tab pager from stealing a horizontal seek gesture.
+                val width = seekBarWidthPx.coerceAtLeast(1f)
+                val fraction = (event.x / width).coerceIn(0f, 1f)
                 when (event.actionMasked) {
-                    android.view.MotionEvent.ACTION_DOWN -> hostView.parent?.requestDisallowInterceptTouchEvent(true)
-                    android.view.MotionEvent.ACTION_UP,
-                    android.view.MotionEvent.ACTION_CANCEL -> hostView.parent?.requestDisallowInterceptTouchEvent(false)
-                }
-                false
-            }
-            .pointerInput(Unit) {
-                detectTapGestures { point ->
-                    onSeek((point.x / size.width).coerceIn(0f, 1f))
-                }
-            }
-            .pointerInput(Unit) {
-                var dragFraction = progress.coerceIn(0f, 1f)
-                detectHorizontalDragGestures(
-                    onDragStart = { point ->
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        hostView.parent?.requestDisallowInterceptTouchEvent(true)
                         onDragStart()
-                        dragFraction = (point.x / size.width).coerceIn(0f, 1f)
-                        onProgressChange(dragFraction)
-                    },
-                    onDragEnd = { onSeek(dragFraction) },
-                    onDragCancel = { onSeek(dragFraction) },
-                    onHorizontalDrag = { change, _ ->
-                        change.consume()
-                        dragFraction = (change.position.x / size.width).coerceIn(0f, 1f)
-                        onProgressChange(dragFraction)
-                    },
-                )
+                        onProgressChange(fraction)
+                    }
+                    android.view.MotionEvent.ACTION_MOVE -> onProgressChange(fraction)
+                    android.view.MotionEvent.ACTION_UP -> {
+                        onProgressChange(fraction)
+                        onSeek(fraction)
+                        hostView.parent?.requestDisallowInterceptTouchEvent(false)
+                    }
+                    android.view.MotionEvent.ACTION_CANCEL -> {
+                        onSeek(fraction)
+                        hostView.parent?.requestDisallowInterceptTouchEvent(false)
+                    }
+                }
+                true
             },
     ) {
         val fraction = progress.coerceIn(0f, 1f)
