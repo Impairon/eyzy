@@ -594,12 +594,17 @@ class AudioBookImportWorker(
     }
 
     private fun trackComparator(): Comparator<TrackInfo> = Comparator { a, b ->
-        val bothNumbered = a.trackNumber > 0 && b.trackNumber > 0
-        if (bothNumbered) {
-            val disc = a.discNumber.compareTo(b.discNumber)
-            if (disc != 0) disc else a.trackNumber.compareTo(b.trackNumber)
-        } else {
-            naturalCompare(a.pending.sourceName, b.pending.sourceName)
+        val aHasTrackNumber = a.trackNumber > 0
+        val bHasTrackNumber = b.trackNumber > 0
+        when {
+            aHasTrackNumber && !bHasTrackNumber -> -1
+            !aHasTrackNumber && bHasTrackNumber -> 1
+            aHasTrackNumber && bHasTrackNumber -> {
+                val disc = (a.discNumber.takeIf { it > 0 } ?: 1)
+                    .compareTo(b.discNumber.takeIf { it > 0 } ?: 1)
+                if (disc != 0) disc else a.trackNumber.compareTo(b.trackNumber)
+            }
+            else -> naturalCompare(a.pending.sourceName, b.pending.sourceName)
         }
     }
 
