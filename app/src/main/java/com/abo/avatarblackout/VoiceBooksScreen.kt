@@ -202,14 +202,6 @@ private fun BookOverviewScreen(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            androidx.compose.material3.OutlinedTextField(
-                value = localQuery,
-                onValueChange = { localQuery = it; onSearchChange(it) },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                singleLine = true,
-                placeholder = { Text("Search books") },
-                shape = RoundedCornerShape(12.dp),
-            )
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize(),
