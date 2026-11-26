@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -212,7 +213,7 @@ internal fun VoiceBooksScreen(
                 onNext = onNext,
                 onChapters = onChapters,
                 onBookmark = onBookmark,
-                onBookmarks = onBookmarks,
+                onBookmarks = { showAllBookmarks = true },
                 onResumeBookmark = onResumeBookmark,
                 onDeleteBookmark = onDeleteBookmark,
                 rewindSeconds = rewindSeconds,
@@ -576,11 +577,17 @@ private fun BookPlayView(
         }
     }
     if (showChapters) {
+        val chapterListState = rememberLazyListState()
+        LaunchedEffect(showChapters, book.currentTrackIndex) {
+            if (showChapters && book.tracks.isNotEmpty()) {
+                chapterListState.animateScrollToItem(book.currentTrackIndex.coerceIn(0, book.tracks.lastIndex))
+            }
+        }
         AlertDialog(
             onDismissRequest = { showChapters = false },
             title = { Text("Chapters") },
             text = {
-                LazyColumn {
+                LazyColumn(state = chapterListState) {
                     itemsIndexed(book.tracks, key = { index, item -> "${book.id}:$index:${item.path}" }) { index, chapter ->
                         Text(
                             text = chapter.title,
