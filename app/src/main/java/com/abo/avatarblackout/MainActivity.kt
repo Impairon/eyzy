@@ -114,6 +114,9 @@ class MainActivity : FragmentActivity() {
     private val booksDurationState = mutableStateOf(0L)
     private val booksPlayingState = mutableStateOf(false)
     private val booksTrackIndexState = mutableStateOf(0)
+    private val booksLibraryState = mutableStateOf<List<AudioBook>>(emptyList())
+    private val booksLibraryLoadingState = mutableStateOf(true)
+    private var booksLibraryLoadGeneration = 0L
     private var selectedAudioBookId: String? = null
     private var audioBookSearchQuery = ""
     private var sleepTimerEndAt = 0L
@@ -1180,6 +1183,7 @@ class MainActivity : FragmentActivity() {
         content.addView(booksComposeView, LinearLayout.LayoutParams(-1, dp(640)))
         connectQuranController()
         refreshBooksCompose()
+        loadAudioBooksAsync()
         updateQuranPlaybackUi()
         refreshNavigation()
         quranProgressHandler.removeCallbacks(quranProgressTicker)
@@ -1208,7 +1212,8 @@ class MainActivity : FragmentActivity() {
                 book.copy(currentTrackIndex = liveTrackIndex.coerceIn(0, book.tracks.lastIndex))
             }
             VoiceBooksScreen(
-                books = AudioBookRepository.all(this),
+                books = booksLibraryState.value,
+                loadingBooks = booksLibraryLoadingState.value,
                 searchQuery = audioBookSearchQuery,
                 playerBook = livePlayerBook,
                 playing = booksPlayingState.value,
@@ -1685,6 +1690,21 @@ class MainActivity : FragmentActivity() {
 
     private fun renderAudioBookLibrary() {
         refreshBooksCompose()
+        loadAudioBooksAsync()
+    }
+
+    private fun loadAudioBooksAsync() {
+        val generation = ++booksLibraryLoadGeneration
+        booksLibraryLoadingState.value = true
+        thread(name = "audio-book-library") {
+            val loaded = runCatching { AudioBookRepository.all(applicationContext) }
+                .getOrDefault(emptyList())
+            runOnUiThread {
+                if (generation != booksLibraryLoadGeneration || isFinishing || isDestroyed) return@runOnUiThread
+                booksLibraryState.value = loaded
+                booksLibraryLoadingState.value = false
+            }
+        }
     }
 
     private fun showAudioBookOptions(bookId: String) {
