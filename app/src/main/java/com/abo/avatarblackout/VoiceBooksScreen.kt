@@ -22,8 +22,9 @@ import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.outlined.ChevronLeft
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Replay
@@ -41,7 +42,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -276,11 +277,11 @@ private fun BookPlayView(
     val track = book.currentTrack
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(book.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            LargeTopAppBar(
+                title = { Text(book.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close")
                     }
                 },
                 actions = {
@@ -295,42 +296,67 @@ private fun BookPlayView(
             Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.weight(1f))
-            BookCover(book.name, Modifier.fillMaxWidth().weight(3f).clip(RoundedCornerShape(8.dp)))
+            BookCover(book.name, Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp).clip(RoundedCornerShape(8.dp)))
+            if (track != null) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (book.tracks.size > 1) {
+                        IconButton(onClick = onPrevious) {
+                            Icon(Icons.Outlined.ChevronLeft, contentDescription = "Previous chapter")
+                        }
+                    }
+                    Row(
+                        Modifier.weight(1f).clickable { showChapters = true }.padding(vertical = 16.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(track.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2)
+                        if (book.tracks.size > 1) {
+                            Icon(Icons.Outlined.ExpandMore, contentDescription = "Choose chapter")
+                        }
+                    }
+                    if (book.tracks.size > 1) {
+                        IconButton(onClick = onNext) {
+                            Icon(Icons.Outlined.ChevronRight, contentDescription = "Next chapter")
+                        }
+                    }
+                }
+            }
             Spacer(Modifier.height(20.dp))
-            Text(track?.title.orEmpty(), style = MaterialTheme.typography.titleLarge, maxLines = 2)
-            Text(track?.artist.orEmpty(), style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.height(16.dp))
             Slider(
                 value = if (durationMs > 0L) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f,
                 onValueChange = { onSeek((it * durationMs).toLong()) },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
             )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(formatVoiceDuration(positionMs), style = MaterialTheme.typography.labelSmall)
                 Text(formatVoiceDuration(durationMs), style = MaterialTheme.typography.labelSmall)
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(16.dp))
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onPrevious) { Icon(Icons.Default.SkipPrevious, contentDescription = "Previous chapter") }
-                IconButton(onClick = onRewind) { Icon(Icons.Default.Replay, contentDescription = "Rewind 15 seconds") }
-                IconButton(onClick = onPlayPause, modifier = Modifier.size(64.dp)) {
+                IconButton(onClick = onRewind, modifier = Modifier.size(56.dp)) {
+                    Icon(Icons.Default.Replay, contentDescription = "Rewind 15 seconds", modifier = Modifier.size(40.dp))
+                }
+                Spacer(Modifier.size(16.dp))
+                IconButton(onClick = onPlayPause, modifier = Modifier.size(80.dp)) {
                     Icon(
                         if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (playing) "Pause" else "Play",
-                        modifier = Modifier.size(48.dp),
+                        modifier = Modifier.size(56.dp),
                     )
                 }
-                IconButton(onClick = onForward) { Icon(Icons.Default.Forward30, contentDescription = "Forward 30 seconds") }
-                IconButton(onClick = onNext) { Icon(Icons.Default.SkipNext, contentDescription = "Next chapter") }
+                Spacer(Modifier.size(16.dp))
+                IconButton(onClick = onForward, modifier = Modifier.size(56.dp)) {
+                    Icon(Icons.Default.Forward30, contentDescription = "Forward 30 seconds", modifier = Modifier.size(40.dp))
+                }
             }
-            Spacer(Modifier.height(12.dp))
-            TextButton(onClick = { showChapters = true }) { Text("Chapters") }
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(24.dp))
         }
     }
     if (showChapters) {
