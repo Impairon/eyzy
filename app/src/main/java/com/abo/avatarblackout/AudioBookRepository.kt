@@ -44,6 +44,10 @@ internal object AudioBookRepository {
     private const val BOOK_IDS = "audio_book_ids"
     private const val ACTIVE_BOOK = "audio_active_book"
 
+    private fun progressIndexKey(id: String) = "audio_book_progress_index_$id"
+    private fun progressPositionKey(id: String) = "audio_book_progress_position_$id"
+    private fun progressTimeKey(id: String) = "audio_book_progress_time_$id"
+
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -58,7 +62,8 @@ internal object AudioBookRepository {
     }
 
     fun load(context: Context, id: String): AudioBook? {
-        val raw = prefs(context).getString("audio_book_$id", null) ?: return null
+        val store = prefs(context)
+        val raw = store.getString("audio_book_$id", null) ?: return null
         return runCatching {
             val json = JSONObject(raw)
             val tracksJson = json.optJSONArray("tracks") ?: JSONArray()
@@ -93,10 +98,15 @@ internal object AudioBookRepository {
                 id = id,
                 name = json.optString("name", "Audio book").ifBlank { "Audio book" },
                 tracks = tracks,
-                currentTrackIndex = json.optInt("currentTrackIndex", 0)
-                    .coerceIn(0, tracks.lastIndex),
-                positionMs = json.optLong("positionMs").coerceAtLeast(0L),
-                lastPlayedAt = json.optLong("lastPlayedAt").coerceAtLeast(0L),
+                currentTrackIndex = store.getInt(
+                    progressIndexKey(id), json.optInt("currentTrackIndex", 0)
+                ).coerceIn(0, tracks.lastIndex),
+                positionMs = store.getLong(
+                    progressPositionKey(id), json.optLong("positionMs")
+                ).coerceAtLeast(0L),
+                lastPlayedAt = store.getLong(
+                    progressTimeKey(id), json.optLong("lastPlayedAt")
+                ).coerceAtLeast(0L),
                 bookmarks = bookmarks
             )
         }.getOrNull()
@@ -143,19 +153,23 @@ internal object AudioBookRepository {
         }.getOrDefault(emptyList())
         store.edit()
             .putString("audio_book_${book.id}", json.toString())
+            .putInt(progressIndexKey(book.id), book.currentTrackIndex.coerceIn(0, book.tracks.lastIndex))
+            .putLong(progressPositionKey(book.id), book.positionMs.coerceAtLeast(0L))
+            .putLong(progressTimeKey(book.id), book.lastPlayedAt.coerceAtLeast(0L))
             .putString(BOOK_IDS, JSONArray((ids + book.id).distinct()).toString())
             .apply()
     }
 
     fun saveProgress(context: Context, bookId: String, trackIndex: Int, positionMs: Long) {
-        val book = load(context, bookId) ?: return
-        if (trackIndex !in book.tracks.indices) return
-        save(context, book.copy(
-            currentTrackIndex = trackIndex,
-            positionMs = positionMs.coerceAtLeast(0L),
-            lastPlayedAt = System.currentTimeMillis()
-        ))
-        prefs(context).edit().putString(ACTIVE_BOOK, bookId).apply()
+        if (trackIndex < 0 || !bookId.matches(Regex("[A-Za-z0-9-]{1,80}"))) return
+        val now = System.currentTimeMillis()
+        // Playback ticks update only three scalar values, not the full track catalogue.
+        prefs(context).edit()
+            .putInt(progressIndexKey(bookId), trackIndex)
+            .putLong(progressPositionKey(bookId), positionMs.coerceAtLeast(0L))
+            .putLong(progressTimeKey(bookId), now)
+            .putString(ACTIVE_BOOK, bookId)
+            .apply()
     }
 
     fun setActive(context: Context, bookId: String) {
@@ -210,6 +224,9 @@ internal object AudioBookRepository {
         }.getOrDefault(emptyList())
         store.edit()
             .remove("audio_book_$bookId")
+            .remove(progressIndexKey(bookId))
+            .remove(progressPositionKey(bookId))
+            .remove(progressTimeKey(bookId))
             .putString(BOOK_IDS, JSONArray(ids).toString())
             .apply()
         val root = File(
