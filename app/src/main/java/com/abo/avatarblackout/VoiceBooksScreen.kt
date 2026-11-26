@@ -617,12 +617,25 @@ private fun BookPlayView(
 
 @Composable
 private fun BookCover(title: String, coverPath: String?, modifier: Modifier = Modifier) {
-    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, coverPath) {
+    // Covers use a stable per-book path and can be replaced during a rescan.
+    // Include the file signature so Compose reloads the bitmap when that file changes.
+    val coverSignature = remember(coverPath) {
+        coverPath?.let { path ->
+            runCatching {
+                val file = java.io.File(path)
+                "${file.lastModified()}:${file.length()}"
+            }.getOrDefault("")
+        }.orEmpty()
+    }
+    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, coverPath, coverSignature) {
         value = withContext(Dispatchers.IO) {
             coverPath?.let { path ->
                 runCatching {
+                    val file = java.io.File(path)
+                    if (!file.isFile || file.length() <= 0L) return@runCatching null
                     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                     BitmapFactory.decodeFile(path, bounds)
+                    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
                     var sample = 1
                     while (bounds.outWidth / sample > 1024 || bounds.outHeight / sample > 1024) sample *= 2
                     val options = BitmapFactory.Options().apply { inSampleSize = sample }
