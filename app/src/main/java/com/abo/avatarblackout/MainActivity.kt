@@ -313,10 +313,9 @@ class MainActivity : FragmentActivity() {
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
             }
-            val sourceType = AudioBookImportWorker.TYPE_FOLDER
             val displayName = DocumentFile.fromTreeUri(this, uri)?.name
                 ?.takeIf { it.isNotBlank() } ?: translate("My books")
-            enqueueAudioBookImport(sourceType, uri.toString(), displayName)
+            enqueueAudioBookImport(uri.toString(), displayName)
             return
         }
 
@@ -1419,19 +1418,12 @@ class MainActivity : FragmentActivity() {
         startActivityForResult(intent, AUDIO_BOOK_FOLDER_REQUEST)
     }
 
-    private fun enqueueAudioBookImport(sourceType: String, sourceValue: String, bookName: String) {
+    private fun enqueueAudioBookImport(sourceUri: String, bookName: String) {
         val bookId = AudioBookRepository.newId()
         val data = Data.Builder()
-            .putString(AudioBookImportWorker.KEY_SOURCE_TYPE, sourceType)
+            .putString(AudioBookImportWorker.KEY_SOURCE_URI, sourceUri)
             .putString(AudioBookImportWorker.KEY_BOOK_NAME, bookName)
             .putString(AudioBookImportWorker.KEY_BOOK_ID, bookId)
-            .apply {
-                if (sourceType == AudioBookImportWorker.TYPE_URL) {
-                    putString(AudioBookImportWorker.KEY_URL, sourceValue)
-                } else {
-                    putString(AudioBookImportWorker.KEY_SOURCE_URI, sourceValue)
-                }
-            }
             .build()
         val request = OneTimeWorkRequestBuilder<AudioBookImportWorker>()
             .setInputData(data)
@@ -1456,13 +1448,7 @@ class MainActivity : FragmentActivity() {
                 val active = infos.firstOrNull { !it.state.isFinished }
                 if (active != null) {
                     val percent = active.progress.getInt(AudioBookImportWorker.KEY_PROGRESS, 0)
-                    val stage = when (active.progress.getString(AudioBookImportWorker.KEY_STAGE)) {
-                        "download" -> translate("Downloading…")
-                        "copy" -> translate("Copying files…")
-                        "extract" -> translate("Extracting audio…")
-                        "metadata" -> translate("Reading track information…")
-                        else -> translate("Preparing book…")
-                    }
+                    val stage = translate("Adding books…")
                     audioImportStatusText?.text = "$stage $percent%"
                     return@observe
                 }
