@@ -12,7 +12,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.Locale
@@ -38,6 +40,7 @@ internal data class AudioBookCandidate(
 internal object AudioBookScanner {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val metadataLimit = Semaphore(5)
+    private val scanMutex = Mutex()
 
     fun preview(context: Context, uri: Uri, callback: (Result<AudioBookFolderPreview>) -> Unit) {
         scope.launch {
@@ -63,6 +66,7 @@ internal object AudioBookScanner {
     ) {
         scope.launch {
             val result = runCatching {
+                scanMutex.withLock {
                 val candidates = preview.candidates[mode].orEmpty()
                 val bookLimit = Semaphore(5)
                 val books = coroutineScope {
@@ -87,6 +91,7 @@ internal object AudioBookScanner {
                     AudioBookRepository.save(context.applicationContext, restored)
                 }
                 books
+                }
             }
             withContext(Dispatchers.Main) { callback(result) }
         }
