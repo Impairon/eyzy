@@ -1157,6 +1157,10 @@ class MainActivity : FragmentActivity() {
                     audioBookSearchQuery = it
                 },
                 onAddBook = { showAudioBookAddContent() },
+                onSettingsClick = { openPage(5) },
+                onPlayActive = {
+                    AudioBookRepository.activeBookId(this)?.let { resumeAudioBook(it) }
+                },
                 onBookClick = { resumeAudioBook(it) },
                 onBookOptions = { showAudioBookOptions(it) },
                 onBack = { showQuranAudio() },
