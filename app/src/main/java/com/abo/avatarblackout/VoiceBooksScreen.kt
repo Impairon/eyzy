@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -523,156 +524,202 @@ private fun BookPlayView(
     var showChapters by remember(book.id) { mutableStateOf(false) }
     var localSliderValue by remember(book.id) { mutableFloatStateOf(0f) }
     var isDragging by remember(book.id) { mutableStateOf(false) }
+    var showRemainingTime by remember(book.id) { mutableStateOf(false) }
     val track = book.currentTrack
     val chapterListState = rememberLazyListState()
+
     Scaffold(
         topBar = {
-            LargeTopAppBar(
+            TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(book.name, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                        IconButton(onClick = onBookmark) {
-                            Icon(Icons.Outlined.BookmarkAdd, contentDescription = "Save position")
-                        }
-                    }
+                    Text(
+                        book.name,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close")
                     }
                 },
-                actions = {
-                    IconButton(onClick = onSleepTimer) { Icon(Icons.Default.Timer, contentDescription = "Sleep timer") }
-                    IconButton(onClick = onBookmarks) {
-                        Icon(Icons.Default.Bookmarks, contentDescription = "Saved bookmarks")
-                    }
-                    IconButton(onClick = onSpeed) { Icon(Icons.Default.Speed, contentDescription = "Playback speed") }
-                },
             )
         },
     ) { padding ->
-        Column(
-            Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+        BoxWithConstraints(
+            Modifier.fillMaxSize().padding(padding),
         ) {
-            val coverScale by animateFloatAsState(
-                targetValue = if (playing) 1f else 0.88f,
-                animationSpec = spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessLow),
-                label = "playbackCoverScale",
-            )
-            BookCover(
-                book.name,
-                book.coverPath,
-                Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp)
-                    .graphicsLayer { scaleX = coverScale; scaleY = coverScale }
-                    .clip(RoundedCornerShape(12.dp)),
-                track?.path,
-            )
-            if (track != null) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (book.tracks.size > 1) {
-                        IconButton(onClick = onPrevious) {
-                            Icon(Icons.Outlined.ChevronLeft, contentDescription = "Previous chapter")
-                        }
-                    }
+            val coverSize = (maxHeight * 0.34f)
+                .coerceAtMost(maxWidth * 0.78f)
+                .coerceAtMost(240.dp)
+                .coerceAtLeast(112.dp)
+
+            Column(
+                Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween,
+            ) {
+                val coverScale by animateFloatAsState(
+                    targetValue = if (playing) 1f else 0.96f,
+                    animationSpec = spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessLow),
+                    label = "playbackCoverScale",
+                )
+                BookCover(
+                    book.name,
+                    book.coverPath,
+                    Modifier.size(coverSize)
+                        .graphicsLayer { scaleX = coverScale; scaleY = coverScale }
+                        .clip(RoundedCornerShape(12.dp)),
+                    track?.path,
+                )
+
+                if (track != null) {
                     Row(
-                        Modifier.weight(1f).clickable { showChapters = true }.padding(vertical = 16.dp),
-                        horizontalArrangement = Arrangement.Center,
+                        Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(track.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2)
                         if (book.tracks.size > 1) {
-                            Icon(Icons.Outlined.ExpandMore, contentDescription = "Choose chapter")
+                            IconButton(onClick = onPrevious) {
+                                Icon(Icons.Outlined.ChevronLeft, contentDescription = "Previous chapter")
+                            }
+                        }
+                        Row(
+                            Modifier.weight(1f).clickable { showChapters = true },
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                track.title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
+                            )
+                            if (book.tracks.size > 1) {
+                                Icon(Icons.Outlined.ExpandMore, contentDescription = "Choose chapter")
+                            }
+                        }
+                        if (book.tracks.size > 1) {
+                            IconButton(onClick = onNext) {
+                                Icon(Icons.Outlined.ChevronRight, contentDescription = "Next chapter")
+                            }
                         }
                     }
-                    if (book.tracks.size > 1) {
-                        IconButton(onClick = onNext) {
-                            Icon(Icons.Outlined.ChevronRight, contentDescription = "Next chapter")
-                        }
+                } else {
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                Column(Modifier.fillMaxWidth()) {
+                    VoiceWavySeekBar(
+                        progress = if (isDragging) localSliderValue else if (durationMs > 0L) {
+                            (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+                        } else 0f,
+                        playing = playing,
+                        dragging = isDragging,
+                        onDragStart = { isDragging = true },
+                        onProgressChange = { localSliderValue = it },
+                        onSeek = {
+                            if (durationMs > 0L) onSeek((durationMs * it).toLong())
+                            isDragging = false
+                        },
+                        modifier = Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 8.dp),
+                    )
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        val displayedPosition = if (isDragging) (durationMs * localSliderValue).toLong() else positionMs
+                        Text(
+                            text = if (showRemainingTime) "-${formatVoiceDuration((durationMs - displayedPosition).coerceAtLeast(0L))}" else formatVoiceDuration(displayedPosition),
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.clickable { showRemainingTime = !showRemainingTime },
+                        )
+                        Text(
+                            formatVoiceDuration(durationMs),
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.clickable { showRemainingTime = !showRemainingTime },
+                        )
                     }
                 }
-            }
-            Spacer(Modifier.height(20.dp))
-            VoiceWavySeekBar(
-                progress = if (isDragging) localSliderValue else if (durationMs > 0L) {
-                    (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
-                } else 0f,
-                playing = playing,
-                dragging = isDragging,
-                onDragStart = { isDragging = true },
-                onProgressChange = { localSliderValue = it },
-                onSeek = {
-                    if (durationMs > 0L) onSeek((durationMs * it).toLong())
-                    isDragging = false
-                },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-            )
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                val displayedPosition = if (isDragging) (durationMs * localSliderValue).toLong() else positionMs
-                var showRemainingTime by remember(book.id) { mutableStateOf(false) }
-                Text(
-                    text = if (showRemainingTime) "-${formatVoiceDuration((durationMs - displayedPosition).coerceAtLeast(0L))}" else formatVoiceDuration(displayedPosition),
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.clickable { showRemainingTime = !showRemainingTime },
-                )
-                Text(
-                    formatVoiceDuration(durationMs),
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.clickable { showRemainingTime = !showRemainingTime },
-                )
-            }
-            Spacer(Modifier.height(16.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                VoiceSkipButton(
-                    forward = false,
-                    seconds = rewindSeconds,
-                    onClick = onRewind,
-                    modifier = Modifier.height(56.dp),
-                )
-                Spacer(Modifier.size(16.dp))
-                val playCornerRadius by animateDpAsState(
-                    targetValue = if (playing) 22.dp else 40.dp,
-                    animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow),
-                    label = "playButtonShape",
-                )
-                val playScale by animateFloatAsState(
-                    targetValue = if (playing) 1f else 0.96f,
-                    animationSpec = spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium),
-                    label = "playButtonScale",
-                )
-                Box(
-                    Modifier.size(80.dp)
-                        .graphicsLayer { scaleX = playScale; scaleY = playScale }
-                        .clip(RoundedCornerShape(playCornerRadius))
-                        .background(MaterialTheme.colorScheme.primary)
-                        .clickable(onClick = onPlayPause),
-                    contentAlignment = Alignment.Center,
+
+                Row(
+                    Modifier.fillMaxWidth().height(76.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (playing) "Pause" else "Play",
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(52.dp),
+                    VoiceSkipButton(
+                        forward = false,
+                        seconds = rewindSeconds,
+                        onClick = onRewind,
+                        modifier = Modifier.height(52.dp),
+                    )
+                    Spacer(Modifier.size(18.dp))
+                    val playCornerRadius by animateDpAsState(
+                        targetValue = if (playing) 22.dp else 40.dp,
+                        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow),
+                        label = "playButtonShape",
+                    )
+                    val playScale by animateFloatAsState(
+                        targetValue = if (playing) 1f else 0.96f,
+                        animationSpec = spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium),
+                        label = "playButtonScale",
+                    )
+                    Box(
+                        Modifier.size(68.dp)
+                            .graphicsLayer { scaleX = playScale; scaleY = playScale }
+                            .clip(RoundedCornerShape(playCornerRadius))
+                            .background(MaterialTheme.colorScheme.primary)
+                            .clickable(onClick = onPlayPause),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (playing) "Pause" else "Play",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(44.dp),
+                        )
+                    }
+                    Spacer(Modifier.size(18.dp))
+                    VoiceSkipButton(
+                        forward = true,
+                        seconds = forwardSeconds,
+                        onClick = onForward,
+                        modifier = Modifier.height(52.dp),
                     )
                 }
-                Spacer(Modifier.size(16.dp))
-                VoiceSkipButton(
-                    forward = true,
-                    seconds = forwardSeconds,
-                    onClick = onForward,
-                    modifier = Modifier.height(56.dp),
-                )
+
+                // Keep the secondary player actions together in one compact row,
+                // below the transport controls rather than in the title bar.
+                Row(
+                    Modifier.fillMaxWidth().height(58.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PlayerUtilityAction(
+                        icon = { Icon(Icons.Outlined.BookmarkAdd, contentDescription = null) },
+                        label = "Save",
+                        onClick = onBookmark,
+                    )
+                    PlayerUtilityAction(
+                        icon = { Icon(Icons.Default.Bookmarks, contentDescription = null) },
+                        label = "Bookmarks",
+                        onClick = onBookmarks,
+                    )
+                    PlayerUtilityAction(
+                        icon = { Icon(Icons.Default.Speed, contentDescription = null) },
+                        label = "Speed",
+                        onClick = onSpeed,
+                    )
+                    PlayerUtilityAction(
+                        icon = { Icon(Icons.Default.Timer, contentDescription = null) },
+                        label = "Sleep",
+                        onClick = onSleepTimer,
+                    )
+                }
             }
-            Spacer(Modifier.height(24.dp))
         }
     }
+
     LaunchedEffect(showChapters, book.currentTrackIndex) {
         if (showChapters && book.tracks.isNotEmpty()) {
             chapterListState.animateScrollToItem(
@@ -715,6 +762,21 @@ private fun BookPlayView(
     }
 }
 
+@Composable
+private fun PlayerUtilityAction(
+    icon: @Composable () -> Unit,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Column(
+        Modifier.clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { icon() }
+        Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+    }
+}
 
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
