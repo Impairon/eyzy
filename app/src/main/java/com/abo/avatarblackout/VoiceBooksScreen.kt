@@ -138,7 +138,7 @@ private fun BookOverviewScreen(
     val filtered = remember(books, localQuery) {
         books.filter { book ->
             localQuery.isBlank() || book.name.contains(localQuery, true) ||
-                book.tracks.any { it.title.contains(searchQuery, true) || it.artist.contains(searchQuery, true) }
+                book.tracks.any { it.title.contains(localQuery, true) || it.artist.contains(localQuery, true) }
         }
     }
     val continueBook = books.firstOrNull { it.id == activeBookId }
