@@ -2304,6 +2304,9 @@ class MainActivity : FragmentActivity() {
                 }
                 val slider = SeekBar(this).apply {
                     this.max = (max - min) / step
+                    progressTintList = android.content.res.ColorStateList.valueOf(purple)
+                    progressBackgroundTintList = android.content.res.ColorStateList.valueOf(border)
+                    thumbTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
                     progress = ((prefs.getInt(key, default).coerceIn(min, max) - min) / step)
                     fun update(number: Int) {
                         value.text = translate(label) + "  ·  " + number + " " + translate("seconds")
