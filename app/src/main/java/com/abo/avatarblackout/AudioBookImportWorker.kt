@@ -10,6 +10,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.StatFs
+import android.provider.OpenableColumns
+import androidx.documentfile.provider.DocumentFile
 import android.webkit.MimeTypeMap
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
@@ -24,6 +26,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
+import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
@@ -54,21 +57,30 @@ class AudioBookImportWorker(
 
     private class ExtractionBudget(val maxBytes: Long) {
         var bytes = 0L
-        fun add(count: Int) {
+        fun add(count: Long) {
+            if (count < 0L || bytes > maxBytes - count) {
+                throw IllegalArgumentException(
+                    "The extracted audio is larger than the available storage limit."
+                )
+            }
             bytes += count
-            if (bytes > maxBytes) throw IllegalArgumentException(
-                "The extracted audio is larger than the available storage limit."
-            )
         }
     }
 
     private var lastProgressAt = 0L
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        val sourceType = inputData.getString(KEY_SOURCE_TYPE) ?: TYPE_URL
         val urlText = inputData.getString(KEY_URL)?.trim().orEmpty()
+        val sourceUriText = inputData.getString(KEY_SOURCE_URI).orEmpty()
         val bookName = inputData.getString(KEY_BOOK_NAME)?.trim().orEmpty()
         val bookId = inputData.getString(KEY_BOOK_ID)?.trim().orEmpty()
-        if (urlText.isBlank() || bookName.isBlank() ||
+        val validSource = when (sourceType) {
+            TYPE_URL -> urlText.isNotBlank()
+            TYPE_FILE, TYPE_FOLDER -> sourceUriText.isNotBlank()
+            else -> false
+        }
+        if (!validSource || bookName.isBlank() ||
             !bookId.matches(Regex("[A-Za-z0-9-]{1,80}"))
         ) {
             return@withContext Result.failure(workDataOf(KEY_ERROR to "The import details are incomplete."))
@@ -82,12 +94,9 @@ class AudioBookImportWorker(
         val staging = File(root, ".$bookId.staging")
         val finalDirectory = File(root, bookId)
         var completed = false
+        var ownsFinalDirectory = false
 
         try {
-            val uri = Uri.parse(urlText)
-            if (uri.scheme?.lowercase(Locale.US) !in setOf("http", "https") || uri.host.isNullOrBlank()) {
-                throw IllegalArgumentException("Enter a direct HTTP or HTTPS download link.")
-            }
             root.mkdirs()
             if (!root.isDirectory) throw IllegalStateException("Could not create the audio library folder.")
             val available = StatFs(root.absolutePath).availableBytes
@@ -97,18 +106,45 @@ class AudioBookImportWorker(
             staging.deleteRecursively()
             if (finalDirectory.exists()) throw IllegalStateException("This book already exists.")
             staging.mkdirs()
-
             setForeground(createForegroundInfo(0))
-            val downloaded = File(staging, "download.part")
-            val suggestedName = download(urlText, downloaded)
-            ensureActive()
-            setProgress(workDataOf(KEY_PROGRESS to 48, KEY_STAGE to "extract"))
+
             val tracksDirectory = File(staging, "tracks").apply { mkdirs() }
-            val pending = extractAudio(downloaded, suggestedName, tracksDirectory, available)
-            downloaded.delete()
+            val pending = when (sourceType) {
+                TYPE_URL -> {
+                    val uri = Uri.parse(urlText)
+                    if (uri.scheme?.lowercase(Locale.US) !in setOf("http", "https") ||
+                        uri.host.isNullOrBlank()
+                    ) throw IllegalArgumentException("Enter a direct HTTP or HTTPS download link.")
+                    val downloaded = File(staging, "download.part")
+                    val suggestedName = download(urlText, downloaded)
+                    ensureActive()
+                    setProgress(workDataOf(KEY_PROGRESS to 48, KEY_STAGE to "extract"))
+                    val result = extractAudio(downloaded, suggestedName, tracksDirectory, available)
+                    downloaded.delete()
+                    result
+                }
+                TYPE_FILE -> {
+                    val uri = Uri.parse(sourceUriText)
+                    val sourceName = displayName(uri)
+                    val downloaded = File(staging, "selected_source")
+                    copyContentUri(uri, downloaded, 0, 45)
+                    ensureActive()
+                    setProgress(workDataOf(KEY_PROGRESS to 48, KEY_STAGE to "extract"))
+                    extractAudio(downloaded, sourceName, tracksDirectory, available).also {
+                        downloaded.delete()
+                    }
+                }
+                TYPE_FOLDER -> {
+                    val treeUri = Uri.parse(sourceUriText)
+                    val folder = DocumentFile.fromTreeUri(applicationContext, treeUri)
+                        ?: throw IllegalArgumentException("The selected folder is no longer available.")
+                    collectFolderTracks(folder, tracksDirectory, available)
+                }
+                else -> emptyList()
+            }
             if (pending.isEmpty()) {
                 throw IllegalArgumentException(
-                    "No supported audio tracks were found. Use a direct audio file or ZIP/TAR/GZIP archive."
+                    "No supported audio tracks were found. Choose audio files or a ZIP/TAR/GZIP archive."
                 )
             }
 
@@ -143,17 +179,15 @@ class AudioBookImportWorker(
                 )
             }
 
-            val oldTracks = tracksDirectory
-            oldTracks.deleteRecursively()
+            tracksDirectory.deleteRecursively()
             if (!staging.renameTo(finalDirectory)) {
                 throw IllegalStateException("Could not move the completed book into the library.")
             }
-            val book = AudioBook(
-                id = bookId,
-                name = bookName,
-                tracks = savedTracks
+            ownsFinalDirectory = true
+            AudioBookRepository.save(
+                applicationContext,
+                AudioBook(id = bookId, name = bookName, tracks = savedTracks)
             )
-            AudioBookRepository.save(applicationContext, book)
             completed = true
             setProgress(workDataOf(KEY_PROGRESS to 100, KEY_STAGE to "complete"))
             Result.success(workDataOf(KEY_BOOK_ID to bookId, KEY_BOOK_NAME to bookName))
@@ -164,12 +198,117 @@ class AudioBookImportWorker(
                 KEY_ERROR to (error.message ?: "The audio book could not be imported.")
             ))
         } finally {
-            if (!completed) staging.deleteRecursively()
+            if (!completed) {
+                staging.deleteRecursively()
+                if (ownsFinalDirectory) finalDirectory.deleteRecursively()
+            }
         }
     }
 
     private fun ensureActive() {
         if (isStopped) throw CancellationException("Audio book import was cancelled.")
+    }
+
+    private fun displayName(uri: Uri): String {
+        applicationContext.contentResolver.query(
+            uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0) return cursor.getString(index).orEmpty().ifBlank { "selected_audio" }
+            }
+        }
+        return uri.lastPathSegment?.substringAfterLast('/')?.ifBlank { "selected_audio" }
+            ?: "selected_audio"
+    }
+
+    private fun copyContentUri(uri: Uri, destination: File, progressStart: Int, progressSpan: Int) {
+        val resolver = applicationContext.contentResolver
+        val available = StatFs(destination.parentFile!!.absolutePath).availableBytes
+        val maxBytes = min(MAX_DOWNLOAD_BYTES, (available - MIN_FREE_SPACE).coerceAtLeast(0L))
+        if (maxBytes <= 0L) throw IllegalStateException("There is not enough free storage for this file.")
+        val size = resolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (index >= 0) cursor.getLong(index).takeIf { it > 0L } else null
+            } else null
+        }
+        if (size != null && size > maxBytes) {
+            throw IllegalStateException("The selected file is larger than the available storage.")
+        }
+        val input = resolver.openInputStream(uri)
+            ?: throw IllegalArgumentException("The selected file could not be opened.")
+        var copied = 0L
+        input.use { source ->
+            FileOutputStream(destination).buffered().use { output ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    ensureActive()
+                    val read = source.read(buffer)
+                    if (read < 0) break
+                    copied += read
+                    if (copied > maxBytes) {
+                        throw IllegalStateException("The selected file is larger than the available storage.")
+                    }
+                    output.write(buffer, 0, read)
+                    if (size != null && size > 0L) {
+                        val fraction = (copied * progressSpan / size).toInt().coerceIn(0, progressSpan)
+                        setProgress(workDataOf(
+                            KEY_PROGRESS to (progressStart + fraction),
+                            KEY_STAGE to "copy"
+                        ))
+                    }
+                }
+            }
+        }
+        if (destination.length() == 0L) throw IllegalArgumentException("The selected file is empty.")
+    }
+
+    private fun collectFolderTracks(
+        root: DocumentFile,
+        outputDirectory: File,
+        availableBytes: Long
+    ): List<PendingTrack> {
+        if (!root.isDirectory) throw IllegalArgumentException("Choose a folder containing audio files.")
+        val result = mutableListOf<PendingTrack>()
+        var sequence = 0
+        var visited = 0
+
+        fun visit(folder: DocumentFile) {
+            ensureActive()
+            folder.listFiles().sortedBy { it.name.orEmpty().lowercase(Locale.ROOT) }.forEach { file ->
+                ensureActive()
+                visited++
+                if (visited > MAX_ARCHIVE_ENTRIES) {
+                    throw IllegalArgumentException("The folder contains too many entries.")
+                }
+                if (file.isDirectory) {
+                    visit(file)
+                    return@forEach
+                }
+                if (!file.isFile) return@forEach
+                val name = file.name ?: return@forEach
+                val extension = extensionOf(name)
+                if (extension !in SUPPORTED_AUDIO_EXTENSIONS && extension !in ARCHIVE_EXTENSIONS) {
+                    return@forEach
+                }
+                sequence++
+                if (extension in SUPPORTED_AUDIO_EXTENSIONS) {
+                    val target = File(outputDirectory, "folder_${sequence}.$extension")
+                    copyContentUri(file.uri, target, 20, 65)
+                    if (target.length() > 0L) result.add(PendingTrack(target, name, extension))
+                } else {
+                    val archive = File(outputDirectory, "folder_archive_$sequence.$extension")
+                    copyContentUri(file.uri, archive, 20, 65)
+                    val extractedDir = File(outputDirectory, "folder_archive_$sequence").apply { mkdirs() }
+                    result.addAll(extractAudio(archive, name, extractedDir, StatFs(outputDirectory.absolutePath).availableBytes))
+                    archive.delete()
+                }
+            }
+        }
+
+        visit(root)
+        return result
     }
 
     private fun createForegroundInfo(progress: Int): ForegroundInfo {
@@ -288,7 +427,8 @@ class AudioBookImportWorker(
                     ?: throw IllegalArgumentException("The link is not a supported audio file or archive.")
                 val copy = File(outputDirectory, "source_00001.$extension")
                 source.copyTo(copy, overwrite = false)
-                budget.add(copy.length().coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+                FileInputStream(copy).use { input -> FileOutputStream(copy).use { /* no-op guard */ } }
+            budget.add(copy.length())
                 listOf(PendingTrack(copy, suggestedName, extension))
             }
         }
@@ -542,7 +682,7 @@ class AudioBookImportWorker(
             ensureActive()
             val read = input.read(buffer)
             if (read < 0) break
-            budget.add(read)
+            budget.add(read.toLong())
             output.write(buffer, 0, read)
         }
     }
@@ -615,6 +755,11 @@ class AudioBookImportWorker(
 
     companion object {
         const val KEY_URL = "audio_url"
+        const val KEY_SOURCE_TYPE = "audio_source_type"
+        const val KEY_SOURCE_URI = "audio_source_uri"
+        const val TYPE_URL = "url"
+        const val TYPE_FILE = "file"
+        const val TYPE_FOLDER = "folder"
         const val KEY_BOOK_NAME = "audio_book_name"
         const val KEY_BOOK_ID = "audio_book_id"
         const val KEY_PROGRESS = "audio_import_progress"
@@ -629,6 +774,7 @@ class AudioBookImportWorker(
         private const val MIN_FREE_SPACE = 64L * 1024L * 1024L
         private const val MAX_ARCHIVE_ENTRIES = 20_000
 
+        private val ARCHIVE_EXTENSIONS = setOf("zip", "tar", "gz", "tgz")
         private val SUPPORTED_AUDIO_EXTENSIONS = setOf(
             "mp3", "m4a", "m4b", "mp4", "aac", "adts", "wav", "wave",
             "flac", "ogg", "opus", "amr", "3gp", "mka", "mkv", "webm",
