@@ -1186,7 +1186,6 @@ class MainActivity : FragmentActivity() {
                 onResumeBookmark = { id, track, position -> resumeAudioBook(id, track, position) },
                 onDeleteBookmark = { id, bookmarkId ->
                     AudioBookRepository.removeBookmark(this, id, bookmarkId)
-                    refreshBooksCompose()
                 },
                 rewindSeconds = getSharedPreferences("avb", MODE_PRIVATE).getInt("books_rewind_seconds", 15).coerceIn(5, 60),
                 onSpeed = { showAudioBookSpeedDialog() },
