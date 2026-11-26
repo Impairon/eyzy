@@ -872,7 +872,7 @@ class MainActivity : FragmentActivity() {
         addNavigationItem("Lowery", 0)
         addNavigationItem("Sibha", 1)
         addNavigationItem("Prayers", 2)
-        addNavigationItem("Book", 4)
+        addNavigationItem("Books", 4)
         val navHolder = LinearLayout(this).apply {
             setPadding(dp(12), dp(4), dp(12), dp(10))
             addView(navigationBar, LinearLayout.LayoutParams(-1, dp(58)))
@@ -1104,7 +1104,7 @@ class MainActivity : FragmentActivity() {
 
     private fun showQuranAudio() {
         selectedAudioBookId = null
-        pageTitle.text = translate("Book")
+        pageTitle.text = translate("Books")
         content.removeAllViews()
         quranNowPlayingText = null
         quranStatusText = null
