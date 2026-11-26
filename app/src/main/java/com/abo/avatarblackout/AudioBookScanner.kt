@@ -30,7 +30,7 @@ internal data class AudioBookFolderPreview(
 )
 
 internal data class AudioBookCandidate(
-    val uri: Uri,
+    val file: AudioBookScanner.CachedAudioDocument,
     val name: String,
     val author: String? = null
 )
@@ -81,8 +81,7 @@ internal object AudioBookScanner {
     }
 
     private suspend fun scanBook(context: Context, candidate: AudioBookCandidate): AudioBook? {
-        val bookFile = CachedAudioDocument(context, candidate.uri)
-        val files = bookFile.audioFilesInOrder()
+        val files = candidate.file.audioFilesInOrder()
         if (files.isEmpty()) return null
         val metadataLimit = Semaphore(5)
         val tracks = coroutineScope {
@@ -102,7 +101,7 @@ internal object AudioBookScanner {
             .thenBy { it.trackNumber.takeIf { n -> n > 0 } ?: Int.MAX_VALUE }
             .thenBy { naturalKey(it.sourceName) })
         val book = AudioBook(
-            id = AudioBookRepository.idForUri(candidate.uri.toString()),
+            id = AudioBookRepository.idForUri(candidate.file.uri.toString()),
             name = candidate.name,
             tracks = sorted
         )
@@ -172,7 +171,7 @@ internal object AudioBookScanner {
             }
         }
         return candidates.filter { it.first.audioFileCount() > 0 }.map { (file, author) ->
-            AudioBookCandidate(file.uri, file.nameWithoutExtension(), author)
+            AudioBookCandidate(file, file.nameWithoutExtension(), author)
         }
     }
 
@@ -207,7 +206,7 @@ internal object AudioBookScanner {
         return if (isFile) value.substringBeforeLast('.', value).ifBlank { value } else value
     }
 
-    private class CachedAudioDocument(
+    internal class CachedAudioDocument(
         private val context: Context,
         val uri: Uri,
         private val prefetched: DocumentContents? = null
@@ -224,7 +223,7 @@ internal object AudioBookScanner {
         val mimeType: String? by lazy { contents?.mimeType }
     }
 
-    private data class DocumentContents(
+    internal data class DocumentContents(
         val name: String?,
         val mimeType: String?,
         val isFile: Boolean,
