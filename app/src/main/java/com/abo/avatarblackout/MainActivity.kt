@@ -798,12 +798,12 @@ class MainActivity : FragmentActivity() {
             setTextColor(Color.WHITE)
             background = rounded(panelRaised, 14)
             contentDescription = translate("Settings")
-            setOnClickListener { openPage(4) }
+            setOnClickListener { openPage(5) }
         }
         header.addView(settings, LinearLayout.LayoutParams(dp(48), dp(48)))
         shell.addView(header)
 
-        val scroll = ScrollView(this).apply {
+        mainScrollView = ScrollView(this).apply {
             isFillViewport = true
             clipToPadding = false
         }
@@ -811,8 +811,8 @@ class MainActivity : FragmentActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(8), dp(18), dp(20))
         }
-        scroll.addView(content)
-        shell.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        mainScrollView.addView(content)
+        shell.addView(mainScrollView, LinearLayout.LayoutParams(-1, 0, 1f))
 
         navigationBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -828,6 +828,7 @@ class MainActivity : FragmentActivity() {
         addNavigationItem("Lowery", 0)
         addNavigationItem("Sibha", 1)
         addNavigationItem("Prayers", 2)
+        addNavigationItem("Quran", 4)
         val navHolder = LinearLayout(this).apply {
             setPadding(dp(12), dp(4), dp(12), dp(10))
             addView(navigationBar, LinearLayout.LayoutParams(-1, dp(58)))
@@ -837,7 +838,7 @@ class MainActivity : FragmentActivity() {
         menu = LinearLayout(this).apply { visibility = View.GONE }
         root.addView(shell, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
-        openPage(0)
+        openPage(currentPage, preserveScroll = true, restoreScrollY = savedScrollY)
     }
 
     private fun addNavigationItem(label: String, page: Int) {
@@ -865,9 +866,20 @@ class MainActivity : FragmentActivity() {
         if (::pageTitle.isInitialized) pageTitle.text = translate(pageTitle.text.toString())
     }
 
-    private fun openPage(page: Int) {
+    private fun openPage(
+        page: Int,
+        preserveScroll: Boolean = false,
+        restoreScrollY: Int? = null
+    ) {
+        val targetPage = page.mod(6)
+        val targetScrollY = when {
+            restoreScrollY != null -> restoreScrollY.coerceAtLeast(0)
+            preserveScroll && ::mainScrollView.isInitialized -> mainScrollView.scrollY
+            targetPage == currentPage && ::mainScrollView.isInitialized -> mainScrollView.scrollY
+            else -> 0
+        }
         if (currentPage == 3) compassView = null
-        if (page == 3) {
+        if (targetPage == 3) {
             compassInitialized = false
             displayRotation = if (Build.VERSION.SDK_INT >= 30) {
                 display?.rotation ?: Surface.ROTATION_0
@@ -876,7 +888,7 @@ class MainActivity : FragmentActivity() {
                 windowManager?.defaultDisplay?.rotation ?: Surface.ROTATION_0
             }
         }
-        currentPage = page.mod(5)
+        currentPage = targetPage
         if (currentPage == 3) {
             // Re-register on every Qibla entry so Android restarts the sensor
             // stream and we wait for fresh readings instead of reusing stale state.
@@ -890,14 +902,19 @@ class MainActivity : FragmentActivity() {
             1 -> showSibha()
             2 -> showPrayers()
             3 -> showQibla()
+            4 -> showQuranAudio()
             else -> showSettings()
         }
         localizeTree(content)
         refreshNavigation()
+        savedScrollY = targetScrollY
+        if (::mainScrollView.isInitialized) {
+            mainScrollView.post { mainScrollView.scrollTo(0, targetScrollY) }
+        }
     }
 
     private fun navigate(step: Int) {
-        openPage((currentPage + step).mod(5))
+        openPage((currentPage + step).mod(6))
     }
 
     private fun toggleMenu() {
