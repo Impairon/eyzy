@@ -427,8 +427,7 @@ class AudioBookImportWorker(
                     ?: throw IllegalArgumentException("The link is not a supported audio file or archive.")
                 val copy = File(outputDirectory, "source_00001.$extension")
                 source.copyTo(copy, overwrite = false)
-                FileInputStream(copy).use { input -> FileOutputStream(copy).use { /* no-op guard */ } }
-            budget.add(copy.length())
+                budget.add(copy.length())
                 listOf(PendingTrack(copy, suggestedName, extension))
             }
         }
