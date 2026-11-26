@@ -9,13 +9,22 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.shape.CircleShape
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -111,6 +120,8 @@ import kotlinx.coroutines.withContext
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.PI
 import kotlinx.coroutines.launch
 
 /**
@@ -489,8 +500,7 @@ private fun BookPlayView(
 ) {
     var showChapters by remember(book.id) { mutableStateOf(false) }
     var localSliderValue by remember(book.id) { mutableFloatStateOf(0f) }
-    val sliderInteraction = remember(book.id) { MutableInteractionSource() }
-    val isDragging by sliderInteraction.collectIsDraggedAsState()
+    var isDragging by remember(book.id) { mutableStateOf(false) }
     val track = book.currentTrack
     val chapterListState = rememberLazyListState()
     Scaffold(
@@ -523,7 +533,19 @@ private fun BookPlayView(
             Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            BookCover(book.name, book.coverPath, Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp).clip(RoundedCornerShape(8.dp)), track?.path)
+            val coverScale by animateFloatAsState(
+                targetValue = if (playing) 1f else 0.88f,
+                animationSpec = spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessLow),
+                label = "playbackCoverScale",
+            )
+            BookCover(
+                book.name,
+                book.coverPath,
+                Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp)
+                    .graphicsLayer { scaleX = coverScale; scaleY = coverScale }
+                    .clip(RoundedCornerShape(12.dp)),
+                track?.path,
+            )
             if (track != null) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 8.dp),
@@ -552,15 +574,18 @@ private fun BookPlayView(
                 }
             }
             Spacer(Modifier.height(20.dp))
-            Slider(
-                value = if (isDragging) localSliderValue else if (durationMs > 0L) {
+            VoiceWavySeekBar(
+                progress = if (isDragging) localSliderValue else if (durationMs > 0L) {
                     (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
                 } else 0f,
-                onValueChange = { localSliderValue = it },
-                onValueChangeFinished = {
-                    if (durationMs > 0L) onSeek((durationMs * localSliderValue).toLong())
+                playing = playing,
+                dragging = isDragging,
+                onDragStart = { isDragging = true },
+                onProgressChange = { localSliderValue = it },
+                onSeek = {
+                    if (durationMs > 0L) onSeek((durationMs * it).toLong())
+                    isDragging = false
                 },
-                interactionSource = sliderInteraction,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
             )
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -591,19 +616,28 @@ private fun BookPlayView(
                 )
                 Spacer(Modifier.size(16.dp))
                 val playCornerRadius by animateDpAsState(
-                    targetValue = if (playing) 22.dp else 44.dp,
+                    targetValue = if (playing) 22.dp else 40.dp,
+                    animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow),
                     label = "playButtonShape",
                 )
-                IconButton(
-                    onClick = onPlayPause,
-                    modifier = Modifier.size(80.dp)
+                val playScale by animateFloatAsState(
+                    targetValue = if (playing) 1f else 0.96f,
+                    animationSpec = spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium),
+                    label = "playButtonScale",
+                )
+                Box(
+                    Modifier.size(80.dp)
+                        .graphicsLayer { scaleX = playScale; scaleY = playScale }
                         .clip(RoundedCornerShape(playCornerRadius))
-                        .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(playCornerRadius)),
+                        .background(MaterialTheme.colorScheme.primary)
+                        .clickable(onClick = onPlayPause),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (playing) "Pause" else "Play",
-                        modifier = Modifier.size(56.dp),
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(52.dp),
                     )
                 }
                 Spacer(Modifier.size(16.dp))
@@ -659,6 +693,98 @@ private fun BookPlayView(
     }
 }
 
+
+@Composable
+private fun VoiceWavySeekBar(
+    progress: Float,
+    playing: Boolean,
+    dragging: Boolean,
+    onDragStart: () -> Unit,
+    onProgressChange: (Float) -> Unit,
+    onSeek: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val phase by rememberInfiniteTransition(label = "seekWave")
+        .animateFloat(
+            initialValue = 0f,
+            targetValue = (2f * PI).toFloat(),
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 5000, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "seekWavePhase",
+        )
+    val amplitude by animateFloatAsState(
+        targetValue = if (playing && !dragging) 1f else 0f,
+        animationSpec = spring(stiffness = Spring.StiffnessVeryLow),
+        label = "seekWaveAmplitude",
+    )
+    Canvas(
+        modifier = modifier.height(48.dp)
+            .pointerInput(Unit) {
+                detectTapGestures { point ->
+                    onSeek((point.x / size.width).coerceIn(0f, 1f))
+                }
+            }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { point ->
+                        onDragStart()
+                        onProgressChange((point.x / size.width).coerceIn(0f, 1f))
+                    },
+                    onDragEnd = { onSeek(progress.coerceIn(0f, 1f)) },
+                    onDragCancel = { onSeek(progress.coerceIn(0f, 1f)) },
+                    onHorizontalDrag = { change, _ ->
+                        change.consume()
+                        onProgressChange((change.position.x / size.width).coerceIn(0f, 1f))
+                    },
+                )
+            },
+    ) {
+        val fraction = progress.coerceIn(0f, 1f)
+        val centerY = size.height / 2f
+        val thumbX = size.width * fraction
+        val stroke = 5.dp.toPx()
+        val gap = 5.dp.toPx()
+        val wavelength = 44.dp.toPx()
+        val waveAmplitude = 1.75.dp.toPx() * amplitude
+        val activeEnd = thumbX - 3.dp.toPx() - gap
+        if (activeEnd > 0f) {
+            val path = Path()
+            var x = 0f
+            path.moveTo(x, centerY + waveAmplitude * sin(phase))
+            val step = 1.5.dp.toPx()
+            while (x < activeEnd) {
+                x = (x + step).coerceAtMost(activeEnd)
+                val angle = x / wavelength * 2f * PI.toFloat() + phase
+                path.lineTo(x, centerY + waveAmplitude * sin(angle))
+            }
+            drawPath(
+                path = path,
+                color = MaterialTheme.colorScheme.primary,
+                style = Stroke(width = stroke, cap = StrokeCap.Round),
+            )
+        }
+        val inactiveStart = thumbX + 3.dp.toPx() + gap
+        if (inactiveStart < size.width) {
+            drawLine(
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                start = Offset(inactiveStart, centerY),
+                end = Offset(size.width, centerY),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
+        }
+        val thumbWidth = if (dragging) 3.dp.toPx() else 5.dp.toPx()
+        val thumbHeight = if (dragging) 40.dp.toPx() else 28.dp.toPx()
+        drawRoundRect(
+            color = MaterialTheme.colorScheme.primary,
+            topLeft = Offset(thumbX - thumbWidth / 2f, centerY - thumbHeight / 2f),
+            size = androidx.compose.ui.geometry.Size(thumbWidth, thumbHeight),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(thumbWidth / 2f),
+        )
+    }
+}
 
 @Composable
 private fun VoiceSkipButton(
