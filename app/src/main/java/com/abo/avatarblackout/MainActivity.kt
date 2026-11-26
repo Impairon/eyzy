@@ -307,14 +307,18 @@ class MainActivity : FragmentActivity() {
         if (requestCode == AUDIO_BOOK_FOLDER_REQUEST) {
             if (resultCode != RESULT_OK) return
             val uri = data?.data ?: return
-            runCatching {
+            val permissionSaved = runCatching {
                 contentResolver.takePersistableUriPermission(
                     uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
+            }.isSuccess
+            if (!permissionSaved) {
+                Toast.makeText(this, translate("Could not access that folder. Please choose it again."), Toast.LENGTH_LONG).show()
+                return
             }
-            val displayName = DocumentFile.fromTreeUri(this, uri)?.name
-                ?.takeIf { it.isNotBlank() } ?: translate("My books")
+            val displayName = runCatching { DocumentFile.fromTreeUri(this, uri)?.name }
+                .getOrNull()?.takeIf { it.isNotBlank() } ?: translate("My books")
             enqueueAudioBookImport(uri.toString(), displayName)
             return
         }
@@ -1415,7 +1419,10 @@ class MainActivity : FragmentActivity() {
                     Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
             )
         }
-        startActivityForResult(intent, AUDIO_BOOK_FOLDER_REQUEST)
+        runCatching { startActivityForResult(intent, AUDIO_BOOK_FOLDER_REQUEST) }
+            .onFailure {
+                Toast.makeText(this, translate("Could not open the folder picker."), Toast.LENGTH_LONG).show()
+            }
     }
 
     private fun enqueueAudioBookImport(sourceUri: String, bookName: String) {
@@ -1479,10 +1486,7 @@ class MainActivity : FragmentActivity() {
         val books = allBooks.filter { book -> query.isBlank() || book.name.contains(query, true) || book.tracks.any { it.title.contains(query, true) || it.artist.contains(query, true) } }
         if (allBooks.isEmpty()) {
             container.addView(card("Your library is empty") { section ->
-                addText(section, "Choose your audiobook folder to add it here.")
-                section.addView(actionButton("Add folder").apply {
-                    setOnClickListener { openAudioBookFolderPicker() }
-                })
+                addText(section, "Choose your audiobook folder using the Add folder button above.")
             })
             return
         }
@@ -1718,7 +1722,7 @@ class MainActivity : FragmentActivity() {
         targetTrackIndex: Int? = null,
         targetPositionMs: Long? = null
     ) {
-        val book = AudioBookRepository.load(this, bookId)
+        val book = runCatching { AudioBookRepository.load(this, bookId) }.getOrNull()
         if (book == null) {
             Toast.makeText(this, translate("This book is no longer available."), Toast.LENGTH_SHORT).show()
             renderAudioBookLibrary()
@@ -1730,29 +1734,37 @@ class MainActivity : FragmentActivity() {
             Toast.makeText(this, translate("The audio player is still starting. Try again."), Toast.LENGTH_SHORT).show()
             return
         }
-        saveCurrentQuranPosition()
-        val items = book.tracks.mapIndexed { index, track ->
-            MediaItem.Builder()
-                .setMediaId("book:" + bookId + "|" + index)
-                .setUri(Uri.fromFile(File(track.path)))
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(track.title)
-                        .setArtist(track.artist.ifBlank { book.name })
-                        .setAlbumTitle(track.album.ifBlank { book.name })
-                        .build()
-                )
-                .build()
+        runCatching {
+            saveCurrentQuranPosition()
+            val validTracks = book.tracks.filter { File(it.path).isFile }
+            if (validTracks.isEmpty()) error(translate("No playable audio files remain in this book."))
+            val items = validTracks.mapIndexed { index, track ->
+                MediaItem.Builder()
+                    .setMediaId("book:" + bookId + "|" + index)
+                    .setUri(Uri.fromFile(File(track.path)))
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(track.title.ifBlank { track.sourceName })
+                            .setArtist(track.artist.ifBlank { book.name })
+                            .setAlbumTitle(track.album.ifBlank { book.name })
+                            .build()
+                    )
+                    .build()
+            }
+            val startIndex = (targetTrackIndex ?: book.currentTrackIndex).coerceIn(0, items.lastIndex)
+            val startPosition = targetPositionMs ?: book.positionMs
+            AudioBookRepository.setActive(this, bookId)
+            QuranAudioRepository.setActiveTimeline(this, "book:" + bookId)
+            controller.setMediaItems(items, startIndex, startPosition.coerceAtLeast(0L))
+            controller.prepare()
+            val speed = getSharedPreferences("avb", MODE_PRIVATE).getFloat("audio_book_speed", 1f)
+                .takeIf { it.isFinite() && it in 0.5f..2.0f } ?: 1f
+            controller.setPlaybackSpeed(speed)
+            controller.play()
+            showAudioBookPlayer(bookId)
+        }.onFailure { error ->
+            Toast.makeText(this, translate("Could not play this book.") + " " + (error.message ?: ""), Toast.LENGTH_LONG).show()
         }
-        val startIndex = (targetTrackIndex ?: book.currentTrackIndex).coerceIn(0, items.lastIndex)
-        val startPosition = targetPositionMs ?: book.positionMs
-        AudioBookRepository.setActive(this, bookId)
-        QuranAudioRepository.setActiveTimeline(this, "book:" + bookId)
-        controller.setMediaItems(items, startIndex, startPosition.coerceAtLeast(0L))
-        controller.prepare()
-        controller.setPlaybackSpeed(getSharedPreferences("avb", MODE_PRIVATE).getFloat("audio_book_speed", 1f))
-        controller.play()
-        showAudioBookPlayer(bookId)
     }
 
     private fun showAudioBookPlayer(bookId: String) {
@@ -1897,9 +1909,14 @@ class MainActivity : FragmentActivity() {
                 sleepTimerEndAt = 0L
                 if (which == 4) {
                     val controller = quranController ?: return@setItems
-                    val remaining = (controller.duration - controller.currentPosition).coerceAtLeast(0L)
+                    val duration = controller.duration
+                    if (duration <= 0L || duration == androidx.media3.common.C.TIME_UNSET) {
+                        Toast.makeText(this, translate("Chapter duration is not available yet."), Toast.LENGTH_SHORT).show()
+                        return@setItems
+                    }
+                    val remaining = (duration - controller.currentPosition).coerceAtLeast(0L)
                     sleepTimerEndAt = System.currentTimeMillis() + remaining
-                    sleepTimerHandler.postDelayed({ controller.pause(); sleepTimerEndAt = 0L }, remaining)
+                    sleepTimerHandler.postDelayed({ runCatching { controller.pause() }; sleepTimerEndAt = 0L }, remaining)
                 } else if (which != 5) {
                     val minutes = listOf(5L, 15L, 30L, 45L)[which]
                     sleepTimerEndAt = System.currentTimeMillis() + minutes * 60_000L
