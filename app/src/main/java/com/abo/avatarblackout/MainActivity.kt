@@ -108,7 +108,6 @@ class MainActivity : FragmentActivity() {
     private var audioBookListContainer: LinearLayout? = null
     private var selectedAudioBookId: String? = null
     private var audioBookSearchQuery = ""
-    private var audioBookSearchQuery = ""
     private var sleepTimerEndAt = 0L
     private val sleepTimerHandler = Handler(Looper.getMainLooper())
     private var audioImportStatusText: TextView? = null
