@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.animateItemPlacement
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -405,7 +404,6 @@ private fun VoiceBookRow(
     val elapsed = (totalDuration * progress).toLong()
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
-            .animateItemPlacement()
             .combinedClickable(
                 onClick = { onBookClick(book.id) },
                 onLongClick = { onBookOptions(book.id) },
