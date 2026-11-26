@@ -177,7 +177,12 @@ internal class AudioBookImportWorker(
                 CHANNEL_ID, "Book imports", NotificationManager.IMPORTANCE_LOW
             ))
         }
-        val notification = Notification.Builder(applicationContext, CHANNEL_ID)
+        val builder = if (Build.VERSION.SDK_INT >= 26) {
+            Notification.Builder(applicationContext, CHANNEL_ID)
+        } else {
+            Notification.Builder(applicationContext)
+        }
+        val notification = builder
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(UiText.translate("Importing audio book", applicationContext.getSharedPreferences("avb", Context.MODE_PRIVATE).getString("app_language", "ar") ?: "ar"))
             .setContentText("$progress%")
