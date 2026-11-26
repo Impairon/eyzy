@@ -104,10 +104,17 @@ internal class AudioBookImportWorker(
     }
 
     private fun collectAudioFiles(folder: DocumentFile, output: MutableList<DocumentFile>) {
-        folder.listFiles().forEach { item ->
-            when {
-                item.isDirectory -> collectAudioFiles(item, output)
-                item.isFile && isAudioFile(item) -> output += item
+        // Use an explicit queue: deeply nested provider folders must not overflow the stack.
+        val pending = ArrayDeque<DocumentFile>()
+        pending.addLast(folder)
+        while (pending.isNotEmpty()) {
+            val current = pending.removeFirst()
+            val children = runCatching { current.listFiles().toList() }.getOrDefault(emptyList())
+            children.forEach { item ->
+                when {
+                    item.isDirectory -> pending.addLast(item)
+                    item.isFile && isAudioFile(item) -> output += item
+                }
             }
         }
     }
