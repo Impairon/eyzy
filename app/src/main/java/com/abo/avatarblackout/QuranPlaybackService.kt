@@ -33,12 +33,10 @@ class QuranPlaybackService : MediaSessionService() {
             }
 
             override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
-                val timelineId = mediaItem?.mediaId?.substringBefore('|')
-                if (timelineId != null && (
-                    timelineId == QuranAudioRepository.MAIN_TIMELINE ||
-                        timelineId == QuranAudioRepository.SIDE_TIMELINE ||
-                        timelineId.startsWith("book:")
-                    )
+                val timelineId = mediaItem?.mediaId?.substringBefore('|') ?: return
+                if (timelineId == QuranAudioRepository.MAIN_TIMELINE ||
+                    timelineId == QuranAudioRepository.SIDE_TIMELINE ||
+                    timelineId.startsWith("book:")
                 ) {
                     QuranAudioRepository.setActiveTimeline(this@QuranPlaybackService, timelineId)
                     if (timelineId.startsWith("book:")) {
