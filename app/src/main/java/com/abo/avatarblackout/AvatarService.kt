@@ -1843,8 +1843,8 @@ class AvatarService : AccessibilityService() {
             val lp = layoutParams as WindowManager.LayoutParams
             lp.width = dp(58)
             lp.height = dp(58)
-            lp.x = menuOriginX.coerceIn(0, resources.displayMetrics.widthPixels - dp(58))
-            lp.y = menuOriginY.coerceIn(0, resources.displayMetrics.heightPixels - dp(58))
+            lp.x = menuOriginX.coerceIn(0, (resources.displayMetrics.widthPixels - dp(58)).coerceAtLeast(0))
+            lp.y = menuOriginY.coerceIn(0, (resources.displayMetrics.heightPixels - dp(58)).coerceAtLeast(0))
             lp.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
             translationX = 0f
             wm.updateViewLayout(this, lp)
