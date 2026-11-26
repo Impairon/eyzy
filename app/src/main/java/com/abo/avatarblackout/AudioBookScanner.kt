@@ -94,7 +94,10 @@ internal object AudioBookScanner {
             }.mapNotNull { it.await() }
         }
         if (tracks.isEmpty()) return null
-        val sorted = tracks.sortedWith(compareBy<AudioBookTrack> { it.discNumber.takeIf { n -> n > 0 } ?: Int.MAX_VALUE }
+        val sorted = tracks.map { track ->
+            if (track.artist.isBlank() && !candidate.author.isNullOrBlank()) track.copy(artist = candidate.author)
+            else track
+        }.sortedWith(compareBy<AudioBookTrack> { it.discNumber.takeIf { n -> n > 0 } ?: Int.MAX_VALUE }
             .thenBy { it.trackNumber.takeIf { n -> n > 0 } ?: Int.MAX_VALUE }
             .thenBy { naturalKey(it.sourceName) })
         val book = AudioBook(
