@@ -160,7 +160,6 @@ internal fun VoiceAddContentScreen(
 @Composable
 internal fun VoiceBooksScreen(
     books: List<AudioBook>,
-    activeBookId: String?,
     searchQuery: String,
     playerBook: AudioBook?,
     playing: Boolean,
@@ -168,7 +167,6 @@ internal fun VoiceBooksScreen(
     durationMs: Long,
     onSearchChange: (String) -> Unit,
     onAddBook: () -> Unit,
-    onPlayActive: () -> Unit,
     onBookClick: (String) -> Unit,
     onBookOptions: (String) -> Unit,
     onBack: () -> Unit,
@@ -196,12 +194,10 @@ internal fun VoiceBooksScreen(
         if (playerBook == null) {
             BookOverviewScreen(
                 books = books,
-                activeBookId = activeBookId,
                 searchQuery = searchQuery,
                 onSearchChange = onSearchChange,
                 onAddBook = onAddBook,
                 onOpenBookmarks = { showAllBookmarks = true },
-                onPlayActive = onPlayActive,
                 onBookClick = onBookClick,
                 onBookOptions = onBookOptions,
             )
@@ -268,12 +264,10 @@ internal fun VoiceBooksScreen(
 @Composable
 private fun BookOverviewScreen(
     books: List<AudioBook>,
-    activeBookId: String?,
     searchQuery: String,
     onSearchChange: (String) -> Unit,
     onAddBook: () -> Unit,
     onOpenBookmarks: () -> Unit,
-    onPlayActive: () -> Unit,
     onBookClick: (String) -> Unit,
     onBookOptions: (String) -> Unit,
 ) {
