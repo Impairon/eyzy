@@ -1303,7 +1303,7 @@ class MainActivity : FragmentActivity() {
         }
         quranReciterSpinner?.let { spinner ->
             spinner.adapter = optionAdapter(recitations.map {
-                "\${it.reciterName} · \${it.moshafName}"
+                "${it.reciterName} · ${it.moshafName}"
             }.toTypedArray())
             val selectedIndex = recitations.indexOfFirst {
                 it.moshafId == selectedQuranRecitation?.moshafId
@@ -1368,7 +1368,7 @@ class MainActivity : FragmentActivity() {
         } else translate("Side timeline")
         val mediaItems = state.chapters.mapIndexed { index, surah ->
             MediaItem.Builder()
-                .setMediaId("\${state.id}|$index")
+                .setMediaId("${state.id}|$index")
                 .setUri(recitation.audioUrl(surah))
                 .setMediaMetadata(
                     MediaMetadata.Builder()
@@ -1422,10 +1422,10 @@ class MainActivity : FragmentActivity() {
         val main = QuranAudioRepository.loadTimeline(this, QuranAudioRepository.MAIN_TIMELINE)
         val side = QuranAudioRepository.loadTimeline(this, QuranAudioRepository.SIDE_TIMELINE)
         mainTimelineSummary?.text = main.currentSurah?.let {
-            "\${QuranSurahs.name(it, currentAppLanguage())} · \${formatQuranDuration(main.positionMs)}"
+            "${QuranSurahs.name(it, currentAppLanguage())} · ${formatQuranDuration(main.positionMs)}"
         } ?: translate("No audio playing")
         sideTimelineSummary?.text = side.currentSurah?.let {
-            "\${QuranSurahs.name(it, currentAppLanguage())} · \${formatQuranDuration(side.positionMs)}"
+            "${QuranSurahs.name(it, currentAppLanguage())} · ${formatQuranDuration(side.positionMs)}"
         } ?: translate("No audio playing")
     }
 
