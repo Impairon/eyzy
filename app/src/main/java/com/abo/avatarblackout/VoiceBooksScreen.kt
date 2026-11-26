@@ -669,7 +669,7 @@ private fun BookCover(title: String, coverPath: String?, modifier: Modifier = Mo
         }.getOrDefault("") }.orEmpty()
     }
     val cacheKey = remember(coverPath, coverSignature, audioUri) {
-        if (!coverPath.isNullOrBlank()) "file:$coverPath:$coverSignature" else "audio:${audioUri.orEmpty()}"
+        "cover:${coverPath.orEmpty()}:$coverSignature:audio:${audioUri.orEmpty()}"
     }
     val bitmap by produceState<ImageBitmap?>(BookThumbnailCache.get(cacheKey), cacheKey) {
         value = BookThumbnailCache.get(cacheKey) ?: withContext(Dispatchers.IO) {
