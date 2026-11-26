@@ -222,7 +222,7 @@ class AudioBookImportWorker(
             ?: "selected_audio"
     }
 
-    private fun copyContentUri(uri: Uri, destination: File, progressStart: Int, progressSpan: Int) {
+    private suspend fun copyContentUri(uri: Uri, destination: File, progressStart: Int, progressSpan: Int) {
         val resolver = applicationContext.contentResolver
         val available = StatFs(destination.parentFile!!.absolutePath).availableBytes
         val maxBytes = min(MAX_DOWNLOAD_BYTES, (available - MIN_FREE_SPACE).coerceAtLeast(0L))
@@ -264,7 +264,7 @@ class AudioBookImportWorker(
         if (destination.length() == 0L) throw IllegalArgumentException("The selected file is empty.")
     }
 
-    private fun collectFolderTracks(
+    private suspend fun collectFolderTracks(
         root: DocumentFile,
         outputDirectory: File,
         availableBytes: Long
@@ -401,7 +401,7 @@ class AudioBookImportWorker(
         }
     }
 
-    private fun extractAudio(
+    private suspend fun extractAudio(
         source: File,
         suggestedName: String,
         outputDirectory: File,
@@ -439,7 +439,7 @@ class AudioBookImportWorker(
         }
     }
 
-    private fun extractZip(
+    private suspend fun extractZip(
         source: File,
         outputDirectory: File,
         budget: ExtractionBudget
@@ -474,7 +474,7 @@ class AudioBookImportWorker(
         return result
     }
 
-    private fun extractGzip(
+    private suspend fun extractGzip(
         source: File,
         suggestedName: String,
         outputDirectory: File,
@@ -501,7 +501,7 @@ class AudioBookImportWorker(
         }
     }
 
-    private fun extractTar(
+    private suspend fun extractTar(
         input: InputStream,
         outputDirectory: File,
         budget: ExtractionBudget
