@@ -325,12 +325,16 @@ private fun BookOverviewScreen(
                 book.tracks.any { it.title.contains(localQuery, true) || it.artist.contains(localQuery, true) }
         }
     }
-    val currentBooks = filtered.filter { bookProgress(it) > 0f && bookProgress(it) < 0.995f }
-        .sortedByDescending { it.lastPlayedAt }
-    val notStartedBooks = filtered.filter { bookProgress(it) <= 0f }
-        .sortedBy { it.name.lowercase() }
-    val finishedBooks = filtered.filter { bookProgress(it) >= 0.995f }
-        .sortedByDescending { it.lastPlayedAt }
+    val (currentBooks, notStartedBooks, finishedBooks) = remember(filtered) {
+        Triple(
+            filtered.filter { bookProgress(it) > 0f && bookProgress(it) < 0.995f }
+                .sortedByDescending { it.lastPlayedAt },
+            filtered.filter { bookProgress(it) <= 0f }
+                .sortedBy { it.name.lowercase() },
+            filtered.filter { bookProgress(it) >= 0.995f }
+                .sortedByDescending { it.lastPlayedAt }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -453,7 +457,7 @@ private fun VoiceBookRow(
     ) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                BookCover(book.name, book.coverPath, Modifier.padding(8.dp).size(76.dp), book.currentTrack?.path)
+                BookCover(book.name, book.coverPath, Modifier.padding(8.dp).size(76.dp), loadEmbeddedArtwork = false, maxDecodeDimension = 320)
                 Column(
                     Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 8.dp),
                 ) {
@@ -911,7 +915,14 @@ private object BookThumbnailCache {
 }
 
 @Composable
-private fun BookCover(title: String, coverPath: String?, modifier: Modifier = Modifier, audioUri: String? = null) {
+private fun BookCover(
+    title: String,
+    coverPath: String?,
+    modifier: Modifier = Modifier,
+    audioUri: String? = null,
+    loadEmbeddedArtwork: Boolean = true,
+    maxDecodeDimension: Int = 1024,
+) {
     val context = LocalContext.current
     val coverSignature = remember(coverPath) {
         coverPath?.let { path -> runCatching {
@@ -919,8 +930,8 @@ private fun BookCover(title: String, coverPath: String?, modifier: Modifier = Mo
             "${file.lastModified()}:${file.length()}"
         }.getOrDefault("") }.orEmpty()
     }
-    val cacheKey = remember(coverPath, coverSignature, audioUri) {
-        "cover:${coverPath.orEmpty()}:$coverSignature:audio:${audioUri.orEmpty()}"
+    val cacheKey = remember(coverPath, coverSignature, audioUri, loadEmbeddedArtwork, maxDecodeDimension) {
+        "cover:${coverPath.orEmpty()}:$coverSignature:audio:${if (loadEmbeddedArtwork) audioUri.orEmpty() else ""}:size:$maxDecodeDimension"
     }
     val bitmap by produceState<ImageBitmap?>(BookThumbnailCache.get(cacheKey), cacheKey) {
         value = BookThumbnailCache.get(cacheKey) ?: withContext(Dispatchers.IO) {
@@ -931,10 +942,10 @@ private fun BookCover(title: String, coverPath: String?, modifier: Modifier = Mo
                 BitmapFactory.decodeFile(path, bounds)
                 if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
                 var sample = 1
-                while (bounds.outWidth / sample > 1024 || bounds.outHeight / sample > 1024) sample *= 2
+                while (bounds.outWidth / sample > maxDecodeDimension || bounds.outHeight / sample > maxDecodeDimension) sample *= 2
                 BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
             }.getOrNull() }
-            saved ?: audioUri?.let { uriString -> runCatching {
+            saved ?: audioUri?.takeIf { loadEmbeddedArtwork }?.let { uriString -> runCatching {
                 val retriever = MediaMetadataRetriever()
                 try {
                     retriever.setDataSource(context, Uri.parse(uriString))
