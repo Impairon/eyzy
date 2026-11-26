@@ -1167,7 +1167,6 @@ class MainActivity : FragmentActivity() {
             }
             VoiceBooksScreen(
                 books = AudioBookRepository.all(this),
-                activeBookId = AudioBookRepository.activeBookId(this),
                 searchQuery = audioBookSearchQuery,
                 playerBook = livePlayerBook,
                 playing = booksPlayingState.value,
