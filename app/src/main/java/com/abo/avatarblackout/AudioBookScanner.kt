@@ -73,7 +73,18 @@ internal object AudioBookScanner {
                         }
                     }.mapNotNull { it.await() }
                 }
-                books.forEach { AudioBookRepository.save(context.applicationContext, it) }
+                books.forEach { book ->
+                    val previous = AudioBookRepository.load(context.applicationContext, book.id)
+                    val previousTrackPath = previous?.currentTrack?.path
+                    val matchingIndex = book.tracks.indexOfFirst { it.path == previousTrackPath }
+                    val restored = book.copy(
+                        currentTrackIndex = if (matchingIndex >= 0) matchingIndex else 0,
+                        positionMs = if (matchingIndex >= 0) previous?.positionMs ?: 0L else 0L,
+                        lastPlayedAt = previous?.lastPlayedAt ?: 0L,
+                        bookmarks = previous?.bookmarks.orEmpty().filter { it.trackIndex in book.tracks.indices }
+                    )
+                    AudioBookRepository.save(context.applicationContext, restored)
+                }
                 books
             }
             withContext(Dispatchers.Main) { callback(result) }
