@@ -161,7 +161,6 @@ internal fun VoiceBooksScreen(
     onSearchChange: (String) -> Unit,
     onAddBook: () -> Unit,
     onSettingsClick: () -> Unit,
-    onOpenBookmarks: () -> Unit,
     onPlayActive: () -> Unit,
     onBookClick: (String) -> Unit,
     onBookOptions: (String) -> Unit,
@@ -175,8 +174,6 @@ internal fun VoiceBooksScreen(
     onChapters: (Int) -> Unit,
     onBookmark: () -> Unit,
     onBookmarks: () -> Unit,
-    onResumeBookmark: (String, Int, Long) -> Unit,
-    onDeleteBookmark: (String, String) -> Unit,
     rewindSeconds: Int,
     onSpeed: () -> Unit,
     onSleepTimer: () -> Unit,
@@ -185,6 +182,7 @@ internal fun VoiceBooksScreen(
     val voiceDarkColors = if (Build.VERSION.SDK_INT >= 31) dynamicDarkColorScheme(context) else darkColorScheme()
     MaterialTheme(colorScheme = voiceDarkColors) {
         var showAllBookmarks by remember { mutableStateOf(false) }
+        var deletedBookmarkIds by remember { mutableStateOf(emptySet<String>()) }
         if (playerBook == null) {
             BookOverviewScreen(
                 books = books,
@@ -214,15 +212,13 @@ internal fun VoiceBooksScreen(
                 onChapters = onChapters,
                 onBookmark = onBookmark,
                 onBookmarks = { showAllBookmarks = true },
-                onResumeBookmark = onResumeBookmark,
-                onDeleteBookmark = onDeleteBookmark,
                 rewindSeconds = rewindSeconds,
                 onSpeed = onSpeed,
                 onSleepTimer = onSleepTimer,
             )
         }
         if (showAllBookmarks) {
-            val saved = books.flatMap { book -> book.bookmarks.map { bookmark -> Triple(book, bookmark, book.tracks.getOrNull(bookmark.trackIndex)?.title.orEmpty()) } }
+            val saved = books.flatMap { book -> book.bookmarks.map { bookmark -> Triple(book, bookmark, book.tracks.getOrNull(bookmark.trackIndex)?.title.orEmpty()) } }.filterNot { it.second.id in deletedBookmarkIds }
             AlertDialog(
                 onDismissRequest = { showAllBookmarks = false },
                 title = { Text("Saved bookmarks") },
@@ -241,7 +237,10 @@ internal fun VoiceBooksScreen(
                                     Text(entry.second.name, style = MaterialTheme.typography.bodyLarge)
                                     Text("${entry.first.name} · ${entry.third} · ${formatVoiceDuration(entry.second.positionMs)}", style = MaterialTheme.typography.bodySmall)
                                 }
-                                IconButton(onClick = { onDeleteBookmark(entry.first.id, entry.second.id) }) {
+                                IconButton(onClick = {
+                                    onDeleteBookmark(entry.first.id, entry.second.id)
+                                    deletedBookmarkIds = deletedBookmarkIds + entry.second.id
+                                }) {
                                     Icon(Icons.Outlined.DeleteOutline, contentDescription = "Delete bookmark")
                                 }
                             }
