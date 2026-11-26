@@ -27,6 +27,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.media.AudioManager
+import android.media.MediaMetadataRetriever
 import android.media.ToneGenerator
 import android.os.Bundle
 import android.os.LocaleList
@@ -296,6 +297,20 @@ class MainActivity : FragmentActivity() {
             deviceCredentialLauncherActive = false
             if (resultCode == RESULT_OK) unlockApp()
             else showLockMessage(translate("Authentication required to open Swizy."))
+            return
+        }
+
+        if (requestCode == AUDIO_BOOK_FILE_REQUEST) {
+            if (resultCode != RESULT_OK) return
+            val uri = data?.data ?: return
+            val permissionSaved = runCatching {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }.isSuccess
+            if (!permissionSaved) {
+                Toast.makeText(this, translate("Could not access that audio file. Please choose it again."), Toast.LENGTH_LONG).show()
+                return
+            }
+            addAudioBookFile(uri)
             return
         }
 
@@ -1105,8 +1120,8 @@ class MainActivity : FragmentActivity() {
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
         }, LinearLayout.LayoutParams(0, -2, 1f))
-        header.addView(actionButton("Add folder").apply {
-            setOnClickListener { openAudioBookFolderPicker() }
+        header.addView(actionButton("Add").apply {
+            setOnClickListener { showAudioBookAddContent() }
         })
         content.addView(header)
         val search = EditText(this).apply {
@@ -1403,6 +1418,87 @@ class MainActivity : FragmentActivity() {
             String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
         } else {
             String.format(Locale.US, "%02d:%02d", minutes, seconds)
+        }
+    }
+
+    private fun showAudioBookAddContent() {
+        val choices = arrayOf(
+            translate("Choose folder"),
+            translate("Choose audio file")
+        )
+        AlertDialog.Builder(this)
+            .setTitle(translate("Add to library"))
+            .setItems(choices) { _, which ->
+                when (which) {
+                    0 -> openAudioBookFolderPicker()
+                    1 -> openAudioBookFilePicker()
+                }
+            }
+            .setNegativeButton(translate("Cancel"), null)
+            .show()
+    }
+
+    private fun openAudioBookFilePicker() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "audio/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        runCatching { startActivityForResult(intent, AUDIO_BOOK_FILE_REQUEST) }
+            .onFailure {
+                Toast.makeText(this, translate("Could not open the audio picker."), Toast.LENGTH_LONG).show()
+            }
+    }
+
+    private fun addAudioBookFile(uri: Uri) {
+        audioImportStatusText?.text = translate("Adding audio…")
+        thread(name = "swizy-audio-file-import") {
+            val result = runCatching {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(this, uri)
+                    fun metadata(key: Int) = retriever.extractMetadata(key).orEmpty()
+                    val document = DocumentFile.fromSingleUri(this, uri)
+                    val sourceName = document?.name?.takeIf { it.isNotBlank() } ?: "Audio"
+                    val title = metadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+                        .ifBlank { sourceName.substringBeforeLast('.', sourceName) }
+                    val duration = metadata(MediaMetadataRetriever.METADATA_KEY_DURATION).toLongOrNull() ?: 0L
+                    val track = AudioBookTrack(
+                        path = uri.toString(),
+                        title = title,
+                        artist = metadata(MediaMetadataRetriever.METADATA_KEY_ARTIST),
+                        album = metadata(MediaMetadataRetriever.METADATA_KEY_ALBUM),
+                        durationMs = duration.coerceAtLeast(0L),
+                        trackNumber = metadata(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)
+                            .substringBefore('/').toIntOrNull() ?: 0,
+                        mimeType = document?.type.orEmpty(),
+                        sourceName = sourceName,
+                        lastModified = document?.lastModified() ?: 0L,
+                        fileSize = document?.length() ?: 0L
+                    )
+                    val book = AudioBook(
+                        id = AudioBookRepository.idForUri(uri.toString()),
+                        name = track.album.ifBlank { title },
+                        tracks = listOf(track)
+                    )
+                    AudioBookRepository.save(this, book)
+                    book
+                } finally {
+                    retriever.release()
+                }
+            }
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                result.onSuccess {
+                    audioImportStatusText?.text = translate("Audio added.")
+                    renderAudioBookLibrary()
+                    Toast.makeText(this, translate("Audio added."), Toast.LENGTH_SHORT).show()
+                }.onFailure { error ->
+                    val message = translate(error.message ?: "Could not add that audio file.")
+                    audioImportStatusText?.text = message
+                    Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                }
+            }
         }
     }
 
@@ -3067,5 +3163,6 @@ class MainActivity : FragmentActivity() {
         private const val STATE_SCROLL_Y = "swizy_scroll_y"
         private const val USER_CONTENT_TAG = "swizy_user_content"
         private const val AUDIO_BOOK_FOLDER_REQUEST = 1011
+        private const val AUDIO_BOOK_FILE_REQUEST = 1012
     }
 }
