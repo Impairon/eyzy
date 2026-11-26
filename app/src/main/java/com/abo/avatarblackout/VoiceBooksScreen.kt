@@ -961,7 +961,7 @@ private fun BookCover(
                     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
                     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
                     var sample = 1
-                    while (bounds.outWidth / sample > 1024 || bounds.outHeight / sample > 1024) sample *= 2
+                    while (bounds.outWidth / sample > maxDecodeDimension || bounds.outHeight / sample > maxDecodeDimension) sample *= 2
                     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
                 } finally { runCatching { retriever.release() } }
             }.getOrNull() }
