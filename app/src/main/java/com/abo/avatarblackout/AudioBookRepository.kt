@@ -41,7 +41,7 @@ internal data class AudioBook(
         get() = tracks.getOrNull(currentTrackIndex.coerceIn(0, (tracks.size - 1).coerceAtLeast(0)))
 }
 
-/** Small local catalogue: audio payloads stay as files; only track metadata is stored here. */
+/** Small local catalogue: audio stays in the selected folders; only track metadata is stored here. */
 internal object AudioBookRepository {
     private const val PREFS = "avb"
     private const val BOOK_IDS = "audio_book_ids"
