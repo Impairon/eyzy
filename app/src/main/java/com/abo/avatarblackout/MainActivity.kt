@@ -1140,6 +1140,7 @@ class MainActivity : FragmentActivity() {
         connectQuranController()
         refreshBooksCompose()
         updateQuranPlaybackUi()
+        refreshNavigation()
         quranProgressHandler.removeCallbacks(quranProgressTicker)
         quranProgressHandler.post(quranProgressTicker)
     }
@@ -1844,6 +1845,7 @@ class MainActivity : FragmentActivity() {
         content.addView(booksComposeView, LinearLayout.LayoutParams(-1, dp(640)))
         refreshBooksCompose()
         updateQuranPlaybackUi()
+        refreshNavigation()
     }
 
     private fun showAudioBookSpeedDialog() {
