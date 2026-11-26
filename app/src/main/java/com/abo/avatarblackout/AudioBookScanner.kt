@@ -31,7 +31,8 @@ internal data class AudioBookFolderPreview(
 )
 
 internal data class AudioBookCandidate(
-    val file: CachedAudioDocument,
+    val uri: Uri,
+    val name: String,
     val author: String? = null
 )
 
@@ -79,7 +80,8 @@ internal object AudioBookScanner {
     }
 
     private suspend fun scanBook(context: Context, candidate: AudioBookCandidate): AudioBook? {
-        val files = candidate.file.audioFilesInOrder()
+        val bookFile = CachedAudioDocument(context, candidate.uri)
+        val files = bookFile.audioFilesInOrder()
         if (files.isEmpty()) return null
         val metadataLimit = Semaphore(5)
         val tracks = coroutineScope {
@@ -96,8 +98,8 @@ internal object AudioBookScanner {
             .thenBy { it.trackNumber.takeIf { n -> n > 0 } ?: Int.MAX_VALUE }
             .thenBy { naturalKey(it.sourceName) })
         val book = AudioBook(
-            id = AudioBookRepository.idForUri(candidate.file.uri.toString()),
-            name = candidate.file.nameWithoutExtension(),
+            id = AudioBookRepository.idForUri(candidate.uri.toString()),
+            name = candidate.name,
             tracks = sorted
         )
         AudioBookRepository.save(context, book)
@@ -143,9 +145,6 @@ internal object AudioBookScanner {
         }
     }
 
-    private fun AudioBookFolderMode.toCandidates(root: CachedAudioDocument): List<AudioBookCandidate> =
-        root.books(this)
-
     private fun naturalKey(value: String): String =
         Regex("(\\d+)|(\\D+)").findAll(value.lowercase(Locale.ROOT)).joinToString("") {
             it.value.toLongOrNull()?.let { number -> number.toString().padStart(20, '0') } ?: it.value
@@ -162,14 +161,14 @@ internal object AudioBookScanner {
 
     private fun CachedAudioDocument.books(mode: AudioBookFolderMode): List<AudioBookCandidate> {
         val candidates = when (mode) {
-            AudioBookFolderMode.SingleBook -> listOf(AudioBookCandidate(this))
-            AudioBookFolderMode.Audiobooks -> children.map { AudioBookCandidate(it) }
+            AudioBookFolderMode.SingleBook -> listOf(AudioBookCandidate(uri, nameWithoutExtension()))
+            AudioBookFolderMode.Audiobooks -> children.map { AudioBookCandidate(it.uri, it.nameWithoutExtension()) }
             AudioBookFolderMode.Authors -> children.flatMap { author ->
-                if (author.isFile) listOf(AudioBookCandidate(author))
-                else author.children.map { AudioBookCandidate(it, author.nameWithoutExtension()) }
+                if (author.isFile) listOf(AudioBookCandidate(author.uri, author.nameWithoutExtension()))
+                else author.children.map { AudioBookCandidate(it.uri, it.nameWithoutExtension(), author.nameWithoutExtension()) }
             }
         }
-        return candidates.filter { it.file.audioFileCount() > 0 }
+        return candidates.filter { CachedAudioDocument(context, it.uri).audioFileCount() > 0 }
     }
 
     private fun CachedAudioDocument.audioFolders(): List<CachedAudioDocument> =
