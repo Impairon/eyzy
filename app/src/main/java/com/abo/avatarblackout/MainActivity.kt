@@ -1591,6 +1591,21 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun showOnlineAudioLinkDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(translate("Legal use reminder"))
+            .setMessage(
+                translate(
+                    "Make sure downloading from this link is legal, that you have permission to download it, and that it does not violate copyright or the website's Terms of Service or other rules."
+                )
+            )
+            .setPositiveButton(translate("I understand and continue")) { _, _ ->
+                showOnlineAudioLinkInputDialog()
+            }
+            .setNegativeButton(translate("Cancel"), null)
+            .show()
+    }
+
+    private fun showOnlineAudioLinkInputDialog() {
         val linkInput = EditText(this).apply {
             hint = translate("Paste a direct audio or archive link")
             setTextColor(Color.WHITE)
@@ -1669,22 +1684,7 @@ class MainActivity : FragmentActivity() {
                     Toast.makeText(this, translate("Enter a book name."), Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
-                if (sourceType == AudioBookImportWorker.TYPE_URL) {
-                    AlertDialog.Builder(this)
-                        .setTitle(translate("Legal use reminder"))
-                        .setMessage(
-                            translate(
-                                "Make sure downloading from this link is legal, that you have permission to download it, and that it does not violate copyright or the website's Terms of Service or other rules."
-                            )
-                        )
-                        .setPositiveButton(translate("I understand and continue")) { _, _ ->
-                            enqueueAudioBookImport(sourceType, sourceValue, bookName)
-                        }
-                        .setNegativeButton(translate("Cancel"), null)
-                        .show()
-                } else {
-                    enqueueAudioBookImport(sourceType, sourceValue, bookName)
-                }
+                enqueueAudioBookImport(sourceType, sourceValue, bookName)
             }
             .setNegativeButton(translate("Cancel"), null)
             .show()
