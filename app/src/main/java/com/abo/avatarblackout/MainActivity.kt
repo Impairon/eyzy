@@ -1639,7 +1639,8 @@ class MainActivity : FragmentActivity() {
                 if (isDestroyed) return@runOnUiThread
                 result.onSuccess {
                     audioImportStatusText?.text = translate("Audio added.")
-                    renderAudioBookLibrary()
+                    showQuranAudio()
+                    loadAudioBooksAsync(force = true)
                     Toast.makeText(this, translate("Audio added."), Toast.LENGTH_SHORT).show()
                 }.onFailure { error ->
                     val message = translate(error.message ?: "Could not add that audio file.")
@@ -1706,7 +1707,8 @@ class MainActivity : FragmentActivity() {
                                 } else {
                                     translate("Books added.") + " " + books.size
                                 }
-                                renderAudioBookLibrary()
+                                showQuranAudio()
+                                loadAudioBooksAsync(force = true)
                                 if (books.isEmpty()) {
                                     Toast.makeText(this, translate("No supported audio tracks were found."), Toast.LENGTH_LONG).show()
                                 } else {
