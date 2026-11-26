@@ -2570,7 +2570,6 @@ class MainActivity : FragmentActivity() {
             secondsSlider("Rewind", "books_rewind_seconds", 5, 120, 5, 20)
             secondsSlider("Skip forward", "books_forward_seconds", 5, 120, 5, 30)
             secondsSlider("Resume before saved position", "books_resume_offset_seconds", 0, 10, 1, 2)
-        }
         })
         localizeTree(content)
         refreshNavigation()
