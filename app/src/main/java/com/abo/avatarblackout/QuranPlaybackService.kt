@@ -47,6 +47,11 @@ class QuranPlaybackService : MediaSessionService() {
                 newPosition: Player.PositionInfo,
                 reason: Int
             ) {
+                // Save the item being left before persisting the newly selected item.
+                savePosition(
+                    oldPosition.mediaItem?.mediaId,
+                    oldPosition.positionMs
+                )
                 savePositionNow()
             }
 
@@ -60,17 +65,18 @@ class QuranPlaybackService : MediaSessionService() {
 
     private fun savePositionNow() {
         val current = player ?: return
-        val mediaId = current.currentMediaItem?.mediaId ?: return
-        val parts = mediaId.split('|')
+        savePosition(current.currentMediaItem?.mediaId, current.currentPosition)
+    }
+
+    private fun savePosition(mediaId: String?, positionMs: Long) {
+        val parts = mediaId?.split('|') ?: return
         if (parts.size != 2) return
         val timelineId = parts[0]
         if (timelineId != QuranAudioRepository.MAIN_TIMELINE &&
             timelineId != QuranAudioRepository.SIDE_TIMELINE
         ) return
         val chapterIndex = parts[1].toIntOrNull() ?: return
-        QuranAudioRepository.saveProgress(
-            this, timelineId, chapterIndex, current.currentPosition
-        )
+        QuranAudioRepository.saveProgress(this, timelineId, chapterIndex, positionMs)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
