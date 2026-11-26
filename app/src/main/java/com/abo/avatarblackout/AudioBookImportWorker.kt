@@ -461,13 +461,18 @@ class AudioBookImportWorker(
                 val extension = detectAudioExtension(source, suggestedName)
                     ?: throw IllegalArgumentException("The link is not a supported audio file or archive.")
                 val copy = File(outputDirectory, "source_00001.$extension")
-                val budget = ExtractionBudget(
-                    min(MAX_EXTRACTED_BYTES, (availableBytes - MIN_FREE_SPACE).coerceAtLeast(0L))
-                )
-                FileInputStream(source).use { input ->
-                    FileOutputStream(copy).buffered().use { output ->
-                        copyBounded(input, output, budget)
+                // The download/selected source is already inside our private staging area.
+                // Move it instead of duplicating a potentially multi-gigabyte audio file.
+                if (!source.renameTo(copy)) {
+                    val budget = ExtractionBudget(
+                        min(MAX_EXTRACTED_BYTES, (availableBytes - MIN_FREE_SPACE).coerceAtLeast(0L))
+                    )
+                    FileInputStream(source).use { input ->
+                        FileOutputStream(copy).buffered().use { output ->
+                            copyBounded(input, output, budget)
+                        }
                     }
+                    source.delete()
                 }
                 listOf(PendingTrack(copy, suggestedName, extension))
             }
