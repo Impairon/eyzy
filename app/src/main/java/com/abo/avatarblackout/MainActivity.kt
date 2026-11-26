@@ -63,6 +63,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.documentfile.provider.DocumentFile
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.runtime.mutableStateOf
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -110,6 +111,8 @@ class MainActivity : FragmentActivity() {
     private var quranSeeking = false
     private var audioBookListContainer: LinearLayout? = null
     private var booksComposeView: ComposeView? = null
+    private var booksLibraryComposeView: ComposeView? = null
+    private var booksLibraryLoadStarted = false
     private val booksPositionState = mutableStateOf(0L)
     private val booksDurationState = mutableStateOf(0L)
     private val booksPlayingState = mutableStateOf(false)
@@ -898,7 +901,11 @@ class MainActivity : FragmentActivity() {
         }
         booksContinueButton = actionButton("Continue listening").apply {
             setOnClickListener {
-                AudioBookRepository.activeBookId(this@MainActivity)?.let { resumeAudioBook(it) }
+                AudioBookRepository.activeBookId(this@MainActivity)?.let { bookId ->
+                    val rewind = getSharedPreferences("avb", MODE_PRIVATE)
+                        .getInt("books_resume_offset_seconds", 2).coerceIn(0, 10)
+                    resumeAudioBook(bookId, rewindSeconds = rewind)
+                }
             }
         }
         booksContinueBar.addView(booksContinueButton, LinearLayout.LayoutParams(-1, dp(48)))
@@ -929,6 +936,14 @@ class MainActivity : FragmentActivity() {
         root.addView(shell, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
         openPage(currentPage, preserveScroll = true, restoreScrollY = savedScrollY)
+        // Load the small local catalogue and warm the Books composition after the
+        // first screen is visible, instead of making the first tab tap pay that cost.
+        content.post {
+            if (!isFinishing && !isDestroyed && booksLibraryComposeView == null) {
+                prepareBooksLibrary()
+            }
+            loadAudioBooksAsync()
+        }
     }
 
     private fun addNavigationItem(label: String, page: Int) {
@@ -1168,6 +1183,18 @@ class MainActivity : FragmentActivity() {
         content.addView(reset, LinearLayout.LayoutParams(-1, dp(52)))
     }
 
+    private fun prepareBooksLibrary() {
+        val compose = booksLibraryComposeView ?: ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        }.also { booksLibraryComposeView = it }
+        if (compose.parent == null) {
+            compose.visibility = View.INVISIBLE
+            root.addView(compose, FrameLayout.LayoutParams(1, 1))
+        }
+        booksComposeView = compose
+        refreshBooksCompose()
+    }
+
     private fun showQuranAudio() {
         selectedAudioBookId = null
         pageTitle.text = translate("Books")
@@ -1181,8 +1208,13 @@ class MainActivity : FragmentActivity() {
         audioImportStatusText = null
         audioBookListContainer = null
 
-        booksComposeView = ComposeView(this)
-        content.addView(booksComposeView, LinearLayout.LayoutParams(-1, dp(640)))
+        val compose = booksLibraryComposeView ?: ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        }.also { booksLibraryComposeView = it }
+        (compose.parent as? android.view.ViewGroup)?.removeView(compose)
+        compose.visibility = View.VISIBLE
+        booksComposeView = compose
+        content.addView(compose, LinearLayout.LayoutParams(-1, dp(640)))
         connectQuranController()
         refreshBooksCompose()
         loadAudioBooksAsync()
@@ -1248,9 +1280,8 @@ class MainActivity : FragmentActivity() {
                 onChapters = { quranController?.seekTo(it, 0L) },
                 onBookmark = { selectedAudioBookId?.let { addAudioBookBookmark(it) } },
                 onResumeBookmark = { id, track, position ->
-                    val offset = getSharedPreferences("avb", MODE_PRIVATE)
-                        .getInt("books_resume_offset_seconds", 2).coerceIn(0, 10) * 1_000L
-                    resumeAudioBook(id, track, (position - offset).coerceAtLeast(0L))
+                    // A saved bookmark is an exact point; only Continue listening rewinds.
+                    resumeAudioBook(id, track, position)
                 },
                 onDeleteBookmark = { id, bookmarkId ->
                     AudioBookRepository.removeBookmark(this, id, bookmarkId)
@@ -1535,9 +1566,9 @@ class MainActivity : FragmentActivity() {
         content.removeAllViews()
         audioBookListContainer = null
         audioImportStatusText = null
-        booksComposeView = ComposeView(this)
-        content.addView(booksComposeView, LinearLayout.LayoutParams(-1, dp(640)))
-        booksComposeView?.setContent {
+        val addContentComposeView = ComposeView(this)
+        content.addView(addContentComposeView, LinearLayout.LayoutParams(-1, dp(640)))
+        addContentComposeView.setContent {
             VoiceAddContentScreen(
                 onBack = { showQuranAudio() },
                 onChooseFolder = { openAudioBookFolderPicker() },
@@ -1698,12 +1729,14 @@ class MainActivity : FragmentActivity() {
 
     private fun renderAudioBookLibrary() {
         refreshBooksCompose()
-        loadAudioBooksAsync()
+        loadAudioBooksAsync(force = true)
     }
 
-    private fun loadAudioBooksAsync() {
+    private fun loadAudioBooksAsync(force: Boolean = false) {
+        if (booksLibraryLoadStarted && !force) return
+        booksLibraryLoadStarted = true
         val generation = ++booksLibraryLoadGeneration
-        booksLibraryLoadingState.value = true
+        if (booksLibraryState.value.isEmpty()) booksLibraryLoadingState.value = true
         thread(name = "audio-book-library") {
             val loaded = runCatching { AudioBookRepository.all(applicationContext) }
                 .getOrDefault(emptyList())
@@ -1874,9 +1907,11 @@ class MainActivity : FragmentActivity() {
     private fun resumeAudioBook(
         bookId: String,
         targetTrackIndex: Int? = null,
-        targetPositionMs: Long? = null
+        targetPositionMs: Long? = null,
+        rewindSeconds: Int = 0
     ) {
-        val book = runCatching { AudioBookRepository.load(this, bookId) }.getOrNull()
+        val book = booksLibraryState.value.firstOrNull { it.id == bookId }
+            ?: runCatching { AudioBookRepository.load(this, bookId) }.getOrNull()
         if (book == null) {
             Toast.makeText(this, translate("This book is no longer available."), Toast.LENGTH_SHORT).show()
             renderAudioBookLibrary()
@@ -1886,6 +1921,17 @@ class MainActivity : FragmentActivity() {
         if (controller == null) {
             connectQuranController()
             Toast.makeText(this, translate("The audio player is still starting. Try again."), Toast.LENGTH_SHORT).show()
+            return
+        }
+        val currentMediaId = controller.currentMediaItem?.mediaId.orEmpty()
+        if (currentMediaId.startsWith("book:$bookId|") &&
+            controller.playbackState != Player.STATE_IDLE &&
+            controller.playbackState != Player.STATE_ENDED
+        ) {
+            // Opening the book already in the player must not replace its queue
+            // or seek back to a stale saved position.
+            AudioBookRepository.setActive(this, bookId)
+            showAudioBookPlayer(bookId)
             return
         }
         runCatching {
@@ -1906,7 +1952,8 @@ class MainActivity : FragmentActivity() {
                     .build()
             }
             val startIndex = (targetTrackIndex ?: book.currentTrackIndex).coerceIn(0, items.lastIndex)
-            val startPosition = targetPositionMs ?: book.positionMs
+            val startPosition = targetPositionMs
+                ?: (book.positionMs - rewindSeconds.coerceIn(0, 10) * 1_000L).coerceAtLeast(0L)
             AudioBookRepository.setActive(this, bookId)
             QuranAudioRepository.setActiveTimeline(this, "book:" + bookId)
             controller.setMediaItems(items, startIndex, startPosition.coerceAtLeast(0L))
@@ -1922,13 +1969,19 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun showAudioBookPlayer(bookId: String) {
-        val book = AudioBookRepository.load(this, bookId) ?: return
+        val book = booksLibraryState.value.firstOrNull { it.id == bookId }
+            ?: AudioBookRepository.load(this, bookId) ?: return
         selectedAudioBookId = bookId
         pageTitle.text = book.name
         content.removeAllViews()
         audioBookListContainer = null
-        booksComposeView = ComposeView(this)
-        content.addView(booksComposeView, LinearLayout.LayoutParams(-1, dp(640)))
+        val compose = booksLibraryComposeView ?: ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        }.also { booksLibraryComposeView = it }
+        (compose.parent as? android.view.ViewGroup)?.removeView(compose)
+        compose.visibility = View.VISIBLE
+        booksComposeView = compose
+        content.addView(compose, LinearLayout.LayoutParams(-1, dp(640)))
         refreshBooksCompose()
         updateQuranPlaybackUi()
         refreshNavigation()
