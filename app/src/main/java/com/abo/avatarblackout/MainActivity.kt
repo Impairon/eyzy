@@ -1429,14 +1429,12 @@ class MainActivity : FragmentActivity() {
             .setInputData(data)
             .addTag(AUDIO_BOOK_IMPORT_TAG)
             .build()
-        runCatching {
-            WorkManager.getInstance(applicationContext).enqueue(request)
-        }.onSuccess {
-            audioImportStatusText?.text = translate("Import queued…")
-            observeAudioBookImports()
-        }.onFailure {
-            audioImportStatusText?.text = translate("Could not start the import.")
-        }
+        runCatching { WorkManager.getInstance(applicationContext).enqueue(request) }
+            .onSuccess {
+                audioImportStatusText?.text = translate("Import queued…")
+                observeAudioBookImports()
+            }
+            .onFailure { audioImportStatusText?.text = translate("Could not start the import.") }
     }
 
     private fun observeAudioBookImports() {
