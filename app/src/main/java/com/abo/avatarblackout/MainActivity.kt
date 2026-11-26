@@ -90,6 +90,8 @@ class MainActivity : FragmentActivity() {
     private var booksContinueButton: Button? = null
     private val navigationItems = mutableListOf<Pair<Int, TextView>>()
     private var currentPage = 0
+    private var pageBeforeSettings = 0
+    private var settingsButton: ImageButton? = null
     private var quranController: MediaController? = null
     private var quranControllerFuture: ListenableFuture<MediaController>? = null
     private var quranRecitations: List<QuranRecitation> = emptyList()
@@ -846,6 +848,21 @@ class MainActivity : FragmentActivity() {
             setPadding(dp(12), 0, dp(8), 0)
         }
         header.addView(pageTitle, LinearLayout.LayoutParams(0, dp(48), 1f))
+        settingsButton = ImageButton(this).apply {
+            setImageResource(android.R.drawable.ic_menu_preferences)
+            imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+            background = rounded(panelRaised, 12)
+            contentDescription = translate("Settings")
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            setOnClickListener {
+                if (currentPage == 5) openPage(pageBeforeSettings)
+                else {
+                    pageBeforeSettings = currentPage
+                    openPage(5)
+                }
+            }
+        }
+        header.addView(settingsButton, LinearLayout.LayoutParams(dp(44), dp(44)))
         shell.addView(header)
 
         mainScrollView = ScrollView(this).apply {
@@ -887,7 +904,6 @@ class MainActivity : FragmentActivity() {
         addNavigationItem("Sibha", 1)
         addNavigationItem("Prayers", 2)
         addNavigationItem("Books", 4)
-        addNavigationItem("Settings", 5)
         val navHolder = LinearLayout(this).apply {
             setPadding(dp(12), dp(4), dp(12), dp(10))
             addView(navigationBar, LinearLayout.LayoutParams(-1, dp(58)))
@@ -929,6 +945,7 @@ class MainActivity : FragmentActivity() {
             booksContinueButton?.text = activeBook?.let { translate("Continue listening") + " · " + it.name }
                 ?: translate("Continue listening")
         }
+        settingsButton?.background = rounded(if (currentPage == 5) purple else panelRaised, 12)
         if (::pageTitle.isInitialized) pageTitle.text = translate(pageTitle.text.toString())
     }
 
@@ -2305,43 +2322,6 @@ class MainActivity : FragmentActivity() {
             cardContent.addView(appLock)
         }
         content.addView(appLockCard)
-        val booksSettingsCard = card("Books") { cardContent ->
-            val prefs = getSharedPreferences("avb", MODE_PRIVATE)
-            addText(cardContent, "Fine-tune audiobook skipping and saved-position playback.")
-            fun secondsSlider(label: String, key: String, min: Int, max: Int, step: Int, default: Int) {
-                val value = TextView(this).apply {
-                    textSize = 14f
-                    setTextColor(Color.WHITE)
-                    setPadding(0, dp(10), 0, dp(2))
-                }
-                val slider = SeekBar(this).apply {
-                    this.max = (max - min) / step
-                    progressTintList = android.content.res.ColorStateList.valueOf(purple)
-                    progressBackgroundTintList = android.content.res.ColorStateList.valueOf(border)
-                    thumbTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
-                    progress = ((prefs.getInt(key, default).coerceIn(min, max) - min) / step)
-                    fun update(number: Int) {
-                        value.text = translate(label) + "  ·  " + number + " " + translate("seconds")
-                    }
-                    update(min + progress * step)
-                    setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                        override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                            val selected = min + progress * step
-                            update(selected)
-                            if (fromUser) prefs.edit().putInt(key, selected).apply()
-                        }
-                        override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
-                        override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
-                    })
-                }
-                cardContent.addView(value)
-                cardContent.addView(slider, LinearLayout.LayoutParams(-1, dp(44)))
-            }
-            secondsSlider("Rewind", "books_rewind_seconds", 5, 120, 5, 20)
-            secondsSlider("Skip forward", "books_forward_seconds", 5, 120, 5, 30)
-            secondsSlider("Resume before saved position", "books_resume_offset_seconds", 0, 10, 1, 2)
-        }
-        content.addView(booksSettingsCard)
         // Keep the existing controls intact while presenting them in a calmer visual hierarchy.
         content.addView(collapsibleSection("swizy", defaultOpen = true) { section ->
             addText(section, "Control how swizy masks profile pictures.")
@@ -2554,6 +2534,43 @@ class MainActivity : FragmentActivity() {
             val import = actionButton("Import layouts")
             import.setOnClickListener { importBackup() }
             section.addView(import)
+        })
+        content.addView(collapsibleSection("Books", defaultOpen = false) { cardContent ->
+            val prefs = getSharedPreferences("avb", MODE_PRIVATE)
+            addText(cardContent, "Fine-tune audiobook skipping and saved-position playback.")
+            fun secondsSlider(label: String, key: String, min: Int, max: Int, step: Int, default: Int) {
+                val value = TextView(this).apply {
+                    textSize = 14f
+                    setTextColor(Color.WHITE)
+                    setPadding(0, dp(10), 0, dp(2))
+                }
+                val slider = SeekBar(this).apply {
+                    this.max = (max - min) / step
+                    progressTintList = android.content.res.ColorStateList.valueOf(purple)
+                    progressBackgroundTintList = android.content.res.ColorStateList.valueOf(border)
+                    thumbTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+                    progress = ((prefs.getInt(key, default).coerceIn(min, max) - min) / step)
+                    fun update(number: Int) {
+                        value.text = translate(label) + "  ·  " + number + " " + translate("seconds")
+                    }
+                    update(min + progress * step)
+                    setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                        override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                            val selected = min + progress * step
+                            update(selected)
+                            if (fromUser) prefs.edit().putInt(key, selected).apply()
+                        }
+                        override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+                        override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+                    })
+                }
+                cardContent.addView(value)
+                cardContent.addView(slider, LinearLayout.LayoutParams(-1, dp(44)))
+            }
+            secondsSlider("Rewind", "books_rewind_seconds", 5, 120, 5, 20)
+            secondsSlider("Skip forward", "books_forward_seconds", 5, 120, 5, 30)
+            secondsSlider("Resume before saved position", "books_resume_offset_seconds", 0, 10, 1, 2)
+        }
         })
         localizeTree(content)
         refreshNavigation()
