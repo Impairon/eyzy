@@ -1517,6 +1517,474 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    private fun showNewAudioBookSourceDialog() {
+        val choices = arrayOf(
+            translate("Choose a folder"),
+            translate("Choose a file or archive"),
+            translate("Online link")
+        )
+        AlertDialog.Builder(this)
+            .setTitle(translate("Choose book source"))
+            .setItems(choices) { _, index ->
+                when (index) {
+                    0 -> openAudioBookFolderPicker()
+                    1 -> openAudioBookFilePicker()
+                    2 -> showOnlineAudioLinkDialog()
+                }
+            }
+            .setNegativeButton(translate("Cancel"), null)
+            .show()
+    }
+
+    private fun openAudioBookFolderPicker() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            )
+        }
+        startActivityForResult(intent, AUDIO_BOOK_FOLDER_REQUEST)
+    }
+
+    private fun openAudioBookFilePicker() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            type = "*/*"
+            putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                arrayOf(
+                    "audio/*",
+                    "application/zip",
+                    "application/gzip",
+                    "application/x-tar",
+                    "application/octet-stream"
+                )
+            )
+            addCategory(Intent.CATEGORY_OPENABLE)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        startActivityForResult(intent, AUDIO_BOOK_FILE_REQUEST)
+    }
+
+    private fun showOnlineAudioLinkDialog() {
+        val linkInput = EditText(this).apply {
+            hint = translate("Paste a direct audio or archive link")
+            setTextColor(Color.WHITE)
+            setHintTextColor(secondary)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_VARIATION_URI
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = outlined(panelRaised, border, 12)
+        }
+        val wrapper = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(linkInput, LinearLayout.LayoutParams(-1, dp(54)))
+        }
+        AlertDialog.Builder(this)
+            .setTitle(translate("Online link"))
+            .setMessage(translate("Use a direct HTTP or HTTPS link to an audio file or archive."))
+            .setView(wrapper)
+            .setPositiveButton(translate("Continue")) { _, _ ->
+                val link = linkInput.text.toString().trim()
+                if (link.isBlank()) {
+                    Toast.makeText(this, translate("Enter a direct download link."), Toast.LENGTH_SHORT).show()
+                } else {
+                    askAudioBookName(AudioBookImportWorker.TYPE_URL, link, suggestedNameFromUrl(link))
+                }
+            }
+            .setNegativeButton(translate("Cancel"), null)
+            .show()
+    }
+
+    private fun suggestedNameFromUrl(value: String): String {
+        val segment = Uri.parse(value).lastPathSegment.orEmpty()
+        return segment.substringBeforeLast('.', segment)
+            .replace(Regex("[-_]+"), " ")
+            .trim()
+    }
+
+    private fun displayNameForUri(uri: Uri): String {
+        contentResolver.query(
+            uri,
+            arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val column = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (column >= 0) return cursor.getString(column).orEmpty()
+            }
+        }
+        return uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':').orEmpty()
+    }
+
+    private fun askAudioBookName(sourceType: String, sourceValue: String, suggestedName: String) {
+        val nameInput = EditText(this).apply {
+            hint = translate("Book name")
+            setText(suggestedName)
+            setTextColor(Color.WHITE)
+            setHintTextColor(secondary)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = outlined(panelRaised, border, 12)
+        }
+        val wrapper = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(nameInput, LinearLayout.LayoutParams(-1, dp(54)))
+        }
+        AlertDialog.Builder(this)
+            .setTitle(translate("Name this book"))
+            .setView(wrapper)
+            .setPositiveButton(translate("Continue")) { _, _ ->
+                val bookName = nameInput.text.toString().trim()
+                if (bookName.isBlank()) {
+                    Toast.makeText(this, translate("Enter a book name."), Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                if (sourceType == AudioBookImportWorker.TYPE_URL) {
+                    AlertDialog.Builder(this)
+                        .setTitle(translate("Legal use reminder"))
+                        .setMessage(
+                            translate(
+                                "Make sure downloading from this link is legal, that you have permission to download it, and that it does not violate copyright or the website's Terms of Service or other rules."
+                            )
+                        )
+                        .setPositiveButton(translate("I understand and continue")) { _, _ ->
+                            enqueueAudioBookImport(sourceType, sourceValue, bookName)
+                        }
+                        .setNegativeButton(translate("Cancel"), null)
+                        .show()
+                } else {
+                    enqueueAudioBookImport(sourceType, sourceValue, bookName)
+                }
+            }
+            .setNegativeButton(translate("Cancel"), null)
+            .show()
+    }
+
+    private fun enqueueAudioBookImport(sourceType: String, sourceValue: String, bookName: String) {
+        val bookId = AudioBookRepository.newId()
+        val data = Data.Builder()
+            .putString(AudioBookImportWorker.KEY_SOURCE_TYPE, sourceType)
+            .putString(AudioBookImportWorker.KEY_BOOK_NAME, bookName)
+            .putString(AudioBookImportWorker.KEY_BOOK_ID, bookId)
+            .apply {
+                if (sourceType == AudioBookImportWorker.TYPE_URL) {
+                    putString(AudioBookImportWorker.KEY_URL, sourceValue)
+                } else {
+                    putString(AudioBookImportWorker.KEY_SOURCE_URI, sourceValue)
+                }
+            }
+            .build()
+        val request = OneTimeWorkRequestBuilder<AudioBookImportWorker>()
+            .setInputData(data)
+            .addTag(AUDIO_BOOK_IMPORT_TAG)
+            .build()
+        runCatching {
+            WorkManager.getInstance(applicationContext).enqueue(request)
+        }.onSuccess {
+            audioImportStatusText?.text = translate("Import queued…")
+            observeAudioBookImports()
+        }.onFailure {
+            audioImportStatusText?.text = translate("Could not start the import.")
+        }
+    }
+
+    private fun observeAudioBookImports() {
+        if (audioImportObservationAttached) return
+        audioImportObservationAttached = true
+        WorkManager.getInstance(this)
+            .getWorkInfosByTagLiveData(AUDIO_BOOK_IMPORT_TAG)
+            .observe(this) { infos ->
+                val active = infos.firstOrNull { !it.state.isFinished }
+                if (active != null) {
+                    val percent = active.progress.getInt(AudioBookImportWorker.KEY_PROGRESS, 0)
+                    val stage = when (active.progress.getString(AudioBookImportWorker.KEY_STAGE)) {
+                        "download" -> translate("Downloading…")
+                        "copy" -> translate("Copying files…")
+                        "extract" -> translate("Extracting audio…")
+                        "metadata" -> translate("Reading track information…")
+                        else -> translate("Preparing book…")
+                    }
+                    audioImportStatusText?.text = "$stage $percent%"
+                    return@observe
+                }
+
+                val finished = infos.firstOrNull {
+                    it.state == WorkInfo.State.SUCCEEDED || it.state == WorkInfo.State.FAILED
+                } ?: return@observe
+                if (finished.state == WorkInfo.State.SUCCEEDED) {
+                    audioImportStatusText?.text = translate("Book imported successfully.")
+                    renderAudioBookLibrary()
+                } else {
+                    val error = finished.outputData.getString(AudioBookImportWorker.KEY_ERROR).orEmpty()
+                    audioImportStatusText?.text = translateImportError(error)
+                }
+            }
+    }
+
+    private fun translateImportError(error: String): String {
+        if (error.startsWith("The server returned HTTP ")) {
+            return translate("Download server error: ") + error.substringAfter("HTTP ")
+        }
+        return translate(error).ifBlank { translate("The audio book could not be imported.") }
+    }
+
+    private fun renderAudioBookLibrary() {
+        val container = audioBookListContainer ?: return
+        container.removeAllViews()
+        val books = AudioBookRepository.all(this)
+        if (books.isEmpty()) {
+            val empty = TextView(this).apply {
+                text = translate("No books yet. Add a folder, archive, audio file, or direct link.")
+                textSize = 13f
+                setTextColor(secondary)
+                setPadding(0, dp(8), 0, dp(8))
+            }
+            container.addView(empty)
+            return
+        }
+        books.forEach { book ->
+            val bookCard = card("Audio book") { section ->
+                val title = TextView(this).apply {
+                    text = book.name
+                    tag = USER_CONTENT_TAG
+                    textSize = 17f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(Color.WHITE)
+                    setPadding(0, dp(3), 0, dp(5))
+                }
+                section.addView(title)
+                val currentTrack = book.currentTrack
+                val details = TextView(this).apply {
+                    text = book.tracks.size.toString() + " · " +
+                        (currentTrack?.title.orEmpty()) + " · " +
+                        formatQuranDuration(book.positionMs)
+                    tag = USER_CONTENT_TAG
+                    textSize = 13f
+                    setTextColor(secondary)
+                    setPadding(0, 0, 0, dp(6))
+                }
+                section.addView(details)
+                val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                val resume = actionButton("Resume book").apply {
+                    setOnClickListener { resumeAudioBook(book.id) }
+                    layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply {
+                        marginEnd = dp(6)
+                    }
+                }
+                val options = actionButton("Manage").apply {
+                    setOnClickListener { showAudioBookOptions(book.id) }
+                    layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f)
+                }
+                controls.addView(resume)
+                controls.addView(options)
+                section.addView(controls)
+            }
+            container.addView(bookCard)
+        }
+    }
+
+    private fun showAudioBookOptions(bookId: String) {
+        val book = AudioBookRepository.load(this, bookId) ?: return
+        val options = arrayOf(
+            translate("Resume book"),
+            translate("Rename book"),
+            translate("Add bookmark"),
+            translate("Bookmarks"),
+            translate("Delete book")
+        )
+        AlertDialog.Builder(this)
+            .setTitle(book.name)
+            .setItems(options) { _, index ->
+                when (index) {
+                    0 -> resumeAudioBook(bookId)
+                    1 -> renameAudioBook(bookId)
+                    2 -> addAudioBookBookmark(bookId)
+                    3 -> showAudioBookBookmarks(bookId)
+                    4 -> confirmDeleteAudioBook(bookId)
+                }
+            }
+            .setNegativeButton(translate("Cancel"), null)
+            .show()
+    }
+
+    private fun renameAudioBook(bookId: String) {
+        val book = AudioBookRepository.load(this, bookId) ?: return
+        val input = EditText(this).apply {
+            setText(book.name)
+            setTextColor(Color.WHITE)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = outlined(panelRaised, border, 12)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(translate("Rename book"))
+            .setView(input)
+            .setPositiveButton(translate("Save")) { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isNotBlank()) {
+                    AudioBookRepository.rename(this, bookId, name)
+                    renderAudioBookLibrary()
+                }
+            }
+            .setNegativeButton(translate("Cancel"), null)
+            .show()
+    }
+
+    private fun addAudioBookBookmark(bookId: String) {
+        val book = AudioBookRepository.load(this, bookId) ?: return
+        val controller = quranController
+        val mediaId = controller?.currentMediaItem?.mediaId.orEmpty()
+        val parts = mediaId.split('|')
+        val isCurrentBook = parts.size == 2 && parts[0] == "book:" + bookId
+        val trackIndex = if (isCurrentBook) parts[1].toIntOrNull() ?: book.currentTrackIndex
+            else book.currentTrackIndex
+        val position = if (isCurrentBook) controller?.currentPosition ?: book.positionMs
+            else book.positionMs
+        val defaultName = "Bookmark " + (book.bookmarks.size + 1)
+        val input = EditText(this).apply {
+            setText(defaultName)
+            setTextColor(Color.WHITE)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = outlined(panelRaised, border, 12)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(translate("Bookmark name"))
+            .setView(input)
+            .setPositiveButton(translate("Save")) { _, _ ->
+                AudioBookRepository.addBookmark(
+                    this, bookId, input.text.toString(), trackIndex, position
+                )
+                audioImportStatusText?.text = translate("Bookmark saved.")
+                renderAudioBookLibrary()
+            }
+            .setNegativeButton(translate("Cancel"), null)
+            .show()
+    }
+
+    private fun showAudioBookBookmarks(bookId: String) {
+        val book = AudioBookRepository.load(this, bookId) ?: return
+        if (book.bookmarks.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle(translate("Bookmarks"))
+                .setMessage(translate("No bookmarks yet."))
+                .setPositiveButton(translate("Close"), null)
+                .show()
+            return
+        }
+        val labels = book.bookmarks.map { bookmark ->
+            val track = book.tracks.getOrNull(bookmark.trackIndex)?.title.orEmpty()
+            bookmark.name + " · " + track + " · " + formatQuranDuration(bookmark.positionMs)
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle(translate("Bookmarks"))
+            .setItems(labels) { _, index ->
+                book.bookmarks.getOrNull(index)?.let { showAudioBookBookmarkOptions(bookId, it) }
+            }
+            .setNegativeButton(translate("Close"), null)
+            .show()
+    }
+
+    private fun showAudioBookBookmarkOptions(bookId: String, bookmark: AudioBookBookmark) {
+        val choices = arrayOf(
+            translate("Resume bookmark"),
+            translate("Rename bookmark"),
+            translate("Delete bookmark")
+        )
+        AlertDialog.Builder(this)
+            .setTitle(bookmark.name)
+            .setItems(choices) { _, index ->
+                when (index) {
+                    0 -> resumeAudioBook(bookId, bookmark.trackIndex, bookmark.positionMs)
+                    1 -> {
+                        val input = EditText(this).apply {
+                            setText(bookmark.name)
+                            setTextColor(Color.WHITE)
+                        }
+                        AlertDialog.Builder(this)
+                            .setTitle(translate("Rename bookmark"))
+                            .setView(input)
+                            .setPositiveButton(translate("Save")) { _, _ ->
+                                AudioBookRepository.renameBookmark(
+                                    this, bookId, bookmark.id, input.text.toString()
+                                )
+                                renderAudioBookLibrary()
+                            }
+                            .setNegativeButton(translate("Cancel"), null)
+                            .show()
+                    }
+                    2 -> {
+                        AudioBookRepository.removeBookmark(this, bookId, bookmark.id)
+                        renderAudioBookLibrary()
+                    }
+                }
+            }
+            .setNegativeButton(translate("Cancel"), null)
+            .show()
+    }
+
+    private fun confirmDeleteAudioBook(bookId: String) {
+        val book = AudioBookRepository.load(this, bookId) ?: return
+        AlertDialog.Builder(this)
+            .setTitle(translate("Delete book"))
+            .setMessage(translate("Delete this book and its copied audio files?"))
+            .setPositiveButton(translate("Delete")) { _, _ ->
+                if (quranController?.currentMediaItem?.mediaId?.startsWith("book:" + bookId + "|") == true) {
+                    quranController?.stop()
+                    QuranAudioRepository.setActiveTimeline(this, QuranAudioRepository.MAIN_TIMELINE)
+                }
+                AudioBookRepository.delete(this, bookId)
+                renderAudioBookLibrary()
+            }
+            .setNegativeButton(translate("Cancel"), null)
+            .show()
+    }
+
+    private fun resumeAudioBook(
+        bookId: String,
+        targetTrackIndex: Int? = null,
+        targetPositionMs: Long? = null
+    ) {
+        val book = AudioBookRepository.load(this, bookId)
+        if (book == null) {
+            Toast.makeText(this, translate("This book is no longer available."), Toast.LENGTH_SHORT).show()
+            renderAudioBookLibrary()
+            return
+        }
+        val controller = quranController
+        if (controller == null) {
+            connectQuranController()
+            Toast.makeText(this, translate("The audio player is still starting. Try again."), Toast.LENGTH_SHORT).show()
+            return
+        }
+        saveCurrentQuranPosition()
+        val items = book.tracks.mapIndexed { index, track ->
+            MediaItem.Builder()
+                .setMediaId("book:" + bookId + "|" + index)
+                .setUri(Uri.fromFile(File(track.path)))
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(track.title)
+                        .setArtist(track.artist.ifBlank { book.name })
+                        .setAlbumTitle(track.album.ifBlank { book.name })
+                        .build()
+                )
+                .build()
+        }
+        val startIndex = (targetTrackIndex ?: book.currentTrackIndex).coerceIn(0, items.lastIndex)
+        val startPosition = targetPositionMs ?: book.positionMs
+        AudioBookRepository.setActive(this, bookId)
+        QuranAudioRepository.setActiveTimeline(this, "book:" + bookId)
+        controller.setMediaItems(items, startIndex, startPosition.coerceAtLeast(0L))
+        controller.prepare()
+        controller.play()
+        updateQuranPlaybackUi()
+        renderAudioBookLibrary()
+    }
+
     private fun showQibla() {
         pageTitle.text = "Qibla"
         content.removeAllViews()
