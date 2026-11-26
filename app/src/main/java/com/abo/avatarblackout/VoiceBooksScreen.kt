@@ -17,7 +17,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.shape.CircleShape
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.Offset
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -704,6 +704,7 @@ private fun VoiceWavySeekBar(
     onSeek: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = MaterialTheme.colorScheme
     val phase by rememberInfiniteTransition(label = "seekWave")
         .animateFloat(
             initialValue = 0f,
@@ -727,16 +728,19 @@ private fun VoiceWavySeekBar(
                 }
             }
             .pointerInput(Unit) {
+                var dragFraction = progress.coerceIn(0f, 1f)
                 detectHorizontalDragGestures(
                     onDragStart = { point ->
                         onDragStart()
-                        onProgressChange((point.x / size.width).coerceIn(0f, 1f))
+                        dragFraction = (point.x / size.width).coerceIn(0f, 1f)
+                        onProgressChange(dragFraction)
                     },
-                    onDragEnd = { onSeek(progress.coerceIn(0f, 1f)) },
-                    onDragCancel = { onSeek(progress.coerceIn(0f, 1f)) },
+                    onDragEnd = { onSeek(dragFraction) },
+                    onDragCancel = { onSeek(dragFraction) },
                     onHorizontalDrag = { change, _ ->
                         change.consume()
-                        onProgressChange((change.position.x / size.width).coerceIn(0f, 1f))
+                        dragFraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                        onProgressChange(dragFraction)
                     },
                 )
             },
@@ -761,14 +765,14 @@ private fun VoiceWavySeekBar(
             }
             drawPath(
                 path = path,
-                color = MaterialTheme.colorScheme.primary,
+                color = colors.primary,
                 style = Stroke(width = stroke, cap = StrokeCap.Round),
             )
         }
         val inactiveStart = thumbX + 3.dp.toPx() + gap
         if (inactiveStart < size.width) {
             drawLine(
-                color = MaterialTheme.colorScheme.secondaryContainer,
+                color = colors.secondaryContainer,
                 start = Offset(inactiveStart, centerY),
                 end = Offset(size.width, centerY),
                 strokeWidth = stroke,
@@ -778,7 +782,7 @@ private fun VoiceWavySeekBar(
         val thumbWidth = if (dragging) 3.dp.toPx() else 5.dp.toPx()
         val thumbHeight = if (dragging) 40.dp.toPx() else 28.dp.toPx()
         drawRoundRect(
-            color = MaterialTheme.colorScheme.primary,
+            color = colors.primary,
             topLeft = Offset(thumbX - thumbWidth / 2f, centerY - thumbHeight / 2f),
             size = androidx.compose.ui.geometry.Size(thumbWidth, thumbHeight),
             cornerRadius = androidx.compose.ui.geometry.CornerRadius(thumbWidth / 2f),
