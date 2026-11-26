@@ -192,7 +192,7 @@ internal object QuranAudioRepository {
                     for (moshafIndex in 0 until moshafs.length()) {
                         val moshaf = moshafs.optJSONObject(moshafIndex) ?: continue
                         val server = moshaf.optString("server").trim()
-                        if (server.isBlank()) continue
+                        if (!server.startsWith("https://")) continue
                         val surahs = moshaf.optString("surah_list")
                             .split(',')
                             .mapNotNull { it.trim().toIntOrNull() }
