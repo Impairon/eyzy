@@ -63,6 +63,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.documentfile.provider.DocumentFile
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.runtime.mutableStateOf
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -105,6 +106,9 @@ class MainActivity : FragmentActivity() {
     private var quranSeeking = false
     private var audioBookListContainer: LinearLayout? = null
     private var booksComposeView: ComposeView? = null
+    private val booksPositionState = mutableStateOf(0L)
+    private val booksDurationState = mutableStateOf(0L)
+    private val booksPlayingState = mutableStateOf(false)
     private var selectedAudioBookId: String? = null
     private var audioBookSearchQuery = ""
     private var sleepTimerEndAt = 0L
@@ -1128,20 +1132,29 @@ class MainActivity : FragmentActivity() {
 
     private fun refreshBooksCompose() {
         val compose = booksComposeView ?: return
-        val playerBook = selectedAudioBookId?.let { AudioBookRepository.load(this, it) }
         val controller = quranController
+        val playerBook = selectedAudioBookId?.let { id ->
+            AudioBookRepository.load(this, id)?.let { book ->
+                val index = controller?.currentMediaItemIndex
+                    ?.takeIf { it in book.tracks.indices } ?: book.currentTrackIndex
+                book.copy(currentTrackIndex = index)
+            }
+        }
+        booksPositionState.value = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L
+        booksDurationState.value = controller?.duration
+            ?.takeIf { it > 0L && it != androidx.media3.common.C.TIME_UNSET } ?: 0L
+        booksPlayingState.value = controller?.isPlaying == true
         compose.setContent {
             VoiceBooksScreen(
                 books = AudioBookRepository.all(this),
                 activeBookId = AudioBookRepository.activeBookId(this),
                 searchQuery = audioBookSearchQuery,
                 playerBook = playerBook,
-                playing = controller?.isPlaying == true,
-                positionMs = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L,
-                durationMs = controller?.duration?.takeIf { it > 0L && it != androidx.media3.common.C.TIME_UNSET } ?: 0L,
+                playing = booksPlayingState.value,
+                positionMs = booksPositionState.value,
+                durationMs = booksDurationState.value,
                 onSearchChange = {
                     audioBookSearchQuery = it
-                    refreshBooksCompose()
                 },
                 onAddBook = { showAudioBookAddContent() },
                 onBookClick = { resumeAudioBook(it) },
@@ -1401,7 +1414,9 @@ class MainActivity : FragmentActivity() {
         val timerLabel = if (sleepTimerEndAt > System.currentTimeMillis()) translate("Sleep timer active") else ""
         quranStatusText?.text = if (selectedBookPlayerVisible()) listOf(playbackState, timerLabel).filter { it.isNotBlank() }.joinToString(" · ") else listOf(timelineLabel, playbackState).filter { it.isNotBlank() }.joinToString(" · ")
         updateQuranTimelineSummaries()
-        if (selectedAudioBookId != null) refreshBooksCompose()
+        booksPositionState.value = position
+        booksDurationState.value = duration.takeIf { it > 0L && it != androidx.media3.common.C.TIME_UNSET } ?: 0L
+        booksPlayingState.value = controller?.isPlaying == true
     }
 
     private fun selectedBookPlayerVisible(): Boolean = selectedAudioBookId != null && quranNowPlayingText != null
