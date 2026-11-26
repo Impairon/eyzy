@@ -99,6 +99,14 @@ class AudioBookImportWorker(
         try {
             root.mkdirs()
             if (!root.isDirectory) throw IllegalStateException("Could not create the audio library folder.")
+            if (AudioBookRepository.load(applicationContext, bookId) != null) {
+                return@withContext Result.success(
+                    workDataOf(KEY_BOOK_ID to bookId, KEY_BOOK_NAME to bookName)
+                )
+            }
+            // A previous worker attempt may have been interrupted after moving its files.
+            // Only the catalogue makes a book visible, so an unregistered directory is stale.
+            if (finalDirectory.exists()) finalDirectory.deleteRecursively()
             val available = StatFs(root.absolutePath).availableBytes
             if (available < MIN_FREE_SPACE) {
                 throw IllegalStateException("There is not enough free storage for an audio book.")
