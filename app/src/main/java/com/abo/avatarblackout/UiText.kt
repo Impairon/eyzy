@@ -5,7 +5,7 @@ object UiText {
         "Lowery" to "لويري", "Sibha" to "السبحة", "Prayers" to "الصلاة",
         "Qibla" to "القبلة", "Settings" to "الإعدادات", "Language" to "اللغة",
         "Books" to "كتب", "Your library" to "مكتبتك", "Audiobooks" to "الكتب الصوتية",
-        "Add folder" to "إضافة مجلد", "Continue listening" to "متابعة الاستماع",
+        "Add folder" to "إضافة مجلد", "Adding books…" to "جارٍ إضافة الكتب…", "Continue listening" to "متابعة الاستماع",
         "Your library is empty" to "مكتبتك فارغة", "Choose your audiobook folder to add it here." to "اختر مجلد الكتب الصوتية لإضافته إلى مكتبتك.",
         "Search books" to "البحث في الكتب", "No matching books" to "لا توجد كتب مطابقة",
         "Back to books" to "العودة إلى الكتب", "Chapters" to "الفصول",
