@@ -6,8 +6,6 @@ import android.database.Cursor
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.DocumentsContract
-import androidx.core.database.getLongOrNull
-import androidx.core.database.getStringOrNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -211,7 +209,7 @@ internal object AudioBookScanner {
 
     private class CachedAudioDocument(
         private val context: Context,
-        override val uri: Uri,
+        val uri: Uri,
         private val prefetched: DocumentContents? = null
     ) {
         val children: List<CachedAudioDocument> by lazy {
@@ -265,11 +263,11 @@ internal object AudioBookScanner {
     private fun Cursor.readContents(): DocumentContents {
         fun string(column: String): String? {
             val index = getColumnIndex(column)
-            return if (index < 0) null else getStringOrNull(index)
+            return if (index < 0 || isNull(index)) null else getString(index)
         }
         fun long(column: String): Long {
             val index = getColumnIndex(column)
-            return if (index < 0) 0L else getLongOrNull(index) ?: 0L
+            return if (index < 0 || isNull(index)) 0L else getLong(index)
         }
         val mime = string(DocumentsContract.Document.COLUMN_MIME_TYPE)
         return DocumentContents(
