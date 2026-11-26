@@ -1425,9 +1425,34 @@ class MainActivity : FragmentActivity() {
         pageTitle.text = translate("Add content")
         content.removeAllViews()
 
-        content.addView(actionButton("Back to books").apply {
+        val playerTopBar = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        playerTopBar.addView(actionButton("⌄").apply {
+            contentDescription = translate("Close player")
             setOnClickListener { showQuranAudio() }
-        })
+        }, LinearLayout.LayoutParams(dp(48), dp(48)))
+        playerTopBar.addView(Space(this), LinearLayout.LayoutParams(0, 1, 1f))
+        playerTopBar.addView(actionButton("☷").apply {
+            contentDescription = translate("Chapters")
+            setOnClickListener {
+                val latest = AudioBookRepository.load(this@MainActivity, bookId) ?: return@setOnClickListener
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle(translate("Chapters"))
+                    .setSingleChoiceItems(latest.tracks.map { it.title }.toTypedArray(),
+                        quranController?.currentMediaItemIndex ?: latest.currentTrackIndex) { dialog, index ->
+                        quranController?.seekTo(index, 0L)
+                        dialog.dismiss()
+                    }
+                    .setNegativeButton(translate("Close"), null)
+                    .show()
+            }
+        }, LinearLayout.LayoutParams(dp(48), dp(48)))
+        playerTopBar.addView(actionButton("⋮").apply {
+            contentDescription = translate("More")
+            setOnClickListener { showAudioBookOptions(bookId) }
+        }, LinearLayout.LayoutParams(dp(48), dp(48)))
+        content.addView(playerTopBar)
 
         val hero = TextView(this).apply {
             text = "♫"
@@ -1834,7 +1859,7 @@ class MainActivity : FragmentActivity() {
         val book = AudioBookRepository.load(this, bookId) ?: return
         AlertDialog.Builder(this)
             .setTitle(translate("Delete book"))
-            .setMessage(translate("Delete this book and its copied audio files?"))
+            .setMessage(translate("Remove this book from your library? Your original audio files will stay where they are."))
             .setPositiveButton(translate("Delete")) { _, _ ->
                 if (quranController?.currentMediaItem?.mediaId?.startsWith("book:" + bookId + "|") == true) {
                     quranController?.stop()
