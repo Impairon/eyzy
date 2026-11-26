@@ -35,7 +35,8 @@ internal data class AudioBook(
     val currentTrackIndex: Int = 0,
     val positionMs: Long = 0L,
     val lastPlayedAt: Long = 0L,
-    val bookmarks: List<AudioBookBookmark> = emptyList()
+    val bookmarks: List<AudioBookBookmark> = emptyList(),
+    val coverPath: String? = null
 ) {
     val currentTrack: AudioBookTrack?
         get() = tracks.getOrNull(currentTrackIndex.coerceIn(0, (tracks.size - 1).coerceAtLeast(0)))
@@ -145,7 +146,8 @@ internal object AudioBookRepository {
                 lastPlayedAt = store.getLong(
                     progressTimeKey(id), json.optLong("lastPlayedAt")
                 ).coerceAtLeast(0L),
-                bookmarks = bookmarks
+                bookmarks = bookmarks,
+                coverPath = json.optString("coverPath").takeIf { it.isNotBlank() && File(it).isFile }
             )
         }.getOrNull()
     }
@@ -185,6 +187,7 @@ internal object AudioBookRepository {
             put("positionMs", book.positionMs.coerceAtLeast(0L))
             put("lastPlayedAt", book.lastPlayedAt.coerceAtLeast(0L))
             put("bookmarks", bookmarks)
+            put("coverPath", book.coverPath.orEmpty())
         }
         val store = prefs(context)
         val ids = runCatching {
@@ -275,6 +278,7 @@ internal object AudioBookRepository {
             "audio_books"
         )
         File(root, bookId).deleteRecursively()
+        File(context.filesDir, "audio_book_covers/$bookId.jpg").delete()
         if (prefs(context).getString(ACTIVE_BOOK, null) == bookId) {
             store.edit().remove(ACTIVE_BOOK).apply()
         }
