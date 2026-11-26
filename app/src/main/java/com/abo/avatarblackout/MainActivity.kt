@@ -1171,6 +1171,7 @@ class MainActivity : FragmentActivity() {
                 onPrevious = { quranController?.seekToPreviousMediaItem() },
                 onNext = { quranController?.seekToNextMediaItem() },
                 onChapters = { quranController?.seekTo(it, 0L) },
+                onBookmark = { selectedAudioBookId?.let { addAudioBookBookmark(it) } },
                 onBookmarks = { selectedAudioBookId?.let { showAudioBookBookmarks(it) } },
                 onSpeed = { showAudioBookSpeedDialog() },
                 onSleepTimer = { showAudioBookSleepTimer() },
@@ -1440,54 +1441,17 @@ class MainActivity : FragmentActivity() {
     private fun showAudioBookAddContent() {
         pageTitle.text = translate("Add content")
         content.removeAllViews()
-
-        val addContentTopBar = LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
+        audioBookListContainer = null
+        audioImportStatusText = null
+        booksComposeView = ComposeView(this)
+        content.addView(booksComposeView, LinearLayout.LayoutParams(-1, dp(640)))
+        booksComposeView?.setContent {
+            VoiceAddContentScreen(
+                onBack = { showQuranAudio() },
+                onChooseFolder = { openAudioBookFolderPicker() },
+                onChooseFile = { openAudioBookFilePicker() },
+            )
         }
-        addContentTopBar.addView(actionButton("‹").apply {
-            contentDescription = translate("Back to books")
-            setOnClickListener { showQuranAudio() }
-        }, LinearLayout.LayoutParams(dp(48), dp(48)))
-        content.addView(addContentTopBar)
-
-        val hero = TextView(this).apply {
-            text = "♫"
-            textSize = 68f
-            gravity = Gravity.CENTER
-            setTextColor(purple)
-            background = rounded(panelRaised, 32)
-        }
-        content.addView(hero, LinearLayout.LayoutParams(-1, dp(190)).apply {
-            setMargins(dp(20), dp(24), dp(20), dp(24))
-        })
-
-        content.addView(TextView(this).apply {
-            text = translate("Add content")
-            textSize = 24f
-            typeface = Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-        })
-        content.addView(TextView(this).apply {
-            text = translate("Choose a folder for a book or an entire library, or add one audio file.")
-            textSize = 14f
-            gravity = Gravity.CENTER
-            setTextColor(secondary)
-            setPadding(dp(18), dp(8), dp(18), dp(24))
-        })
-
-        content.addView(actionButton("Choose folder").apply {
-            setOnClickListener { openAudioBookFolderPicker() }
-        }, LinearLayout.LayoutParams(-1, dp(54)).apply {
-            setMargins(dp(8), 0, dp(8), dp(8))
-        })
-        val chooseFile = actionButton("Choose audio file").apply {
-            setBackgroundColor(panelRaised)
-            setOnClickListener { openAudioBookFilePicker() }
-        }
-        content.addView(chooseFile, LinearLayout.LayoutParams(-1, dp(50)).apply {
-            setMargins(dp(8), 0, dp(8), dp(8))
-        })
     }
 
     private fun openAudioBookFilePicker() {
