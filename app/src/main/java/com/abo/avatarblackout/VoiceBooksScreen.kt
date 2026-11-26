@@ -2,6 +2,8 @@ package com.abo.avatarblackout
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,6 +55,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -311,6 +314,9 @@ private fun BookPlayView(
     onSleepTimer: () -> Unit,
 ) {
     var showChapters by remember(book.id) { mutableStateOf(false) }
+    var localSliderValue by remember(book.id) { mutableFloatStateOf(0f) }
+    val sliderInteraction = remember(book.id) { MutableInteractionSource() }
+    val isDragging by sliderInteraction.collectIsDraggedAsState()
     val track = book.currentTrack
     Scaffold(
         topBar = {
@@ -363,12 +369,19 @@ private fun BookPlayView(
             }
             Spacer(Modifier.height(20.dp))
             Slider(
-                value = if (durationMs > 0L) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f,
-                onValueChange = { onSeek((it * durationMs).toLong()) },
+                value = if (isDragging) localSliderValue else if (durationMs > 0L) {
+                    (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+                } else 0f,
+                onValueChange = { localSliderValue = it },
+                onValueChangeFinished = {
+                    if (durationMs > 0L) onSeek((durationMs * localSliderValue).toLong())
+                },
+                interactionSource = sliderInteraction,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
             )
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(formatVoiceDuration(positionMs), style = MaterialTheme.typography.labelSmall)
+                val displayedPosition = if (isDragging) (durationMs * localSliderValue).toLong() else positionMs
+                Text(formatVoiceDuration(displayedPosition), style = MaterialTheme.typography.labelSmall)
                 Text(formatVoiceDuration(durationMs), style = MaterialTheme.typography.labelSmall)
             }
             Spacer(Modifier.height(16.dp))
