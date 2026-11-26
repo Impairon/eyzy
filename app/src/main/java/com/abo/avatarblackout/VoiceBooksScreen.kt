@@ -74,6 +74,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -547,7 +549,14 @@ private fun BookPlayView(
                 IconButton(onClick = onRewind, modifier = Modifier.size(56.dp)) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Replay, contentDescription = "Rewind $rewindSeconds seconds", modifier = Modifier.size(40.dp))
-                        Text(rewindSeconds.toString(), style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomCenter))
+                        Text(
+                            rewindSeconds.toString(),
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            textAlign = TextAlign.End,
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp, bottom = 3.dp)
+                                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
+                                .padding(horizontal = 4.dp, vertical = 1.dp),
+                        )
                     }
                 }
                 Spacer(Modifier.size(16.dp))
@@ -562,7 +571,14 @@ private fun BookPlayView(
                 IconButton(onClick = onForward, modifier = Modifier.size(56.dp)) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Forward30, contentDescription = "Forward $forwardSeconds seconds", modifier = Modifier.size(40.dp))
-                        Text(forwardSeconds.toString(), style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomCenter))
+                        Text(
+                            forwardSeconds.toString(),
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            textAlign = TextAlign.End,
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp, bottom = 3.dp)
+                                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
+                                .padding(horizontal = 4.dp, vertical = 1.dp),
+                        )
                     }
                 }
             }
