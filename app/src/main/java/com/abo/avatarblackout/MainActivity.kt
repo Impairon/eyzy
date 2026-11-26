@@ -1433,11 +1433,18 @@ class MainActivity : FragmentActivity() {
                     "${translate("Books grouped by author")} (${preview.candidates[AudioBookFolderMode.Authors].orEmpty().size})"
                 )
                 var selected = preview.suggestedMode.ordinal
+                fun summary(mode: AudioBookFolderMode): String {
+                    val books = preview.candidates[mode].orEmpty()
+                    return books.take(10).joinToString("\n") { "• ${it.name}" } +
+                        if (books.size > 10) "\n… ${books.size - 10} more" else ""
+                }
                 lateinit var dialog: AlertDialog
                 dialog = AlertDialog.Builder(this)
                     .setTitle("${translate("Review folder")} · ${preview.folderName.ifBlank { folderName }}")
+                    .setMessage(summary(modes[selected]).ifBlank { translate("No supported audio tracks were found.") })
                     .setSingleChoiceItems(labels, selected) { _, which ->
                         selected = which
+                        dialog.setMessage(summary(modes[selected]).ifBlank { translate("No supported audio tracks were found.") })
                         dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled =
                             preview.candidates[modes[selected]].orEmpty().isNotEmpty()
                     }
