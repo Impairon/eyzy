@@ -234,12 +234,12 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    override fun onCreate(b: Bundle?) {
-        super.onCreate(b)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
         instance = this
         installCrashLogger()
-        currentPage = b?.getInt(STATE_PAGE, 0)?.coerceIn(0, 5) ?: 0
-        savedScrollY = b?.getInt(STATE_SCROLL_Y, 0)?.coerceAtLeast(0) ?: 0
+        currentPage = savedInstanceState?.getInt(STATE_PAGE, 0)?.coerceIn(0, 5) ?: 0
+        savedScrollY = savedInstanceState?.getInt(STATE_SCROLL_Y, 0)?.coerceAtLeast(0) ?: 0
         window.statusBarColor = backgroundColor
         window.navigationBarColor = backgroundColor
         showShell()
@@ -298,6 +298,7 @@ class MainActivity : FragmentActivity() {
         super.onStop()
     }
 
+    @Deprecated("Deprecated in Android")
     @Suppress("DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -736,6 +737,7 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    @Deprecated("Deprecated in Android")
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
         if (menu.visibility == View.VISIBLE) {
@@ -1779,7 +1781,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun confirmDeleteAudioBook(bookId: String) {
-        val book = AudioBookRepository.load(this, bookId) ?: return
+        if (AudioBookRepository.load(this, bookId) == null) return
         AlertDialog.Builder(this)
             .setTitle(translate("Delete book"))
             .setMessage(translate("Remove this book from your library? Your original audio files will stay where they are."))
@@ -2930,8 +2932,8 @@ class MainActivity : FragmentActivity() {
         }.getOrDefault(value)
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, results: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, results)
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == LOCATION_REQUEST && hasLocationPermission()) showPrayers()
     }
 
