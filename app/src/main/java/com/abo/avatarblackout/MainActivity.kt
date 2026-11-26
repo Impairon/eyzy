@@ -109,6 +109,7 @@ class MainActivity : FragmentActivity() {
     private val booksPositionState = mutableStateOf(0L)
     private val booksDurationState = mutableStateOf(0L)
     private val booksPlayingState = mutableStateOf(false)
+    private val booksTrackIndexState = mutableStateOf(0)
     private var selectedAudioBookId: String? = null
     private var audioBookSearchQuery = ""
     private var sleepTimerEndAt = 0L
@@ -1144,12 +1145,18 @@ class MainActivity : FragmentActivity() {
         booksDurationState.value = controller?.duration
             ?.takeIf { it > 0L && it != androidx.media3.common.C.TIME_UNSET } ?: 0L
         booksPlayingState.value = controller?.isPlaying == true
+        booksTrackIndexState.value = controller?.currentMediaItemIndex?.takeIf { it >= 0 }
+            ?: playerBook?.currentTrackIndex ?: 0
         compose.setContent {
+            val liveTrackIndex = booksTrackIndexState.value
+            val livePlayerBook = playerBook?.copy(
+                currentTrackIndex = liveTrackIndex.coerceIn(0, playerBook.tracks.lastIndex)
+            )
             VoiceBooksScreen(
                 books = AudioBookRepository.all(this),
                 activeBookId = AudioBookRepository.activeBookId(this),
                 searchQuery = audioBookSearchQuery,
-                playerBook = playerBook,
+                playerBook = livePlayerBook,
                 playing = booksPlayingState.value,
                 positionMs = booksPositionState.value,
                 durationMs = booksDurationState.value,
@@ -1422,6 +1429,7 @@ class MainActivity : FragmentActivity() {
         booksPositionState.value = position
         booksDurationState.value = duration.takeIf { it > 0L && it != androidx.media3.common.C.TIME_UNSET } ?: 0L
         booksPlayingState.value = controller?.isPlaying == true
+        booksTrackIndexState.value = controller?.currentMediaItemIndex?.takeIf { it >= 0 } ?: 0
     }
 
     private fun selectedBookPlayerVisible(): Boolean = selectedAudioBookId != null && quranNowPlayingText != null
