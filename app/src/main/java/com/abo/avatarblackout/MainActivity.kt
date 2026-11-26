@@ -119,6 +119,7 @@ class MainActivity : FragmentActivity() {
     private var sleepTimerEndAt = 0L
     private val sleepTimerHandler = Handler(Looper.getMainLooper())
     private var audioImportStatusText: TextView? = null
+    private var returningFromAudioPicker = false
     private var lastTimelineSummaryRefreshAt = 0L
     private val quranProgressHandler = Handler(Looper.getMainLooper())
     private val quranProgressTicker = object : Runnable {
@@ -293,7 +294,10 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::content.isInitialized) {
+        if (returningFromAudioPicker) {
+            returningFromAudioPicker = false
+            // Keep the current Add Content screen after the document picker closes.
+        } else if (::content.isInitialized) {
             openPage(currentPage, preserveScroll = true, restoreScrollY = savedScrollY)
         } else {
             registerSensors()
@@ -1013,7 +1017,9 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun navigate(step: Int) {
-        openPage((currentPage + step).mod(6))
+        // Settings is intentionally excluded from swipe navigation; open it only via the gear.
+        val swipePages = 5
+        openPage((currentPage + step).mod(swipePages))
     }
 
     private fun toggleMenu() {
@@ -1533,8 +1539,10 @@ class MainActivity : FragmentActivity() {
             type = "audio/*"
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
         }
+        returningFromAudioPicker = true
         runCatching { startActivityForResult(intent, AUDIO_BOOK_FILE_REQUEST) }
             .onFailure {
+                returningFromAudioPicker = false
                 Toast.makeText(this, translate("Could not open the audio picker."), Toast.LENGTH_LONG).show()
             }
     }
@@ -1605,8 +1613,10 @@ class MainActivity : FragmentActivity() {
                     Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
             )
         }
+        returningFromAudioPicker = true
         runCatching { startActivityForResult(intent, AUDIO_BOOK_FOLDER_REQUEST) }
             .onFailure {
+                returningFromAudioPicker = false
                 Toast.makeText(this, translate("Could not open the folder picker."), Toast.LENGTH_LONG).show()
             }
     }
