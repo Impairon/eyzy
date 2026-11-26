@@ -457,7 +457,14 @@ private fun VoiceBookRow(
     ) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                BookCover(book.name, book.coverPath, Modifier.padding(8.dp).size(76.dp), loadEmbeddedArtwork = false, maxDecodeDimension = 320)
+                BookCover(
+                    book.name,
+                    book.coverPath,
+                    Modifier.padding(8.dp).size(76.dp),
+                    audioUri = book.currentTrack?.path,
+                    loadEmbeddedArtwork = true,
+                    maxDecodeDimension = 320,
+                )
                 Column(
                     Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 8.dp),
                 ) {
