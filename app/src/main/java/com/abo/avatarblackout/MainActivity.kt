@@ -305,9 +305,7 @@ class MainActivity : FragmentActivity() {
             return
         }
 
-        if (requestCode == AUDIO_BOOK_FILE_REQUEST ||
-            requestCode == AUDIO_BOOK_FOLDER_REQUEST
-        ) {
+        if (requestCode == AUDIO_BOOK_FOLDER_REQUEST) {
             if (resultCode != RESULT_OK) return
             val uri = data?.data ?: return
             runCatching {
@@ -1096,6 +1094,12 @@ class MainActivity : FragmentActivity() {
         selectedAudioBookId = null
         pageTitle.text = translate("Books")
         content.removeAllViews()
+        quranNowPlayingText = null
+        quranStatusText = null
+        quranSeekBar = null
+        quranPositionText = null
+        quranDurationText = null
+        quranPlayPauseButton = null
 
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         header.addView(TextView(this).apply {
@@ -1387,7 +1391,8 @@ class MainActivity : FragmentActivity() {
             item != null -> translate("Paused")
             else -> translate("Choose a reciter to begin streaming.")
         }
-        quranStatusText?.text = if (selectedBookPlayerVisible()) playbackState else listOf(timelineLabel, playbackState).filter { it.isNotBlank() }.joinToString(" · ")
+        val timerLabel = if (sleepTimerEndAt > System.currentTimeMillis()) translate("Sleep timer active") else ""
+        quranStatusText?.text = if (selectedBookPlayerVisible()) listOf(playbackState, timerLabel).filter { it.isNotBlank() }.joinToString(" · ") else listOf(timelineLabel, playbackState).filter { it.isNotBlank() }.joinToString(" · ")
         updateQuranTimelineSummaries()
     }
 
@@ -1405,25 +1410,6 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    private fun showNewAudioBookSourceDialog() {
-        val choices = arrayOf(
-            translate("Choose a folder"),
-            translate("Choose a file or archive"),
-            translate("Online link")
-        )
-        AlertDialog.Builder(this)
-            .setTitle(translate("Choose book source"))
-            .setItems(choices) { _, index ->
-                when (index) {
-                    0 -> openAudioBookFolderPicker()
-                    1 -> openAudioBookFilePicker()
-                    2 -> showOnlineAudioLinkDialog()
-                }
-            }
-            .setNegativeButton(translate("Cancel"), null)
-            .show()
-    }
-
     private fun openAudioBookFolderPicker() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
             addFlags(
@@ -1432,53 +1418,6 @@ class MainActivity : FragmentActivity() {
             )
         }
         startActivityForResult(intent, AUDIO_BOOK_FOLDER_REQUEST)
-    }
-
-    private fun displayNameForUri(uri: Uri): String {
-        contentResolver.query(
-            uri,
-            arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
-            null,
-            null,
-            null
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val column = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                if (column >= 0) return cursor.getString(column).orEmpty()
-            }
-        }
-        return uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':').orEmpty()
-    }
-
-    private fun askAudioBookName(sourceType: String, sourceValue: String, suggestedName: String) {
-        val nameInput = EditText(this).apply {
-            hint = translate("Book name")
-            setText(suggestedName)
-            setTextColor(Color.WHITE)
-            setHintTextColor(secondary)
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or
-                android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            background = outlined(panelRaised, border, 12)
-        }
-        val wrapper = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(8), dp(20), 0)
-            addView(nameInput, LinearLayout.LayoutParams(-1, dp(54)))
-        }
-        AlertDialog.Builder(this)
-            .setTitle(translate("Name this book"))
-            .setView(wrapper)
-            .setPositiveButton(translate("Continue")) { _, _ ->
-                val bookName = nameInput.text.toString().trim()
-                if (bookName.isBlank()) {
-                    Toast.makeText(this, translate("Enter a book name."), Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-                enqueueAudioBookImport(sourceType, sourceValue, bookName)
-            }
-            .setNegativeButton(translate("Cancel"), null)
-            .show()
     }
 
     private fun enqueueAudioBookImport(sourceType: String, sourceValue: String, bookName: String) {
@@ -3124,7 +3063,6 @@ class MainActivity : FragmentActivity() {
         private const val STATE_PAGE = "swizy_current_page"
         private const val STATE_SCROLL_Y = "swizy_scroll_y"
         private const val USER_CONTENT_TAG = "swizy_user_content"
-        private const val AUDIO_BOOK_FILE_REQUEST = 1010
         private const val AUDIO_BOOK_FOLDER_REQUEST = 1011
         private const val AUDIO_BOOK_IMPORT_TAG = "swizy_audio_book_import"
     }
