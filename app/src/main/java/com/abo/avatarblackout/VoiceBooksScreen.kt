@@ -81,6 +81,10 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import android.os.Build
 import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
+import android.net.Uri
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -404,7 +408,7 @@ private fun VoiceBookRow(
     ) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                BookCover(book.name, book.coverPath, Modifier.padding(8.dp).size(76.dp))
+                BookCover(book.name, book.coverPath, Modifier.padding(8.dp).size(76.dp), book.currentTrack?.path)
                 Column(
                     Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 8.dp),
                 ) {
@@ -465,6 +469,7 @@ private fun BookPlayView(
     val sliderInteraction = remember(book.id) { MutableInteractionSource() }
     val isDragging by sliderInteraction.collectIsDraggedAsState()
     val track = book.currentTrack
+    val chapterListState = rememberLazyListState()
     Scaffold(
         topBar = {
             LargeTopAppBar(
@@ -495,7 +500,7 @@ private fun BookPlayView(
             Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            BookCover(book.name, book.coverPath, Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp).clip(RoundedCornerShape(8.dp)))
+            BookCover(book.name, book.coverPath, Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp).clip(RoundedCornerShape(8.dp)), track?.path)
             if (track != null) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 8.dp),
@@ -585,13 +590,16 @@ private fun BookPlayView(
             Spacer(Modifier.height(24.dp))
         }
     }
-    if (showChapters) {
-        val chapterListState = rememberLazyListState()
-        LaunchedEffect(showChapters, book.currentTrackIndex) {
-            if (showChapters && book.tracks.isNotEmpty()) {
-                chapterListState.animateScrollToItem(book.currentTrackIndex.coerceIn(0, book.tracks.lastIndex))
-            }
+    LaunchedEffect(showChapters, book.currentTrackIndex) {
+        if (showChapters && book.tracks.isNotEmpty()) {
+            chapterListState.animateScrollToItem(
+                book.currentTrackIndex.coerceIn(0, book.tracks.lastIndex),
+                scrollOffset = -24,
+                animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+            )
         }
+    }
+    if (showChapters) {
         AlertDialog(
             onDismissRequest = { showChapters = false },
             title = { Text("Chapters") },
@@ -616,32 +624,39 @@ private fun BookPlayView(
 }
 
 @Composable
-private fun BookCover(title: String, coverPath: String?, modifier: Modifier = Modifier) {
-    // Covers use a stable per-book path and can be replaced during a rescan.
-    // Include the file signature so Compose reloads the bitmap when that file changes.
+private fun BookCover(title: String, coverPath: String?, modifier: Modifier = Modifier, audioUri: String? = null) {
+    val context = LocalContext.current
     val coverSignature = remember(coverPath) {
-        coverPath?.let { path ->
-            runCatching {
-                val file = java.io.File(path)
-                "${file.lastModified()}:${file.length()}"
-            }.getOrDefault("")
-        }.orEmpty()
+        coverPath?.let { path -> runCatching {
+            val file = java.io.File(path)
+            "${file.lastModified()}:${file.length()}"
+        }.getOrDefault("") }.orEmpty()
     }
-    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, coverPath, coverSignature) {
+    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, coverPath, coverSignature, audioUri) {
         value = withContext(Dispatchers.IO) {
-            coverPath?.let { path ->
-                runCatching {
-                    val file = java.io.File(path)
-                    if (!file.isFile || file.length() <= 0L) return@runCatching null
+            val saved = coverPath?.let { path -> runCatching {
+                val file = java.io.File(path)
+                if (!file.isFile || file.length() <= 0L) return@runCatching null
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(path, bounds)
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+                var sample = 1
+                while (bounds.outWidth / sample > 1024 || bounds.outHeight / sample > 1024) sample *= 2
+                BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
+            }.getOrNull() }
+            saved ?: audioUri?.let { uriString -> runCatching {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(context, Uri.parse(uriString))
+                    val bytes = retriever.embeddedPicture ?: return@runCatching null
                     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    BitmapFactory.decodeFile(path, bounds)
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
                     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
                     var sample = 1
                     while (bounds.outWidth / sample > 1024 || bounds.outHeight / sample > 1024) sample *= 2
-                    val options = BitmapFactory.Options().apply { inSampleSize = sample }
-                    BitmapFactory.decodeFile(path, options)?.asImageBitmap()
-                }.getOrNull()
-            }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
+                } finally { runCatching { retriever.release() } }
+            }.getOrNull() }
         }
     }
     Box(
@@ -655,7 +670,6 @@ private fun BookCover(title: String, coverPath: String?, modifier: Modifier = Mo
         }
     }
 }
-
 private fun formatVoiceDuration(milliseconds: Long): String {
     val seconds = milliseconds.coerceAtLeast(0L) / 1000L
     val hours = seconds / 3600L
