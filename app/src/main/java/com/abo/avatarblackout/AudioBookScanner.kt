@@ -143,9 +143,7 @@ internal object AudioBookScanner {
         directory.mkdirs()
 
         if (bookFolder.isDirectory) {
-            val localCover = bookFolder.children.firstOrNull { child ->
-                child.isFile && child.mimeType.orEmpty().startsWith("image/")
-            }
+            val localCover = bookFolder.imageFilesInOrder().firstOrNull()
             if (localCover != null) {
                 val copied = runCatching {
                     context.contentResolver.openInputStream(localCover.uri)?.use { input ->
@@ -158,7 +156,10 @@ internal object AudioBookScanner {
             }
         }
 
-        for (file in files.take(5)) {
+        // Artwork is not guaranteed to be embedded in the first chapter. Keep
+        // checking tracks until we find a usable image instead of giving up
+        // after an arbitrary first-five limit.
+        for (file in files) {
             val retriever = MediaMetadataRetriever()
             try {
                 retriever.setDataSource(context, file.uri)
@@ -242,6 +243,20 @@ internal object AudioBookScanner {
         return candidates.filter { it.first.audioFileCount() > 0 }.map { (file, author) ->
             AudioBookCandidate(file, file.nameWithoutExtension(), author)
         }
+    }
+
+    private fun CachedAudioDocument.imageFilesInOrder(): List<CachedAudioDocument> =
+        if (!isDirectory) {
+            if (isImageFile()) listOf(this) else emptyList()
+        } else {
+            children.sortedBy { naturalKey(it.name.orEmpty()) }.flatMap { it.imageFilesInOrder() }
+        }
+
+    private fun CachedAudioDocument.isImageFile(): Boolean {
+        if (!isFile) return false
+        val ext = name.orEmpty().substringAfterLast('.', "").lowercase(Locale.ROOT)
+        return mimeType.orEmpty().startsWith("image/") ||
+            ext in setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif")
     }
 
     private fun CachedAudioDocument.audioFolders(): List<CachedAudioDocument> =
