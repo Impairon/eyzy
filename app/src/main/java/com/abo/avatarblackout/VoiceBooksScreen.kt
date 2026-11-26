@@ -112,6 +112,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import android.os.Build
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
@@ -706,6 +708,7 @@ private fun VoiceWavySeekBar(
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
+    val hostView = LocalView.current
     val phase by rememberInfiniteTransition(label = "seekWave")
         .animateFloat(
             initialValue = 0f,
@@ -722,7 +725,16 @@ private fun VoiceWavySeekBar(
         label = "seekWaveAmplitude",
     )
     Canvas(
-        modifier = modifier.height(48.dp)
+        modifier = modifier.height(64.dp)
+            .pointerInteropFilter { event ->
+                // Keep the app-level tab pager from stealing a horizontal seek gesture.
+                when (event.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN -> hostView.parent?.requestDisallowInterceptTouchEvent(true)
+                    android.view.MotionEvent.ACTION_UP,
+                    android.view.MotionEvent.ACTION_CANCEL -> hostView.parent?.requestDisallowInterceptTouchEvent(false)
+                }
+                false
+            }
             .pointerInput(Unit) {
                 detectTapGestures { point ->
                     onSeek((point.x / size.width).coerceIn(0f, 1f))
@@ -749,8 +761,8 @@ private fun VoiceWavySeekBar(
         val fraction = progress.coerceIn(0f, 1f)
         val centerY = size.height / 2f
         val thumbX = size.width * fraction
-        val stroke = 5.dp.toPx()
-        val gap = 5.dp.toPx()
+        val stroke = 6.dp.toPx()
+        val gap = 7.dp.toPx()
         val wavelength = 44.dp.toPx()
         val waveAmplitude = 1.75.dp.toPx() * amplitude
         val activeEnd = thumbX - 3.dp.toPx() - gap
@@ -780,8 +792,15 @@ private fun VoiceWavySeekBar(
                 cap = StrokeCap.Round,
             )
         }
-        val thumbWidth = if (dragging) 3.dp.toPx() else 5.dp.toPx()
-        val thumbHeight = if (dragging) 40.dp.toPx() else 28.dp.toPx()
+        val thumbWidth = if (dragging) 7.dp.toPx() else 6.dp.toPx()
+        val thumbHeight = if (dragging) 44.dp.toPx() else 32.dp.toPx()
+        if (dragging) {
+            drawCircle(
+                color = colors.primary.copy(alpha = 0.16f),
+                radius = 15.dp.toPx(),
+                center = Offset(thumbX, centerY),
+            )
+        }
         drawRoundRect(
             color = colors.primary,
             topLeft = Offset(thumbX - thumbWidth / 2f, centerY - thumbHeight / 2f),
