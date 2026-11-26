@@ -97,7 +97,7 @@ object UiText {
         "Turn on the swizy accessibility service first" to "فعّل خدمة إمكانية الوصول الخاصة بسويزي أولًا",
         "1. Go to Settings and search for Text to speech\n2. Choose a language you like\n3. For voices, go to the favorite engine and click the settings or gear tab on the side and choose Install voice data\n4. Choose the language and voice\n5. Reboot the phone & enjoy" to "١. افتح الإعدادات وابحث عن تحويل النص إلى كلام\n٢. اختر اللغة التي تفضلها\n٣. افتح إعدادات محرّك النطق واختر تثبيت بيانات الصوت\n٤. اختر اللغة والصوت المناسبين\n٥. أعد تشغيل الهاتف واستمتع.",
         "Backup failed" to "فشل النسخ الاحتياطي",
-        "Updating prayer times…" to "جارٍ تحديث مواقيت الصلاة…"
+        "Updating prayer times…" to "جارٍ تحديث مواقيت الصلاة…",
         "Quran" to "القرآن",
         "Main Quran" to "القرآن كاملًا",
         "Side listening" to "استماع جانبي",
