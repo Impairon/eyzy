@@ -160,15 +160,17 @@ internal object AudioBookScanner {
     }
 
     private fun CachedAudioDocument.books(mode: AudioBookFolderMode): List<AudioBookCandidate> {
-        val candidates = when (mode) {
-            AudioBookFolderMode.SingleBook -> listOf(AudioBookCandidate(uri, nameWithoutExtension()))
-            AudioBookFolderMode.Audiobooks -> children.map { AudioBookCandidate(it.uri, it.nameWithoutExtension()) }
+        val candidates: List<Pair<CachedAudioDocument, String?>> = when (mode) {
+            AudioBookFolderMode.SingleBook -> listOf(this to null)
+            AudioBookFolderMode.Audiobooks -> children.map { it to null }
             AudioBookFolderMode.Authors -> children.flatMap { author ->
-                if (author.isFile) listOf(AudioBookCandidate(author.uri, author.nameWithoutExtension()))
-                else author.children.map { AudioBookCandidate(it.uri, it.nameWithoutExtension(), author.nameWithoutExtension()) }
+                if (author.isFile) listOf(author to null)
+                else author.children.map { it to author.nameWithoutExtension() }
             }
         }
-        return candidates.filter { CachedAudioDocument(context, it.uri).audioFileCount() > 0 }
+        return candidates.filter { it.first.audioFileCount() > 0 }.map { (file, author) ->
+            AudioBookCandidate(file.uri, file.nameWithoutExtension(), author)
+        }
     }
 
     private fun CachedAudioDocument.audioFolders(): List<CachedAudioDocument> =
