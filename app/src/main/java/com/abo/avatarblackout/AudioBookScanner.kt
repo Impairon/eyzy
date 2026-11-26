@@ -55,7 +55,7 @@ internal object AudioBookScanner {
         }
     }
 
-    fun import(
+    fun addBooks(
         context: Context,
         preview: AudioBookFolderPreview,
         mode: AudioBookFolderMode,
