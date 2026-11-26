@@ -114,11 +114,16 @@ internal object QuranAudioRepository {
 
     fun activeTimeline(context: Context): String =
         prefs(context).getString(ACTIVE_KEY, MAIN_TIMELINE)
-            ?.takeIf { it == MAIN_TIMELINE || it == SIDE_TIMELINE }
-            ?: MAIN_TIMELINE
+            ?.takeIf {
+                it == MAIN_TIMELINE || it == SIDE_TIMELINE ||
+                    (it.startsWith("book:") &&
+                        it.removePrefix("book:").matches(Regex("[A-Za-z0-9-]{1,80}")))
+            } ?: MAIN_TIMELINE
 
     fun setActiveTimeline(context: Context, id: String) {
-        if (id == MAIN_TIMELINE || id == SIDE_TIMELINE) {
+        val validBook = id.startsWith("book:") &&
+            id.removePrefix("book:").matches(Regex("[A-Za-z0-9-]{1,80}"))
+        if (id == MAIN_TIMELINE || id == SIDE_TIMELINE || validBook) {
             prefs(context).edit().putString(ACTIVE_KEY, id).apply()
         }
     }
