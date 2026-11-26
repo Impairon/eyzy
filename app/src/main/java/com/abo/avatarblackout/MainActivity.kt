@@ -60,6 +60,7 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import androidx.documentfile.provider.DocumentFile
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -105,6 +106,8 @@ class MainActivity : FragmentActivity() {
     private var sideTimelineSummary: TextView? = null
     private var quranSeeking = false
     private var audioBookListContainer: LinearLayout? = null
+    private var sleepTimerEndAt = 0L
+    private val sleepTimerHandler = Handler(Looper.getMainLooper())
     private var audioImportStatusText: TextView? = null
     private var audioImportObservationAttached = false
     private val quranProgressHandler = Handler(Looper.getMainLooper())
@@ -264,6 +267,7 @@ class MainActivity : FragmentActivity() {
         }
         activeLocationListener = null
         quranProgressHandler.removeCallbacks(quranProgressTicker)
+        sleepTimerHandler.removeCallbacksAndMessages(null)
         quranController?.removeListener(quranPlayerListener)
         quranControllerFuture?.let { MediaController.releaseFuture(it) }
         quranControllerFuture = null
@@ -315,9 +319,9 @@ class MainActivity : FragmentActivity() {
             } else {
                 AudioBookImportWorker.TYPE_FILE
             }
-            val displayName = if (isFolder) "" else displayNameForUri(uri)
-                .substringBeforeLast('.', displayNameForUri(uri))
-            askAudioBookName(sourceType, uri.toString(), displayName)
+            val displayName = DocumentFile.fromTreeUri(this, uri)?.name
+                ?.takeIf { it.isNotBlank() } ?: translate("My books")
+            enqueueAudioBookImport(sourceType, uri.toString(), displayName)
             return
         }
 
@@ -1366,10 +1370,11 @@ class MainActivity : FragmentActivity() {
             item != null -> translate("Paused")
             else -> translate("Choose a reciter to begin streaming.")
         }
-        quranStatusText?.text = listOf(timelineLabel, playbackState)
-            .filter { it.isNotBlank() }.joinToString(" · ")
+        quranStatusText?.text = if (selectedBookPlayerVisible()) playbackState else listOf(timelineLabel, playbackState).filter { it.isNotBlank() }.joinToString(" · ")
         updateQuranTimelineSummaries()
     }
+
+    private fun selectedBookPlayerVisible(): Boolean = selectedAudioBookId != null && quranNowPlayingText != null
 
     private fun formatQuranDuration(milliseconds: Long): String {
         val totalSeconds = milliseconds.coerceAtLeast(0L) / 1000L
@@ -1873,8 +1878,153 @@ class MainActivity : FragmentActivity() {
         controller.setMediaItems(items, startIndex, startPosition.coerceAtLeast(0L))
         controller.prepare()
         controller.play()
+        showAudioBookPlayer(bookId)
+    }
+
+    private fun showAudioBookPlayer(bookId: String) {
+        val book = AudioBookRepository.load(this, bookId) ?: return
+        pageTitle.text = book.name
+        content.removeAllViews()
+
+        content.addView(actionButton("Back to books").apply {
+            setOnClickListener { showQuranAudio() }
+        })
+        val cover = TextView(this).apply {
+            text = "♫"
+            textSize = 76f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = rounded(panelRaised, 24)
+        }
+        content.addView(cover, LinearLayout.LayoutParams(-1, dp(220)).apply {
+            setMargins(dp(16), dp(20), dp(16), dp(18))
+        })
+        quranNowPlayingText = TextView(this).apply {
+            text = book.currentTrack?.title.orEmpty()
+            textSize = 20f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            tag = USER_CONTENT_TAG
+        }
+        content.addView(quranNowPlayingText)
+        quranStatusText = TextView(this).apply {
+            text = book.name
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(secondary)
+            setPadding(0, dp(4), 0, dp(10))
+            tag = USER_CONTENT_TAG
+        }
+        content.addView(quranStatusText)
+
+        quranSeekBar = SeekBar(this).apply {
+            max = 1000
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onStartTrackingTouch(seekBar: SeekBar?) { quranSeeking = true }
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                    val duration = quranController?.duration ?: 0L
+                    if (duration > 0L) quranController?.seekTo(duration * (seekBar?.progress ?: 0) / 1000L)
+                    quranSeeking = false
+                }
+                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) = Unit
+            })
+        }
+        content.addView(quranSeekBar)
+        val times = LinearLayout(this)
+        quranPositionText = TextView(this).apply { textSize = 12f; setTextColor(secondary) }
+        quranDurationText = TextView(this).apply { textSize = 12f; setTextColor(secondary); gravity = Gravity.END }
+        times.addView(quranPositionText, LinearLayout.LayoutParams(0, -2, 1f))
+        times.addView(quranDurationText, LinearLayout.LayoutParams(0, -2, 1f))
+        content.addView(times)
+
+        val transport = LinearLayout(this).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(16), 0, dp(14))
+        }
+        transport.addView(actionButton("−15").apply {
+            setOnClickListener { quranController?.seekTo((quranController?.currentPosition ?: 0L) - 15_000L) }
+        }, LinearLayout.LayoutParams(0, dp(54), 1f))
+        quranPlayPauseButton = actionButton("Play").apply {
+            setBackgroundColor(purple)
+            setOnClickListener { toggleQuranPlayback() }
+        }
+        transport.addView(quranPlayPauseButton, LinearLayout.LayoutParams(0, dp(54), 1.3f))
+        transport.addView(actionButton("+30").apply {
+            setOnClickListener { quranController?.seekTo((quranController?.currentPosition ?: 0L) + 30_000L) }
+        }, LinearLayout.LayoutParams(0, dp(54), 1f))
+        content.addView(transport)
+
+        content.addView(actionButton("Chapters").apply {
+            setOnClickListener {
+                val latest = AudioBookRepository.load(this@MainActivity, bookId) ?: return@setOnClickListener
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle(translate("Chapters"))
+                    .setSingleChoiceItems(latest.tracks.map { it.title }.toTypedArray(),
+                        quranController?.currentMediaItemIndex ?: latest.currentTrackIndex) { dialog, index ->
+                        quranController?.seekTo(index, 0L)
+                        dialog.dismiss()
+                    }
+                    .setNegativeButton(translate("Close"), null)
+                    .show()
+            }
+        })
+        val options = LinearLayout(this).apply { gravity = Gravity.CENTER }
+        options.addView(actionButton("Bookmark").apply {
+            setOnClickListener { addAudioBookBookmark(bookId) }
+        }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        options.addView(actionButton("Bookmarks").apply {
+            setOnClickListener { showAudioBookBookmarks(bookId) }
+        }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        content.addView(options)
+        val playbackOptions = LinearLayout(this).apply { gravity = Gravity.CENTER }
+        playbackOptions.addView(actionButton("Speed").apply {
+            setOnClickListener { showAudioBookSpeedDialog() }
+        }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        playbackOptions.addView(actionButton("Sleep timer").apply {
+            setOnClickListener { showAudioBookSleepTimer() }
+        }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        content.addView(playbackOptions)
         updateQuranPlaybackUi()
-        renderAudioBookLibrary()
+    }
+
+    private fun showAudioBookSpeedDialog() {
+        val speeds = arrayOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+        val labels = speeds.map { "${it}×" }.toTypedArray()
+        val prefs = getSharedPreferences("avb", MODE_PRIVATE)
+        val current = prefs.getFloat("audio_book_speed", 1f)
+        val selected = speeds.indices.minByOrNull { kotlin.math.abs(speeds[it] - current) } ?: 1
+        AlertDialog.Builder(this)
+            .setTitle(translate("Playback speed"))
+            .setSingleChoiceItems(labels, selected) { dialog, which ->
+                prefs.edit().putFloat("audio_book_speed", speeds[which]).apply()
+                quranController?.setPlaybackSpeed(speeds[which])
+                dialog.dismiss()
+            }
+            .setNegativeButton(translate("Cancel"), null)
+            .show()
+    }
+
+    private fun showAudioBookSleepTimer() {
+        val choices = arrayOf("5 min", "15 min", "30 min", "45 min", translate("End of chapter"), translate("Turn off"))
+        AlertDialog.Builder(this)
+            .setTitle(translate("Sleep timer"))
+            .setItems(choices) { _, which ->
+                sleepTimerHandler.removeCallbacksAndMessages(null)
+                sleepTimerEndAt = 0L
+                if (which == 4) {
+                    val controller = quranController ?: return@setItems
+                    val remaining = (controller.duration - controller.currentPosition).coerceAtLeast(0L)
+                    sleepTimerEndAt = System.currentTimeMillis() + remaining
+                    sleepTimerHandler.postDelayed({ controller.pause(); sleepTimerEndAt = 0L }, remaining)
+                } else if (which != 5) {
+                    val minutes = listOf(5L, 15L, 30L, 45L)[which]
+                    sleepTimerEndAt = System.currentTimeMillis() + minutes * 60_000L
+                    sleepTimerHandler.postDelayed({ quranController?.pause(); sleepTimerEndAt = 0L }, minutes * 60_000L)
+                }
+                updateQuranPlaybackUi()
+            }
+            .show()
     }
 
     private fun showQibla() {
