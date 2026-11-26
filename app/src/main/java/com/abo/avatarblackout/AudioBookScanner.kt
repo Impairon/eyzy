@@ -66,7 +66,7 @@ internal object AudioBookScanner {
             val result = runCatching {
                 val candidates = preview.candidates[mode].orEmpty()
                 val bookLimit = Semaphore(5)
-                coroutineScope {
+                val books = coroutineScope {
                     candidates.map { candidate ->
                         async {
                             bookLimit.withPermit {
@@ -75,6 +75,8 @@ internal object AudioBookScanner {
                         }
                     }.mapNotNull { it.await() }
                 }
+                books.forEach { AudioBookRepository.save(context.applicationContext, it) }
+                books
             }
             withContext(Dispatchers.Main) { callback(result) }
         }
@@ -106,7 +108,6 @@ internal object AudioBookScanner {
             name = candidate.name,
             tracks = sorted
         )
-        AudioBookRepository.save(context, book)
         return book
     }
 
