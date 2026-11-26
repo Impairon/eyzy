@@ -84,6 +84,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import android.os.Build
 import android.graphics.BitmapFactory
@@ -566,7 +568,11 @@ private fun BookPlayView(
             ) {
                 IconButton(onClick = onRewind, modifier = Modifier.size(56.dp)) {
                     Box(contentAlignment = Alignment.Center) {
-                        CircularSkipArrow(pointsLeft = false, modifier = Modifier.size(40.dp))
+                        Icon(
+                            painter = painterResource(R.drawable.ic_voice_replay),
+                            contentDescription = "Rewind",
+                            modifier = Modifier.size(40.dp),
+                        )
                         Text(
                             rewindSeconds.toString(),
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
@@ -597,7 +603,11 @@ private fun BookPlayView(
                 Spacer(Modifier.size(16.dp))
                 IconButton(onClick = onForward, modifier = Modifier.size(56.dp)) {
                     Box(contentAlignment = Alignment.Center) {
-                        CircularSkipArrow(pointsLeft = true, modifier = Modifier.size(40.dp))
+                        Icon(
+                            painter = painterResource(R.drawable.ic_voice_replay),
+                            contentDescription = "Forward",
+                            modifier = Modifier.size(40.dp).graphicsLayer { scaleX = -1f },
+                        )
                         Text(
                             forwardSeconds.toString(),
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
@@ -651,36 +661,6 @@ private fun BookPlayView(
             },
             confirmButton = { TextButton(onClick = { showChapters = false }) { Text("Close") } },
         )
-    }
-}
-
-@Composable
-private fun CircularSkipArrow(pointsLeft: Boolean, modifier: Modifier = Modifier) {
-    val tint = MaterialTheme.colorScheme.onSurface
-    Canvas(modifier = modifier) {
-        val strokeWidth = 2.6.dp.toPx()
-        val inset = strokeWidth * 1.5f
-        val arcSize = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
-        val arcTopLeft = androidx.compose.ui.geometry.Offset(inset, inset)
-        drawArc(
-            color = tint,
-            startAngle = if (pointsLeft) 135f else -45f,
-            sweepAngle = 270f,
-            useCenter = false,
-            topLeft = arcTopLeft,
-            size = arcSize,
-            style = Stroke(width = strokeWidth),
-        )
-        val centerY = size.height / 2f
-        val tipX = if (pointsLeft) inset else size.width - inset
-        val direction = if (pointsLeft) -1f else 1f
-        val arrow = Path().apply {
-            moveTo(tipX, centerY)
-            lineTo(tipX - direction * strokeWidth * 3.2f, centerY - strokeWidth * 2.2f)
-            lineTo(tipX - direction * strokeWidth * 3.2f, centerY + strokeWidth * 2.2f)
-            close()
-        }
-        drawPath(arrow, tint)
     }
 }
 
