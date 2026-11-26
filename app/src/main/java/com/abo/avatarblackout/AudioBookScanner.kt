@@ -18,6 +18,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import java.io.File
 
 internal enum class AudioBookFolderMode {
     SingleBook,
@@ -86,7 +87,8 @@ internal object AudioBookScanner {
                         currentTrackIndex = if (matchingIndex >= 0) matchingIndex else 0,
                         positionMs = if (matchingIndex >= 0) previous?.positionMs ?: 0L else 0L,
                         lastPlayedAt = previous?.lastPlayedAt ?: 0L,
-                        bookmarks = previous?.bookmarks.orEmpty().filter { it.trackIndex in book.tracks.indices }
+                        bookmarks = previous?.bookmarks.orEmpty().filter { it.trackIndex in book.tracks.indices },
+                        coverPath = book.coverPath ?: previous?.coverPath
                     )
                     AudioBookRepository.save(context.applicationContext, restored)
                 }
@@ -116,12 +118,44 @@ internal object AudioBookScanner {
         }.sortedWith(compareBy<AudioBookTrack> { it.discNumber.takeIf { n -> n > 0 } ?: Int.MAX_VALUE }
             .thenBy { it.trackNumber.takeIf { n -> n > 0 } ?: Int.MAX_VALUE }
             .thenBy { naturalKey(it.sourceName) })
+        val bookId = AudioBookRepository.idForUri(candidate.file.uri.toString())
+        val coverPath = extractEmbeddedCover(context, files, bookId)
         val book = AudioBook(
-            id = AudioBookRepository.idForUri(candidate.file.uri.toString()),
+            id = bookId,
             name = candidate.name,
-            tracks = sorted
+            tracks = sorted,
+            coverPath = coverPath
         )
         return book
+    }
+
+    // Voice's CoverScanner checks the first few chapters for embedded artwork.
+    // Keep the extracted image locally so the library and player can reuse it.
+    private fun extractEmbeddedCover(
+        context: Context,
+        files: List<CachedAudioDocument>,
+        bookId: String
+    ): String? {
+        val directory = File(context.filesDir, "audio_book_covers")
+        val destination = File(directory, "$bookId.jpg")
+        if (destination.isFile && destination.length() > 0L) return destination.absolutePath
+        directory.mkdirs()
+        for (file in files.take(5)) {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, file.uri)
+                val picture = retriever.embeddedPicture ?: continue
+                if (picture.isNotEmpty()) {
+                    destination.outputStream().use { it.write(picture) }
+                    if (destination.isFile && destination.length() > 0L) return destination.absolutePath
+                }
+            } catch (_: Exception) {
+                // Not every audio container has readable embedded artwork.
+            } finally {
+                runCatching { retriever.release() }
+            }
+        }
+        return null
     }
 
     private fun readTrack(context: Context, file: CachedAudioDocument): AudioBookTrack? {
