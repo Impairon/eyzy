@@ -8,6 +8,7 @@ import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.Context
+import android.content.ComponentName
 import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -58,6 +59,12 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
 
 class MainActivity : FragmentActivity() {
     // Swizy's violet identity: deep plum surfaces keep the accent vivid without glare.
@@ -71,9 +78,44 @@ class MainActivity : FragmentActivity() {
     private lateinit var menu: LinearLayout
     private lateinit var pageTitle: TextView
     private lateinit var root: FrameLayout
+    private lateinit var mainScrollView: ScrollView
+    private var savedScrollY = 0
     private lateinit var navigationBar: LinearLayout
     private val navigationItems = mutableListOf<Pair<Int, TextView>>()
     private var currentPage = 0
+    private var quranController: MediaController? = null
+    private var quranControllerFuture: ListenableFuture<MediaController>? = null
+    private var quranRecitations: List<QuranRecitation> = emptyList()
+    private var selectedQuranRecitation: QuranRecitation? = null
+    private var loadingQuranRecitations = false
+    private var quranReciterSpinner: Spinner? = null
+    private var quranSurahSpinner: Spinner? = null
+    private var quranStatusText: TextView? = null
+    private var quranNowPlayingText: TextView? = null
+    private var quranPlayPauseButton: Button? = null
+    private var quranSeekBar: SeekBar? = null
+    private var quranPositionText: TextView? = null
+    private var quranDurationText: TextView? = null
+    private var mainTimelineSummary: TextView? = null
+    private var sideTimelineSummary: TextView? = null
+    private var quranSeeking = false
+    private val quranProgressHandler = Handler(Looper.getMainLooper())
+    private val quranProgressTicker = object : Runnable {
+        override fun run() {
+            updateQuranPlaybackUi()
+            if (currentPage == 4) quranProgressHandler.postDelayed(this, 1_000L)
+        }
+    }
+    private val quranPlayerListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) = updateQuranPlaybackUi()
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = updateQuranPlaybackUi()
+        override fun onPlaybackStateChanged(playbackState: Int) = updateQuranPlaybackUi()
+        override fun onPositionDiscontinuity(
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int
+        ) = updateQuranPlaybackUi()
+    }
     private var prayerRequestInFlight = false
     private var prayerRequestId = 0L
     private var activeLocationListener: LocationListener? = null
