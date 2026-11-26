@@ -1546,10 +1546,7 @@ class MainActivity : FragmentActivity() {
                     val bookId = AudioBookRepository.idForUri(uri.toString())
                     val coverPath = runCatching {
                         retriever.embeddedPicture?.let { picture ->
-                            val directory = File(filesDir, "audio_book_covers")
-                            directory.mkdirs()
-                            File(directory, "$bookId.jpg").apply { writeBytes(picture) }
-                                .absolutePath.takeIf { File(it).length() > 0L }
+                            AudioBookScanner.storeCover(this, bookId, picture)
                         }
                     }.getOrNull()
                     val book = AudioBook(
