@@ -603,14 +603,24 @@ private fun BookPlayView(
             text = {
                 LazyColumn(state = chapterListState) {
                     itemsIndexed(book.tracks, key = { index, item -> "${book.id}:$index:${item.path}" }) { index, chapter ->
-                        Text(
-                            text = chapter.title,
-                            color = if (index == book.currentTrackIndex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.fillMaxWidth().clickable {
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
                                 onChapters(index)
                                 showChapters = false
-                            }.padding(vertical = 14.dp),
-                        )
+                            }.padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            BookCover(chapter.title, null, Modifier.size(48.dp), chapter.path)
+                            Text(
+                                text = chapter.title,
+                                color = if (index == book.currentTrackIndex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 2,
+                                modifier = Modifier.weight(1f).padding(start = 12.dp),
+                            )
+                            if (index == book.currentTrackIndex) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = "Currently playing", tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
                         HorizontalDivider()
                     }
                 }
