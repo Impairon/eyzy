@@ -2,6 +2,8 @@
 package com.abo.avatarblackout
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.database.Cursor
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -139,20 +141,17 @@ internal object AudioBookScanner {
     ): String? {
         val directory = File(context.filesDir, "audio_book_covers")
         val destination = File(directory, "$bookId.jpg")
-        if (destination.isFile && destination.length() > 0L) return destination.absolutePath
+        if (destination.isFile && isUsableCover(destination)) return destination.absolutePath
+        destination.delete()
         directory.mkdirs()
 
         if (bookFolder.isDirectory) {
-            val localCover = bookFolder.imageFilesInOrder().firstOrNull()
-            if (localCover != null) {
-                val copied = runCatching {
-                    context.contentResolver.openInputStream(localCover.uri)?.use { input ->
-                        destination.outputStream().use { output -> input.copyTo(output) }
-                    }
-                    destination.isFile && destination.length() > 0L
-                }.getOrDefault(false)
-                if (copied) return destination.absolutePath
-                destination.delete()
+            for (localCover in bookFolder.imageFilesInOrder()) {
+                val saved = runCatching {
+                    context.contentResolver.openInputStream(localCover.uri)?.use { it.readBytes() }
+                        ?.let { storeCover(context, bookId, it) }
+                }.getOrNull()
+                if (saved != null) return saved
             }
         }
 
@@ -165,8 +164,7 @@ internal object AudioBookScanner {
                 retriever.setDataSource(context, file.uri)
                 val picture = retriever.embeddedPicture ?: continue
                 if (picture.isNotEmpty()) {
-                    destination.outputStream().use { it.write(picture) }
-                    if (destination.isFile && destination.length() > 0L) return destination.absolutePath
+                    storeCover(context, bookId, picture)?.let { return it }
                 }
             } catch (_: Exception) {
                 // Some audio containers do not expose embedded artwork to Android.
@@ -176,6 +174,41 @@ internal object AudioBookScanner {
         }
         destination.delete()
         return null
+    }
+
+    internal fun storeCover(context: Context, bookId: String, bytes: ByteArray): String? {
+        if (bytes.isEmpty()) return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / sample > 1600 || bounds.outHeight / sample > 1600) sample *= 2
+        val bitmap = BitmapFactory.decodeByteArray(
+            bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample }
+        ) ?: return null
+        return try {
+            val directory = File(context.filesDir, "audio_book_covers")
+            if (!directory.exists() && !directory.mkdirs()) return null
+            val destination = File(directory, "$bookId.jpg")
+            val written = destination.outputStream().buffered().use { output ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 92, output)
+            }
+            if (written && destination.isFile && destination.length() > 0L) destination.absolutePath
+            else {
+                destination.delete()
+                null
+            }
+        } catch (_: Exception) {
+            null
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    private fun isUsableCover(file: File): Boolean {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        return bounds.outWidth > 0 && bounds.outHeight > 0
     }
 
     private fun readTrack(context: Context, file: CachedAudioDocument): AudioBookTrack? {
