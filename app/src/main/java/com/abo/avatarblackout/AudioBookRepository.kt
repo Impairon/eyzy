@@ -158,6 +158,13 @@ internal object AudioBookRepository {
         prefs(context).edit().putString(ACTIVE_BOOK, bookId).apply()
     }
 
+    fun setActive(context: Context, bookId: String) {
+        prefs(context).edit().putString(ACTIVE_BOOK, bookId).apply()
+    }
+
+    fun activeBookId(context: Context): String? =
+        prefs(context).getString(ACTIVE_BOOK, null)
+
     fun rename(context: Context, bookId: String, name: String) {
         val book = load(context, bookId) ?: return
         save(context, book.copy(name = name.trim().ifBlank { book.name }))
@@ -205,13 +212,12 @@ internal object AudioBookRepository {
             .remove("audio_book_$bookId")
             .putString(BOOK_IDS, JSONArray(ids).toString())
             .apply()
-        book?.tracks?.firstOrNull()?.path?.let { first ->
-            File(first).parentFile?.let { directory ->
-                if (directory.name == bookId && directory.parentFile?.name == "audio_books") {
-                    directory.deleteRecursively()
-                }
-            }
-        }
+        val root = File(
+            context.getExternalFilesDir(android.os.Environment.DIRECTORY_MUSIC)
+                ?: context.filesDir,
+            "audio_books"
+        )
+        File(root, bookId).deleteRecursively()
         if (prefs(context).getString(ACTIVE_BOOK, null) == bookId) {
             store.edit().remove(ACTIVE_BOOK).apply()
         }
