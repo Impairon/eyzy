@@ -150,7 +150,11 @@ internal class AudioBookImportWorker(
     }
 
     private fun safeFileName(value: String, fallback: Int): String =
-        value.replace(Regex("[\\\\/:*?\\"<>|]"), "_").trim().take(80).ifBlank { "Track $fallback" }
+        value.map { character ->
+            if (character == '/' || character == '\\' || character == ':' || character == '*' ||
+                character == '?' || character == '"' || character == '<' || character == '>' || character == '|'
+            ) '_' else character
+        }.joinToString("").trim().take(80).ifBlank { "Track $fallback" }
 
     private fun uniqueFile(directory: File, name: String): File {
         val base = name.substringBeforeLast('.', name)
