@@ -3,6 +3,12 @@
 package com.abo.avatarblackout
 
 import androidx.compose.foundation.Image
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.shape.CircleShape
 import android.util.LruCache
@@ -16,6 +22,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,6 +66,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -70,11 +80,15 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,7 +99,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalContext
 import android.os.Build
 import android.graphics.BitmapFactory
@@ -95,6 +112,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 /**
  * Compose port of Voice 8.2.4-2's BookOverview and BookPlayView screen structure.
@@ -566,23 +585,12 @@ private fun BookPlayView(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onRewind, modifier = Modifier.size(56.dp)) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_voice_replay),
-                            contentDescription = "Rewind",
-                            modifier = Modifier.size(40.dp),
-                        )
-                        Text(
-                            rewindSeconds.toString(),
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            textAlign = TextAlign.End,
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp, bottom = 3.dp)
-                                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
-                                .padding(horizontal = 4.dp, vertical = 1.dp),
-                        )
-                    }
-                }
+                VoiceSkipButton(
+                    forward = false,
+                    seconds = rewindSeconds,
+                    onClick = onRewind,
+                    modifier = Modifier.height(56.dp),
+                )
                 Spacer(Modifier.size(16.dp))
                 val playCornerRadius by animateDpAsState(
                     targetValue = if (playing) 22.dp else 44.dp,
@@ -601,23 +609,12 @@ private fun BookPlayView(
                     )
                 }
                 Spacer(Modifier.size(16.dp))
-                IconButton(onClick = onForward, modifier = Modifier.size(56.dp)) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_voice_replay),
-                            contentDescription = "Forward",
-                            modifier = Modifier.size(40.dp).graphicsLayer { scaleX = -1f },
-                        )
-                        Text(
-                            forwardSeconds.toString(),
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            textAlign = TextAlign.End,
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp, bottom = 3.dp)
-                                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
-                                .padding(horizontal = 4.dp, vertical = 1.dp),
-                        )
-                    }
-                }
+                VoiceSkipButton(
+                    forward = true,
+                    seconds = forwardSeconds,
+                    onClick = onForward,
+                    modifier = Modifier.height(56.dp),
+                )
             }
             Spacer(Modifier.height(24.dp))
         }
@@ -662,6 +659,101 @@ private fun BookPlayView(
             confirmButton = { TextButton(onClick = { showChapters = false }) { Text("Close") } },
         )
     }
+}
+
+
+@Composable
+private fun VoiceSkipButton(
+    forward: Boolean,
+    seconds: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val widthRatio by animateFloatAsState(
+        targetValue = if (pressed) 1.3f else 1f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium),
+        label = "skipWidth",
+    )
+    val cornerPercent by animateFloatAsState(
+        targetValue = if (pressed) 25f else 50f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium),
+        label = "skipCorner",
+    )
+    val nudge = remember { Animatable(0f) }
+    var bursts by remember { mutableStateOf(emptyList<Long>()) }
+    var nextBurstId by remember { mutableLongStateOf(0L) }
+
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Surface(
+            onClick = {
+                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                onClick()
+                bursts = bursts + nextBurstId++
+                scope.launch {
+                    nudge.snapTo(0f)
+                    nudge.animateTo(1f, tween(90, easing = FastOutSlowInEasing))
+                    nudge.animateTo(0f, spring(dampingRatio = 0.35f, stiffness = Spring.StiffnessMediumLow))
+                }
+            },
+            modifier = Modifier.fillMaxHeight().aspectRatio(widthRatio, matchHeightConstraintsFirst = true),
+            shape = RoundedCornerShape(percent = cornerPercent.roundToInt()),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            interactionSource = interactionSource,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_voice_replay),
+                    contentDescription = if (forward) "Fast forward" else "Rewind",
+                    modifier = Modifier.fillMaxHeight(0.5f)
+                        .aspectRatio(1f, matchHeightConstraintsFirst = true)
+                        .graphicsLayer {
+                            rotationZ = nudge.value * if (forward) 40f else -40f
+                            scaleX = if (forward) -1f else 1f
+                        },
+                )
+            }
+        }
+        bursts.forEach { id ->
+            key(id) {
+                VoiceSkipBurst(
+                    text = if (forward) "+$seconds" else "−$seconds",
+                    onFinish = { bursts = bursts - id },
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoiceSkipBurst(
+    text: String,
+    onFinish: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val progress = remember { Animatable(0f) }
+    val currentOnFinish by rememberUpdatedState(onFinish)
+    LaunchedEffect(progress) {
+        progress.animateTo(1f, tween(750, easing = FastOutSlowInEasing))
+        currentOnFinish()
+    }
+    Text(
+        modifier = modifier.clearAndSetSemantics {}.graphicsLayer {
+            val p = progress.value
+            translationY = -p * 56.dp.toPx()
+            alpha = 1f - p
+            scaleX = 0.8f + 0.5f * p
+            scaleY = 0.8f + 0.5f * p
+        },
+        text = text,
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.primary,
+    )
 }
 
 private object BookThumbnailCache {
