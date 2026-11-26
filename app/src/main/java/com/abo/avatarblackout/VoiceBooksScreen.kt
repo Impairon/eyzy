@@ -83,8 +83,6 @@ import android.os.Build
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -595,7 +593,6 @@ private fun BookPlayView(
             chapterListState.animateScrollToItem(
                 book.currentTrackIndex.coerceIn(0, book.tracks.lastIndex),
                 scrollOffset = -24,
-                animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
             )
         }
     }
