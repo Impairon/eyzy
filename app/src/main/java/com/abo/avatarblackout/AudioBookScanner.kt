@@ -197,7 +197,7 @@ internal object AudioBookScanner {
 
     private fun CachedAudioDocument.audioFilesInOrder(): List<CachedAudioDocument> =
         if (isDirectory) {
-            children.sortedWith(compareBy<CachedAudioDocument> { it.isFile }.thenBy { it.name.orEmpty().lowercase(Locale.ROOT) })
+            children.sortedWith(compareBy<CachedAudioDocument> { it.isFile }.thenBy { naturalKey(it.name.orEmpty()) })
                 .flatMap { it.audioFilesInOrder() }
         } else if (isAudioFile()) listOf(this) else emptyList()
 
