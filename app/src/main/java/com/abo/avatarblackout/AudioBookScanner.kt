@@ -119,7 +119,7 @@ internal object AudioBookScanner {
             .thenBy { it.trackNumber.takeIf { n -> n > 0 } ?: Int.MAX_VALUE }
             .thenBy { naturalKey(it.sourceName) })
         val bookId = AudioBookRepository.idForUri(candidate.file.uri.toString())
-        val coverPath = extractEmbeddedCover(context, files, bookId)
+        val coverPath = extractCover(context, candidate.file, files, bookId)
         val book = AudioBook(
             id = bookId,
             name = candidate.name,
@@ -129,10 +129,11 @@ internal object AudioBookScanner {
         return book
     }
 
-    // Voice's CoverScanner checks the first few chapters for embedded artwork.
-    // Keep the extracted image locally so the library and player can reuse it.
-    private fun extractEmbeddedCover(
+    // Mirrors Voice 8.2.4-2: keep an existing cover, prefer an image
+    // stored beside the book, then inspect the first five audio tracks.
+    private fun extractCover(
         context: Context,
+        bookFolder: CachedAudioDocument,
         files: List<CachedAudioDocument>,
         bookId: String
     ): String? {
@@ -140,6 +141,23 @@ internal object AudioBookScanner {
         val destination = File(directory, "$bookId.jpg")
         if (destination.isFile && destination.length() > 0L) return destination.absolutePath
         directory.mkdirs()
+
+        if (bookFolder.isDirectory) {
+            val localCover = bookFolder.children.firstOrNull { child ->
+                child.isFile && child.mimeType.orEmpty().startsWith("image/")
+            }
+            if (localCover != null) {
+                val copied = runCatching {
+                    context.contentResolver.openInputStream(localCover.uri)?.use { input ->
+                        destination.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    destination.isFile && destination.length() > 0L
+                }.getOrDefault(false)
+                if (copied) return destination.absolutePath
+                destination.delete()
+            }
+        }
+
         for (file in files.take(5)) {
             val retriever = MediaMetadataRetriever()
             try {
@@ -150,11 +168,12 @@ internal object AudioBookScanner {
                     if (destination.isFile && destination.length() > 0L) return destination.absolutePath
                 }
             } catch (_: Exception) {
-                // Not every audio container has readable embedded artwork.
+                // Some audio containers do not expose embedded artwork to Android.
             } finally {
                 runCatching { retriever.release() }
             }
         }
+        destination.delete()
         return null
     }
 
