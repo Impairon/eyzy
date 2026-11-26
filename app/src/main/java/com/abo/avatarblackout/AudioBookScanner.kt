@@ -215,7 +215,7 @@ internal object AudioBookScanner {
         val children: List<CachedAudioDocument> by lazy {
             if (isDirectory) AudioBookScanner.queryChildren(context, uri) else emptyList()
         }
-        private val contents: DocumentContents? by lazy { prefetched ?: queryDocument(context, uri) }
+        private val contents: DocumentContents? by lazy { prefetched ?: AudioBookScanner.queryDocument(context, uri) }
         val name: String? by lazy { contents?.name }
         val isFile: Boolean by lazy { contents?.isFile ?: false }
         val isDirectory: Boolean by lazy { contents?.isDirectory ?: false }
