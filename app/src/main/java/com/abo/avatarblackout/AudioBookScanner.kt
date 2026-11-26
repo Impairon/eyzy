@@ -1,3 +1,4 @@
+/* Adapted from the Voice audiobook scanner (GPL-3.0). See LICENSE-VOICE.md. */
 package com.abo.avatarblackout
 
 import android.content.Context
