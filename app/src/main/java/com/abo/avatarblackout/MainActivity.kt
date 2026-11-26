@@ -1165,6 +1165,7 @@ class MainActivity : FragmentActivity() {
                 },
                 onAddBook = { showAudioBookAddContent() },
                 onSettingsClick = { openPage(5) },
+                onOpenBookmarks = { /* handled by the Books screen */ },
                 onPlayActive = {
                     AudioBookRepository.activeBookId(this)?.let { resumeAudioBook(it) }
                 },
@@ -1173,13 +1174,22 @@ class MainActivity : FragmentActivity() {
                 onBack = { showQuranAudio() },
                 onPlayPause = { toggleQuranPlayback() },
                 onSeek = { quranController?.seekTo(it) },
-                onRewind = { quranController?.seekTo((quranController?.currentPosition ?: 0L) - 15_000L) },
+                onRewind = {
+                    val seconds = getSharedPreferences("avb", MODE_PRIVATE).getInt("books_rewind_seconds", 15).coerceIn(5, 60)
+                    quranController?.seekTo((quranController?.currentPosition ?: 0L) - seconds * 1_000L)
+                },
                 onForward = { quranController?.seekTo((quranController?.currentPosition ?: 0L) + 30_000L) },
                 onPrevious = { quranController?.seekToPreviousMediaItem() },
                 onNext = { quranController?.seekToNextMediaItem() },
                 onChapters = { quranController?.seekTo(it, 0L) },
                 onBookmark = { selectedAudioBookId?.let { addAudioBookBookmark(it) } },
                 onBookmarks = { selectedAudioBookId?.let { showAudioBookBookmarks(it) } },
+                onResumeBookmark = { id, track, position -> resumeAudioBook(id, track, position) },
+                onDeleteBookmark = { id, bookmarkId ->
+                    AudioBookRepository.removeBookmark(this, id, bookmarkId)
+                    refreshBooksCompose()
+                },
+                rewindSeconds = getSharedPreferences("avb", MODE_PRIVATE).getInt("books_rewind_seconds", 15).coerceIn(5, 60),
                 onSpeed = { showAudioBookSpeedDialog() },
                 onSleepTimer = { showAudioBookSleepTimer() },
             )
@@ -1676,7 +1686,7 @@ class MainActivity : FragmentActivity() {
                     this, bookId, input.text.toString().ifBlank { defaultName }, trackIndex, position
                 )
                 audioImportStatusText?.text = translate("Bookmark saved.")
-                renderAudioBookLibrary()
+                refreshBooksCompose()
             }
             .setNegativeButton(translate("Cancel"), null)
             .show()
@@ -2267,6 +2277,33 @@ class MainActivity : FragmentActivity() {
             cardContent.addView(appLock)
         }
         content.addView(appLockCard)
+        val booksSettingsCard = card("Books") { cardContent ->
+            val prefs = getSharedPreferences("avb", MODE_PRIVATE)
+            val value = TextView(this).apply {
+                textSize = 14f
+                setTextColor(secondary)
+            }
+            val rewind = SeekBar(this).apply {
+                max = 11
+                progress = ((prefs.getInt("books_rewind_seconds", 15).coerceIn(5, 60) - 5) / 5)
+                fun updateLabel(seconds: Int) {
+                    value.text = translate("Rewind button") + ": " + seconds + " " + translate("seconds")
+                }
+                updateLabel(5 + progress * 5)
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                        val seconds = 5 + progress * 5
+                        updateLabel(seconds)
+                        if (fromUser) prefs.edit().putInt("books_rewind_seconds", seconds).apply()
+                    }
+                    override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+                    override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+                })
+            }
+            cardContent.addView(value)
+            cardContent.addView(rewind, LinearLayout.LayoutParams(-1, dp(42)))
+        }
+        content.addView(booksSettingsCard)
         // Keep the existing controls intact while presenting them in a calmer visual hierarchy.
         content.addView(collapsibleSection("swizy", defaultOpen = true) { section ->
             addText(section, "Control how swizy masks profile pictures.")
