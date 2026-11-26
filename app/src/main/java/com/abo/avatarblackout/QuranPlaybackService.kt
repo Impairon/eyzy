@@ -79,10 +79,8 @@ class QuranPlaybackService : MediaSessionService() {
     override fun onDestroy() {
         handler.removeCallbacks(positionUpdater)
         savePositionNow()
-        mediaSession?.run {
-            player?.release()
-            release()
-        }
+        player?.release()
+        mediaSession?.release()
         mediaSession = null
         player = null
         super.onDestroy()
