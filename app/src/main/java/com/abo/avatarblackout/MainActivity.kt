@@ -1422,20 +1422,51 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun showAudioBookAddContent() {
-        val choices = arrayOf(
-            translate("Choose folder"),
-            translate("Choose audio file")
-        )
-        AlertDialog.Builder(this)
-            .setTitle(translate("Add to library"))
-            .setItems(choices) { _, which ->
-                when (which) {
-                    0 -> openAudioBookFolderPicker()
-                    1 -> openAudioBookFilePicker()
-                }
-            }
-            .setNegativeButton(translate("Cancel"), null)
-            .show()
+        pageTitle.text = translate("Add content")
+        content.removeAllViews()
+
+        content.addView(actionButton("Back to books").apply {
+            setOnClickListener { showQuranAudio() }
+        })
+
+        val hero = TextView(this).apply {
+            text = "♫"
+            textSize = 68f
+            gravity = Gravity.CENTER
+            setTextColor(purple)
+            background = rounded(panelRaised, 32)
+        }
+        content.addView(hero, LinearLayout.LayoutParams(-1, dp(190)).apply {
+            setMargins(dp(20), dp(24), dp(20), dp(24))
+        })
+
+        content.addView(TextView(this).apply {
+            text = translate("Add content")
+            textSize = 24f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+        })
+        content.addView(TextView(this).apply {
+            text = translate("Choose a folder for a book or an entire library, or add one audio file.")
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTextColor(secondary)
+            setPadding(dp(18), dp(8), dp(18), dp(24))
+        })
+
+        content.addView(actionButton("Choose folder").apply {
+            setOnClickListener { openAudioBookFolderPicker() }
+        }, LinearLayout.LayoutParams(-1, dp(54)).apply {
+            setMargins(dp(8), 0, dp(8), dp(8))
+        })
+        val chooseFile = actionButton("Choose audio file").apply {
+            setBackgroundColor(panelRaised)
+            setOnClickListener { openAudioBookFilePicker() }
+        }
+        content.addView(chooseFile, LinearLayout.LayoutParams(-1, dp(50)).apply {
+            setMargins(dp(8), 0, dp(8), dp(8))
+        })
     }
 
     private fun openAudioBookFilePicker() {
