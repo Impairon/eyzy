@@ -125,10 +125,11 @@ object UiText {
         "Main timeline" to "المسار الرئيسي",
         "Side timeline" to "المسار الجانبي",
         "The main Quran and side surah keep separate saved positions." to "يحتفظ القرآن كاملًا والسورة الجانبية بموضع تشغيل مستقل لكل منهما.",
-        "Main Quran" to "القرآن كاملًا",
         "Choose a surah for side listening." to "اختر سورة للاستماع الجانبي.",
         "Playback continues in the background." to "يستمر التشغيل في الخلفية.",
         "This reciter selection applies the next time you load a timeline." to "سيُطبّق اختيار القارئ عند تحميل المسار التالي.",
+        "Could not connect to the audio player." to "تعذّر الاتصال بمشغّل الصوت.",
+        "The audio player is still starting. Try again." to "لا يزال مشغّل الصوت قيد التشغيل. حاول مجددًا.",
     )
 
     fun translate(value: String, language: String): String {
