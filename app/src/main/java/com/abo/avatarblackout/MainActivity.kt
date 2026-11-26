@@ -1512,11 +1512,13 @@ class MainActivity : FragmentActivity() {
         quranDurationText?.text = if (duration > 0L) formatQuranDuration(duration) else "--:--"
 
         val timelineId = item?.mediaId?.substringBefore('|')
-        val timelineLabel = when (timelineId) {
-            QuranAudioRepository.MAIN_TIMELINE -> translate("Main timeline")
-            QuranAudioRepository.SIDE_TIMELINE -> translate("Side timeline")
+        val timelineLabel = when {
+            timelineId == QuranAudioRepository.MAIN_TIMELINE -> translate("Main timeline")
+            timelineId == QuranAudioRepository.SIDE_TIMELINE -> translate("Side timeline")
+            timelineId?.startsWith("book:") == true -> translate("Audio book")
             else -> ""
         }
+        quranNowPlayingText?.tag = if (item != null) USER_CONTENT_TAG else null
         val playbackState = when {
             controller == null -> translate("Loading reciters…")
             controller.isPlaying -> translate("Playing")
@@ -1867,7 +1869,7 @@ class MainActivity : FragmentActivity() {
             else book.currentTrackIndex
         val position = if (isCurrentBook) controller?.currentPosition ?: book.positionMs
             else book.positionMs
-        val defaultName = "Bookmark " + (book.bookmarks.size + 1)
+        val defaultName = translate("Bookmark") + " " + (book.bookmarks.size + 1)
         val input = EditText(this).apply {
             setText(defaultName)
             setTextColor(Color.WHITE)
@@ -1879,7 +1881,7 @@ class MainActivity : FragmentActivity() {
             .setView(input)
             .setPositiveButton(translate("Save")) { _, _ ->
                 AudioBookRepository.addBookmark(
-                    this, bookId, input.text.toString(), trackIndex, position
+                    this, bookId, input.text.toString().ifBlank { defaultName }, trackIndex, position
                 )
                 audioImportStatusText?.text = translate("Bookmark saved.")
                 renderAudioBookLibrary()
