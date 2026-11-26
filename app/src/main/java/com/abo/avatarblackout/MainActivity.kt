@@ -1926,9 +1926,11 @@ class MainActivity : FragmentActivity() {
             return
         }
         val currentMediaId = controller.currentMediaItem?.mediaId.orEmpty()
-        if (currentMediaId.startsWith("book:$bookId|") &&
+        val sameBookAlreadyLoaded = currentMediaId.startsWith("book:$bookId|") &&
             controller.playbackState != Player.STATE_IDLE &&
             controller.playbackState != Player.STATE_ENDED
+        if (sameBookAlreadyLoaded && targetTrackIndex == null &&
+            targetPositionMs == null && rewindSeconds == 0
         ) {
             // Opening the book already in the player must not replace its queue
             // or seek back to a stale saved position.
@@ -1936,6 +1938,8 @@ class MainActivity : FragmentActivity() {
             showAudioBookPlayer(bookId)
             return
         }
+        val liveTrackIndex = if (sameBookAlreadyLoaded) controller.currentMediaItemIndex else -1
+        val livePosition = if (sameBookAlreadyLoaded) controller.currentPosition else -1L
         runCatching {
             saveCurrentQuranPosition()
             val validTracks = book.tracks.filter { it.path.startsWith("content://") || it.path.startsWith("file://") || File(it.path).isFile }
@@ -1953,9 +1957,11 @@ class MainActivity : FragmentActivity() {
                     )
                     .build()
             }
-            val startIndex = (targetTrackIndex ?: book.currentTrackIndex).coerceIn(0, items.lastIndex)
+            val startIndex = (targetTrackIndex ?: liveTrackIndex.takeIf { it in items.indices }
+                ?: book.currentTrackIndex).coerceIn(0, items.lastIndex)
+            val resumePosition = livePosition.takeIf { it >= 0L } ?: book.positionMs
             val startPosition = targetPositionMs
-                ?: (book.positionMs - rewindSeconds.coerceIn(0, 10) * 1_000L).coerceAtLeast(0L)
+                ?: (resumePosition - rewindSeconds.coerceIn(0, 10) * 1_000L).coerceAtLeast(0L)
             AudioBookRepository.setActive(this, bookId)
             QuranAudioRepository.setActiveTimeline(this, "book:" + bookId)
             controller.setMediaItems(items, startIndex, startPosition.coerceAtLeast(0L))
