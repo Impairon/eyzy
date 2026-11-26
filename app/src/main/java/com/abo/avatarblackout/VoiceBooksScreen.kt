@@ -99,10 +99,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalContext
 import android.os.Build
 import android.graphics.BitmapFactory
@@ -670,7 +668,6 @@ private fun VoiceSkipButton(
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
-    val haptics = LocalHapticFeedback.current
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val widthRatio by animateFloatAsState(
@@ -690,7 +687,6 @@ private fun VoiceSkipButton(
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Surface(
             onClick = {
-                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                 onClick()
                 bursts = bursts + nextBurstId++
                 scope.launch {
