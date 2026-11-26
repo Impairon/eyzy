@@ -1407,9 +1407,17 @@ class MainActivity : FragmentActivity() {
         if (parts.size != 2) return
         val timelineId = parts[0]
         val index = parts[1].toIntOrNull() ?: return
-        QuranAudioRepository.saveProgress(
-            this, timelineId, index, controller.currentPosition
-        )
+        when {
+            timelineId == QuranAudioRepository.MAIN_TIMELINE ||
+                timelineId == QuranAudioRepository.SIDE_TIMELINE -> {
+                QuranAudioRepository.saveProgress(this, timelineId, index, controller.currentPosition)
+            }
+            timelineId.startsWith("book:") -> {
+                AudioBookRepository.saveProgress(
+                    this, timelineId.removePrefix("book:"), index, controller.currentPosition
+                )
+            }
+        }
     }
 
     private fun toggleQuranPlayback() {
@@ -1423,6 +1431,8 @@ class MainActivity : FragmentActivity() {
             controller.mediaItemCount > 0 -> controller.play()
             QuranAudioRepository.activeTimeline(this) == QuranAudioRepository.SIDE_TIMELINE ->
                 resumeSideSurah()
+            QuranAudioRepository.activeTimeline(this).startsWith("book:") ->
+                resumeAudioBook(QuranAudioRepository.activeTimeline(this).removePrefix("book:"))
             else -> playMainQuran()
         }
         updateQuranPlaybackUi()
