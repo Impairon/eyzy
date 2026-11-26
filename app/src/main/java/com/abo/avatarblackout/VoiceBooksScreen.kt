@@ -220,37 +220,37 @@ internal fun VoiceBooksScreen(
                 onSpeed = onSpeed,
                 onSleepTimer = onSleepTimer,
             )
-            if (showAllBookmarks) {
-                val saved = books.flatMap { book -> book.bookmarks.map { bookmark -> Triple(book, bookmark, book.tracks.getOrNull(bookmark.trackIndex)?.title.orEmpty()) } }
-                AlertDialog(
-                    onDismissRequest = { showAllBookmarks = false },
-                    title = { Text("Saved bookmarks") },
-                    text = {
-                        if (saved.isEmpty()) Text("No saved positions yet.")
-                        else LazyColumn {
-                            items(saved, key = { "${it.first.id}:${it.second.id}" }) { entry ->
-                                Row(
-                                    Modifier.fillMaxWidth().clickable {
-                                        onResumeBookmark(entry.first.id, entry.second.trackIndex, entry.second.positionMs)
-                                        showAllBookmarks = false
-                                    }.padding(vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(entry.second.name, style = MaterialTheme.typography.bodyLarge)
-                                        Text("${entry.first.name} · ${entry.third} · ${formatVoiceDuration(entry.second.positionMs)}", style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    IconButton(onClick = { onDeleteBookmark(entry.first.id, entry.second.id) }) {
-                                        Icon(Icons.Outlined.DeleteOutline, contentDescription = "Delete bookmark")
-                                    }
+        }
+        if (showAllBookmarks) {
+            val saved = books.flatMap { book -> book.bookmarks.map { bookmark -> Triple(book, bookmark, book.tracks.getOrNull(bookmark.trackIndex)?.title.orEmpty()) } }
+            AlertDialog(
+                onDismissRequest = { showAllBookmarks = false },
+                title = { Text("Saved bookmarks") },
+                text = {
+                    if (saved.isEmpty()) Text("No saved positions yet.")
+                    else LazyColumn {
+                        items(saved, key = { "${it.first.id}:${it.second.id}" }) { entry ->
+                            Row(
+                                Modifier.fillMaxWidth().clickable {
+                                    onResumeBookmark(entry.first.id, entry.second.trackIndex, entry.second.positionMs)
+                                    showAllBookmarks = false
+                                }.padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(entry.second.name, style = MaterialTheme.typography.bodyLarge)
+                                    Text("${entry.first.name} · ${entry.third} · ${formatVoiceDuration(entry.second.positionMs)}", style = MaterialTheme.typography.bodySmall)
                                 }
-                                Divider()
+                                IconButton(onClick = { onDeleteBookmark(entry.first.id, entry.second.id) }) {
+                                    Icon(Icons.Outlined.DeleteOutline, contentDescription = "Delete bookmark")
+                                }
                             }
+                            Divider()
                         }
-                    },
-                    confirmButton = { TextButton(onClick = { showAllBookmarks = false }) { Text("Close") } },
-                )
-            }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showAllBookmarks = false }) { Text("Close") } },
+            )
         }
     }
 }
