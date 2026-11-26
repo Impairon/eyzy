@@ -801,7 +801,8 @@ class MainActivity : FragmentActivity() {
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.x - downX
                     val dy = event.y - downY
-                    if (!tracking && kotlin.math.abs(dx) > 48f &&
+                    val swipeThreshold = 56f * resources.displayMetrics.density
+                    if (!tracking && kotlin.math.abs(dx) > swipeThreshold &&
                         kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.25f
                     ) {
                         tracking = true
