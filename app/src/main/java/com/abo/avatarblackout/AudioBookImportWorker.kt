@@ -426,8 +426,14 @@ class AudioBookImportWorker(
                 val extension = detectAudioExtension(source, suggestedName)
                     ?: throw IllegalArgumentException("The link is not a supported audio file or archive.")
                 val copy = File(outputDirectory, "source_00001.$extension")
-                source.copyTo(copy, overwrite = false)
-                budget.add(copy.length())
+                val budget = ExtractionBudget(
+                    min(MAX_EXTRACTED_BYTES, (availableBytes - MIN_FREE_SPACE).coerceAtLeast(0L))
+                )
+                FileInputStream(source).use { input ->
+                    FileOutputStream(copy).buffered().use { output ->
+                        copyBounded(input, output, budget)
+                    }
+                }
                 listOf(PendingTrack(copy, suggestedName, extension))
             }
         }
@@ -698,7 +704,7 @@ class AudioBookImportWorker(
             ensureActive()
             val read = input.read(buffer, 0, min(buffer.size.toLong(), remaining).toInt())
             if (read < 0) throw IllegalArgumentException("The TAR archive ended unexpectedly.")
-            budget.add(read)
+            budget.add(read.toLong())
             output.write(buffer, 0, read)
             remaining -= read
         }
