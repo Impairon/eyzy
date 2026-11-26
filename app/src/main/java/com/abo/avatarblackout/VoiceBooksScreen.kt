@@ -19,11 +19,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.outlined.BookmarkAdd
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.filled.Pause
@@ -157,6 +160,7 @@ internal fun VoiceBooksScreen(
     onSearchChange: (String) -> Unit,
     onAddBook: () -> Unit,
     onSettingsClick: () -> Unit,
+    onOpenBookmarks: () -> Unit,
     onPlayActive: () -> Unit,
     onBookClick: (String) -> Unit,
     onBookOptions: (String) -> Unit,
@@ -170,12 +174,16 @@ internal fun VoiceBooksScreen(
     onChapters: (Int) -> Unit,
     onBookmark: () -> Unit,
     onBookmarks: () -> Unit,
+    onResumeBookmark: (String, Int, Long) -> Unit,
+    onDeleteBookmark: (String, String) -> Unit,
+    rewindSeconds: Int,
     onSpeed: () -> Unit,
     onSleepTimer: () -> Unit,
 ) {
     val context = LocalContext.current
     val voiceDarkColors = if (Build.VERSION.SDK_INT >= 31) dynamicDarkColorScheme(context) else darkColorScheme()
     MaterialTheme(colorScheme = voiceDarkColors) {
+        var showAllBookmarks by remember { mutableStateOf(false) }
         if (playerBook == null) {
             BookOverviewScreen(
                 books = books,
@@ -184,6 +192,7 @@ internal fun VoiceBooksScreen(
                 onSearchChange = onSearchChange,
                 onAddBook = onAddBook,
                 onSettingsClick = onSettingsClick,
+                onOpenBookmarks = { showAllBookmarks = true },
                 onPlayActive = onPlayActive,
                 onBookClick = onBookClick,
                 onBookOptions = onBookOptions,
@@ -204,9 +213,43 @@ internal fun VoiceBooksScreen(
                 onChapters = onChapters,
                 onBookmark = onBookmark,
                 onBookmarks = onBookmarks,
+                onResumeBookmark = onResumeBookmark,
+                onDeleteBookmark = onDeleteBookmark,
+                rewindSeconds = rewindSeconds,
                 onSpeed = onSpeed,
                 onSleepTimer = onSleepTimer,
             )
+            if (showAllBookmarks) {
+                val saved = books.flatMap { book -> book.bookmarks.map { bookmark -> Triple(book, bookmark, book.tracks.getOrNull(bookmark.trackIndex)?.title.orEmpty()) } }
+                AlertDialog(
+                    onDismissRequest = { showAllBookmarks = false },
+                    title = { Text("Saved bookmarks") },
+                    text = {
+                        if (saved.isEmpty()) Text("No saved positions yet.")
+                        else LazyColumn {
+                            items(saved, key = { "${it.first.id}:${it.second.id}" }) { entry ->
+                                Row(
+                                    Modifier.fillMaxWidth().clickable {
+                                        onResumeBookmark(entry.first.id, entry.second.trackIndex, entry.second.positionMs)
+                                        showAllBookmarks = false
+                                    }.padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(entry.second.name, style = MaterialTheme.typography.bodyLarge)
+                                        Text("${entry.first.name} · ${entry.third} · ${formatVoiceDuration(entry.second.positionMs)}", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    IconButton(onClick = { onDeleteBookmark(entry.first.id, entry.second.id) }) {
+                                        Icon(Icons.Outlined.DeleteOutline, contentDescription = "Delete bookmark")
+                                    }
+                                }
+                                Divider()
+                            }
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = { showAllBookmarks = false }) { Text("Close") } },
+                )
+            }
         }
     }
 }
@@ -220,6 +263,7 @@ private fun BookOverviewScreen(
     onSearchChange: (String) -> Unit,
     onAddBook: () -> Unit,
     onSettingsClick: () -> Unit,
+    onOpenBookmarks: () -> Unit,
     onPlayActive: () -> Unit,
     onBookClick: (String) -> Unit,
     onBookOptions: (String) -> Unit,
@@ -266,6 +310,9 @@ private fun BookOverviewScreen(
                         Row {
                             IconButton(onClick = onAddBook) {
                                 Icon(Icons.Outlined.Folder, contentDescription = "Add folder")
+                            }
+                            IconButton(onClick = onOpenBookmarks) {
+                                Icon(Icons.Default.Bookmarks, contentDescription = "Saved bookmarks")
                             }
                             IconButton(onClick = onSettingsClick) {
                                 Icon(Icons.Outlined.Settings, contentDescription = "Settings")
@@ -414,6 +461,9 @@ private fun BookPlayView(
     onChapters: (Int) -> Unit,
     onBookmark: () -> Unit,
     onBookmarks: () -> Unit,
+    onResumeBookmark: (String, Int, Long) -> Unit,
+    onDeleteBookmark: (String, String) -> Unit,
+    rewindSeconds: Int,
     onSpeed: () -> Unit,
     onSleepTimer: () -> Unit,
 ) {
@@ -425,7 +475,14 @@ private fun BookPlayView(
     Scaffold(
         topBar = {
             LargeTopAppBar(
-                title = { Text(book.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(book.name, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        IconButton(onClick = onBookmark) {
+                            Icon(Icons.Outlined.BookmarkAdd, contentDescription = "Save position")
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close")
@@ -433,14 +490,8 @@ private fun BookPlayView(
                 },
                 actions = {
                     IconButton(onClick = onSleepTimer) { Icon(Icons.Default.Timer, contentDescription = "Sleep timer") }
-                    Box(
-                        Modifier.size(48.dp).combinedClickable(
-                            onClick = onBookmark,
-                            onLongClick = onBookmarks,
-                        ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Default.Bookmarks, contentDescription = "Bookmark")
+                    IconButton(onClick = onBookmarks) {
+                        Icon(Icons.Default.Bookmarks, contentDescription = "Saved bookmarks")
                     }
                     IconButton(onClick = onSpeed) { Icon(Icons.Default.Speed, contentDescription = "Playback speed") }
                 },
@@ -503,7 +554,10 @@ private fun BookPlayView(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onRewind, modifier = Modifier.size(56.dp)) {
-                    Icon(Icons.Default.Replay, contentDescription = "Rewind 15 seconds", modifier = Modifier.size(40.dp))
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Replay, contentDescription = "Rewind $rewindSeconds seconds", modifier = Modifier.size(40.dp))
+                        Text(rewindSeconds.toString(), style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomCenter))
+                    }
                 }
                 Spacer(Modifier.size(16.dp))
                 IconButton(onClick = onPlayPause, modifier = Modifier.size(80.dp)) {
@@ -527,13 +581,14 @@ private fun BookPlayView(
             title = { Text("Chapters") },
             text = {
                 LazyColumn {
-                    items(book.tracks.indices.toList()) { index ->
+                    itemsIndexed(book.tracks, key = { index, item -> "${book.id}:$index:${item.path}" }) { index, chapter ->
                         Text(
-                            text = book.tracks[index].title,
+                            text = chapter.title,
+                            color = if (index == book.currentTrackIndex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.fillMaxWidth().clickable {
                                 onChapters(index)
                                 showChapters = false
-                            }.padding(vertical = 12.dp),
+                            }.padding(vertical = 14.dp),
                         )
                         Divider()
                     }
