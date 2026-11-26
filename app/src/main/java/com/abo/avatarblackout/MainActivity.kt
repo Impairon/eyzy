@@ -8,6 +8,7 @@ import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.Context
+import android.net.Uri
 import android.content.ComponentName
 import android.content.res.Configuration
 import android.content.pm.PackageManager
@@ -64,6 +65,10 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import androidx.work.Data
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.google.common.util.concurrent.ListenableFuture
 
 class MainActivity : FragmentActivity() {
@@ -99,6 +104,9 @@ class MainActivity : FragmentActivity() {
     private var mainTimelineSummary: TextView? = null
     private var sideTimelineSummary: TextView? = null
     private var quranSeeking = false
+    private var audioBookListContainer: LinearLayout? = null
+    private var audioImportStatusText: TextView? = null
+    private var lastObservedImportMessage = ""
     private val quranProgressHandler = Handler(Looper.getMainLooper())
     private val quranProgressTicker = object : Runnable {
         override fun run() {
