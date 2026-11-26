@@ -45,7 +45,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -178,7 +178,6 @@ internal fun VoiceBooksScreen(
     onNext: () -> Unit,
     onChapters: (Int) -> Unit,
     onBookmark: () -> Unit,
-    onBookmarks: () -> Unit,
     onResumeBookmark: (String, Int, Long) -> Unit,
     onDeleteBookmark: (String, String) -> Unit,
     rewindSeconds: Int,
@@ -250,7 +249,7 @@ internal fun VoiceBooksScreen(
                                     Icon(Icons.Outlined.DeleteOutline, contentDescription = "Delete bookmark")
                                 }
                             }
-                            Divider()
+                            HorizontalDivider()
                         }
                     }
                 },
