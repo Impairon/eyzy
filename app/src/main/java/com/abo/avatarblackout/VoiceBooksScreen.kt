@@ -2,6 +2,7 @@ package com.abo.avatarblackout
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -21,7 +22,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmarks
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.ChevronLeft
@@ -37,7 +37,6 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -157,8 +156,12 @@ private fun BookOverviewScreen(
                 book.tracks.any { it.title.contains(localQuery, true) || it.artist.contains(localQuery, true) }
         }
     }
-    val continueBook = books.firstOrNull { it.id == activeBookId }
-        ?: books.firstOrNull { it.lastPlayedAt > 0L }
+    val currentBooks = filtered.filter { bookProgress(it) > 0f && bookProgress(it) < 0.995f }
+        .sortedByDescending { it.lastPlayedAt }
+    val notStartedBooks = filtered.filter { bookProgress(it) <= 0f }
+        .sortedBy { it.name.lowercase() }
+    val finishedBooks = filtered.filter { bookProgress(it) >= 0.995f }
+        .sortedByDescending { it.lastPlayedAt }
 
     Scaffold(
         topBar = {
@@ -209,34 +212,46 @@ private fun BookOverviewScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                if (continueBook != null && localQuery.isBlank()) {
-                    item {
+                if (currentBooks.isNotEmpty()) {
+                    stickyHeader {
                         Text(
-                            "Continue listening",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                            "Current",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier.fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(vertical = 8.dp, horizontal = 16.dp),
                         )
-                        Card(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
-                                .clickable { onBookClick(continueBook.id) },
-                        ) {
-                            Row(
-                                Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                BookCover(continueBook.name, Modifier.size(72.dp))
-                                Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                                    Text(continueBook.name, style = MaterialTheme.typography.titleMedium)
-                                    Text(
-                                        continueBook.currentTrack?.title.orEmpty(),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Text("Continue listening", style = MaterialTheme.typography.labelMedium)
-                                }
-                            }
-                        }
+                    }
+                    items(currentBooks, key = { it.id }) { book ->
+                        VoiceBookRow(book, onBookClick, onBookOptions)
+                    }
+                }
+                if (notStartedBooks.isNotEmpty()) {
+                    stickyHeader {
+                        Text(
+                            "Not started",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier.fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(vertical = 8.dp, horizontal = 16.dp),
+                        )
+                    }
+                    items(notStartedBooks, key = { it.id }) { book ->
+                        VoiceBookRow(book, onBookClick, onBookOptions)
+                    }
+                }
+                if (finishedBooks.isNotEmpty()) {
+                    stickyHeader {
+                        Text(
+                            "Finished",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier.fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(vertical = 8.dp, horizontal = 16.dp),
+                        )
+                    }
+                    items(finishedBooks, key = { it.id }) { book ->
+                        VoiceBookRow(book, onBookClick, onBookOptions)
                     }
                 }
                 if (filtered.isEmpty()) {
@@ -247,51 +262,63 @@ private fun BookOverviewScreen(
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
-                } else {
-                    item {
-                        Text(
-                            "Books",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp),
-                        )
-                    }
-                    items(filtered, key = { it.id }) { book ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
-                                .clickable { onBookClick(book.id) },
-                            colors = CardDefaults.cardColors(),
-                        ) {
-                            Row(
-                                Modifier.padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                BookCover(book.name, Modifier.size(width = 76.dp, height = 84.dp))
-                                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                                    Text(book.name, style = MaterialTheme.typography.titleSmall, maxLines = 2)
-                                    Text(
-                                        book.currentTrack?.title ?: "${book.tracks.size} tracks",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    val progress = if (book.currentTrack?.durationMs ?: 0L > 0L) {
-                                        (book.positionMs.toFloat() / (book.currentTrack?.durationMs ?: 1L)).coerceIn(0f, 1f)
-                                    } else 0f
-                                    if (progress > 0f) {
-                                        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
-                                    }
-                                }
-                                IconButton(onClick = { onBookOptions(book.id) }) {
-                                    Icon(Icons.Default.MoreVert, contentDescription = "Book options")
-                                }
-                            }
-                        }
-                    }
                 }
                 item { Spacer(Modifier.height(16.dp)) }
             }
         }
     }
+}
+
+@Composable
+private fun VoiceBookRow(
+    book: AudioBook,
+    onBookClick: (String) -> Unit,
+    onBookOptions: (String) -> Unit,
+) {
+    val progress = bookProgress(book)
+    val totalDuration = book.tracks.sumOf { it.durationMs.coerceAtLeast(0L) }
+    val elapsed = (totalDuration * progress).toLong()
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+            .combinedClickable(
+                onClick = { onBookClick(book.id) },
+                onLongClick = { onBookOptions(book.id) },
+            ),
+    ) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                BookCover(book.name, Modifier.padding(8.dp).size(76.dp))
+                Column(
+                    Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 8.dp),
+                ) {
+                    val author = book.currentTrack?.artist.orEmpty()
+                    if (author.isNotBlank()) {
+                        Text(author.uppercase(), style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                    }
+                    Text(book.name, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+                    Text(
+                        formatVoiceDuration((totalDuration - elapsed).coerceAtLeast(0L)) + " remaining",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            if (progress > 0.05f) {
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
+private fun bookProgress(book: AudioBook): Float {
+    val total = book.tracks.sumOf { it.durationMs.coerceAtLeast(0L) }
+    if (total <= 0L) return 0f
+    val index = book.currentTrackIndex.coerceIn(0, book.tracks.lastIndex)
+    val elapsedBefore = book.tracks.take(index).sumOf { it.durationMs.coerceAtLeast(0L) }
+    val elapsed = (elapsedBefore + book.positionMs).coerceIn(0L, total)
+    return elapsed.toFloat() / total.toFloat()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
