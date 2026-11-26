@@ -53,6 +53,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalContext
+import android.os.Build
+import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.ui.unit.dp
 
 /**
@@ -85,7 +88,9 @@ internal fun VoiceBooksScreen(
     onSpeed: () -> Unit,
     onSleepTimer: () -> Unit,
 ) {
-    MaterialTheme(colorScheme = darkColorScheme()) {
+    val context = LocalContext.current
+    val voiceDarkColors = if (Build.VERSION.SDK_INT >= 31) dynamicDarkColorScheme(context) else darkColorScheme()
+    MaterialTheme(colorScheme = voiceDarkColors) {
         if (playerBook == null) {
             BookOverviewScreen(
                 books = books,
@@ -129,9 +134,10 @@ private fun BookOverviewScreen(
     onBookClick: (String) -> Unit,
     onBookOptions: (String) -> Unit,
 ) {
-    val filtered = remember(books, searchQuery) {
+    var localQuery by remember { mutableStateOf(searchQuery) }
+    val filtered = remember(books, localQuery) {
         books.filter { book ->
-            searchQuery.isBlank() || book.name.contains(searchQuery, true) ||
+            localQuery.isBlank() || book.name.contains(localQuery, true) ||
                 book.tracks.any { it.title.contains(searchQuery, true) || it.artist.contains(searchQuery, true) }
         }
     }
@@ -152,8 +158,8 @@ private fun BookOverviewScreen(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             androidx.compose.material3.OutlinedTextField(
-                value = searchQuery,
-                onValueChange = onSearchChange,
+                value = localQuery,
+                onValueChange = { localQuery = it; onSearchChange(it) },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 singleLine = true,
                 placeholder = { Text("Search books") },
@@ -163,7 +169,7 @@ private fun BookOverviewScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                if (continueBook != null && searchQuery.isBlank()) {
+                if (continueBook != null && localQuery.isBlank()) {
                     item {
                         Text(
                             "Continue listening",
