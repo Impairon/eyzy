@@ -2611,5 +2611,7 @@ class MainActivity : FragmentActivity() {
         private const val LOCATION_REQUEST = 1001
         private const val EXPORT_REQUEST = 1002
         private const val IMPORT_REQUEST = 1003
+        private const val STATE_PAGE = "swizy_current_page"
+        private const val STATE_SCROLL_Y = "swizy_scroll_y"
     }
 }
