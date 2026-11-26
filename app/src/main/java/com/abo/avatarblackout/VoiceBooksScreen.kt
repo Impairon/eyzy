@@ -22,6 +22,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.outlined.AudioFile
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.ChevronLeft
@@ -49,6 +51,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.SearchBar
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
@@ -70,6 +75,74 @@ import androidx.compose.ui.unit.dp
  * Compose port of Voice 8.2.4-2's BookOverview and BookPlayView screen structure.
  * App-specific persistence and Media3 actions remain owned by MainActivity.
  */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun VoiceAddContentScreen(
+    onBack: () -> Unit,
+    onChooseFolder: () -> Unit,
+    onChooseFile: () -> Unit,
+) {
+    MaterialTheme(colorScheme = darkColorScheme()) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Add content") },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                )
+            },
+        ) { padding ->
+            Column(
+                Modifier.fillMaxSize().padding(padding).padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Spacer(Modifier.weight(1f))
+                Box(
+                    Modifier.fillMaxWidth().weight(1f)
+                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(28.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Outlined.Folder,
+                        contentDescription = null,
+                        modifier = Modifier.size(112.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                Text("Select a folder", style = MaterialTheme.typography.displayMedium)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Choose a folder for one book or your entire library, or add a single audio file.",
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Spacer(Modifier.height(24.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FilledTonalButton(onClick = onChooseFolder) {
+                        Icon(Icons.Outlined.Folder, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                        Text("Folder")
+                    }
+                    Spacer(Modifier.size(8.dp))
+                    FilledTonalButton(onClick = onChooseFile) {
+                        Icon(Icons.Outlined.AudioFile, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                        Text("Audio file")
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun VoiceBooksScreen(
@@ -94,6 +167,8 @@ internal fun VoiceBooksScreen(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onChapters: (Int) -> Unit,
+    onBookmark: () -> Unit,
+    onBookmark: () -> Unit,
     onBookmarks: () -> Unit,
     onSpeed: () -> Unit,
     onSleepTimer: () -> Unit,
@@ -127,6 +202,7 @@ internal fun VoiceBooksScreen(
                 onPrevious = onPrevious,
                 onNext = onNext,
                 onChapters = onChapters,
+                onBookmark = onBookmark,
                 onBookmarks = onBookmarks,
                 onSpeed = onSpeed,
                 onSleepTimer = onSleepTimer,
@@ -356,7 +432,15 @@ private fun BookPlayView(
                 },
                 actions = {
                     IconButton(onClick = onSleepTimer) { Icon(Icons.Default.Timer, contentDescription = "Sleep timer") }
-                    IconButton(onClick = onBookmarks) { Icon(Icons.Default.Bookmarks, contentDescription = "Bookmarks") }
+                    Box(
+                        Modifier.size(48.dp).combinedClickable(
+                            onClick = onBookmark,
+                            onLongClick = onBookmarks,
+                        ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Default.Bookmarks, contentDescription = "Bookmark")
+                    }
                     IconButton(onClick = onSpeed) { Icon(Icons.Default.Speed, contentDescription = "Playback speed") }
                 },
             )
