@@ -106,6 +106,8 @@ class MainActivity : FragmentActivity() {
     private var sideTimelineSummary: TextView? = null
     private var quranSeeking = false
     private var audioBookListContainer: LinearLayout? = null
+    private var selectedAudioBookId: String? = null
+    private var audioBookSearchQuery = ""
     private var sleepTimerEndAt = 0L
     private val sleepTimerHandler = Handler(Looper.getMainLooper())
     private var audioImportStatusText: TextView? = null
@@ -313,12 +315,7 @@ class MainActivity : FragmentActivity() {
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
             }
-            val isFolder = requestCode == AUDIO_BOOK_FOLDER_REQUEST
-            val sourceType = if (isFolder) {
-                AudioBookImportWorker.TYPE_FOLDER
-            } else {
-                AudioBookImportWorker.TYPE_FILE
-            }
+            val sourceType = AudioBookImportWorker.TYPE_FOLDER
             val displayName = DocumentFile.fromTreeUri(this, uri)?.name
                 ?.takeIf { it.isNotBlank() } ?: translate("My books")
             enqueueAudioBookImport(sourceType, uri.toString(), displayName)
@@ -1095,6 +1092,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun showQuranAudio() {
+        selectedAudioBookId = null
         pageTitle.text = translate("Books")
         content.removeAllViews()
 
@@ -1415,78 +1413,6 @@ class MainActivity : FragmentActivity() {
             )
         }
         startActivityForResult(intent, AUDIO_BOOK_FOLDER_REQUEST)
-    }
-
-    private fun openAudioBookFilePicker() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            type = "*/*"
-            putExtra(
-                Intent.EXTRA_MIME_TYPES,
-                arrayOf(
-                    "audio/*",
-                    "application/zip",
-                    "application/gzip",
-                    "application/x-tar",
-                    "application/octet-stream"
-                )
-            )
-            addCategory(Intent.CATEGORY_OPENABLE)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-        }
-        startActivityForResult(intent, AUDIO_BOOK_FILE_REQUEST)
-    }
-
-    private fun showOnlineAudioLinkDialog() {
-        AlertDialog.Builder(this)
-            .setTitle(translate("Legal use reminder"))
-            .setMessage(
-                translate(
-                    "Make sure downloading from this link is legal, that you have permission to download it, and that it does not violate copyright or the website's Terms of Service or other rules."
-                )
-            )
-            .setPositiveButton(translate("I understand and continue")) { _, _ ->
-                showOnlineAudioLinkInputDialog()
-            }
-            .setNegativeButton(translate("Cancel"), null)
-            .show()
-    }
-
-    private fun showOnlineAudioLinkInputDialog() {
-        val linkInput = EditText(this).apply {
-            hint = translate("Paste a direct audio or archive link")
-            setTextColor(Color.WHITE)
-            setHintTextColor(secondary)
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or
-                android.text.InputType.TYPE_TEXT_VARIATION_URI
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            background = outlined(panelRaised, border, 12)
-        }
-        val wrapper = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(8), dp(20), 0)
-            addView(linkInput, LinearLayout.LayoutParams(-1, dp(54)))
-        }
-        AlertDialog.Builder(this)
-            .setTitle(translate("Online link"))
-            .setMessage(translate("Use a direct HTTP or HTTPS link to an audio file or archive."))
-            .setView(wrapper)
-            .setPositiveButton(translate("Continue")) { _, _ ->
-                val link = linkInput.text.toString().trim()
-                if (link.isBlank()) {
-                    Toast.makeText(this, translate("Enter a direct download link."), Toast.LENGTH_SHORT).show()
-                } else {
-                    askAudioBookName(AudioBookImportWorker.TYPE_URL, link, suggestedNameFromUrl(link))
-                }
-            }
-            .setNegativeButton(translate("Cancel"), null)
-            .show()
-    }
-
-    private fun suggestedNameFromUrl(value: String): String {
-        val segment = Uri.parse(value).lastPathSegment.orEmpty()
-        return segment.substringBeforeLast('.', segment)
-            .replace(Regex("[-_]+"), " ")
-            .trim()
     }
 
     private fun displayNameForUri(uri: Uri): String {
@@ -1883,6 +1809,7 @@ class MainActivity : FragmentActivity() {
 
     private fun showAudioBookPlayer(bookId: String) {
         val book = AudioBookRepository.load(this, bookId) ?: return
+        selectedAudioBookId = bookId
         pageTitle.text = book.name
         content.removeAllViews()
 
