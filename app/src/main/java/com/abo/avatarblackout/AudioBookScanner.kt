@@ -282,7 +282,19 @@ internal object AudioBookScanner {
         if (!isDirectory) {
             if (isImageFile()) listOf(this) else emptyList()
         } else {
-            children.sortedBy { naturalKey(it.name.orEmpty()) }.flatMap { it.imageFilesInOrder() }
+            children.flatMap { it.imageFilesInOrder() }
+                .sortedWith(compareBy<CachedAudioDocument> { it.coverRank() }
+                    .thenBy { naturalKey(it.name.orEmpty()) })
+        }
+
+    // Match Voice's cover preference: an explicitly named cover beats incidental
+    // images (scans, page photos, etc.) in the same audiobook folder.
+    private fun CachedAudioDocument.coverRank(): Int =
+        when (name.orEmpty().substringBeforeLast('.', name.orEmpty()).lowercase(Locale.ROOT)) {
+            "cover" -> 0
+            "front" -> 1
+            "folder" -> 2
+            else -> 3
         }
 
     private fun CachedAudioDocument.isImageFile(): Boolean {
