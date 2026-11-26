@@ -114,6 +114,7 @@ class MainActivity : FragmentActivity() {
     private val booksDurationState = mutableStateOf(0L)
     private val booksPlayingState = mutableStateOf(false)
     private val booksTrackIndexState = mutableStateOf(0)
+    private val booksPlayerBookState = mutableStateOf<AudioBook?>(null)
     private val booksLibraryState = mutableStateOf<List<AudioBook>>(emptyList())
     private val booksLibraryLoadingState = mutableStateOf(true)
     private var booksLibraryLoadGeneration = 0L
@@ -300,11 +301,11 @@ class MainActivity : FragmentActivity() {
         if (returningFromAudioPicker) {
             returningFromAudioPicker = false
             // Keep the current Add Content screen after the document picker closes.
-        } else if (::content.isInitialized) {
-            openPage(currentPage, preserveScroll = true, restoreScrollY = savedScrollY)
-        } else {
+        } else if (!::content.isInitialized) {
             registerSensors()
         }
+        // Do not rebuild the current page on every resume. Rebuilding Books here
+        // discarded its player screen when returning from the folder picker.
         enforceAppLock()
     }
 
@@ -1195,21 +1196,28 @@ class MainActivity : FragmentActivity() {
         val compose = booksComposeView ?: return
         val controller = quranController
         val playerBook = selectedAudioBookId?.let { id ->
-            AudioBookRepository.load(this, id)?.let { book ->
+            booksLibraryState.value.firstOrNull { it.id == id }?.let { book ->
                 val index = controller?.currentMediaItemIndex
                     ?.takeIf { it in book.tracks.indices } ?: book.currentTrackIndex
                 book.copy(currentTrackIndex = index)
             }
         }
+        booksPlayerBookState.value = playerBook
         booksPositionState.value = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L
         booksDurationState.value = controller?.duration
             ?.takeIf { it > 0L && it != androidx.media3.common.C.TIME_UNSET } ?: 0L
         booksPlayingState.value = controller?.isPlaying == true
         booksTrackIndexState.value = controller?.currentMediaItemIndex?.takeIf { it >= 0 }
             ?: playerBook?.currentTrackIndex ?: 0
+
+        // Install the composition once. Playback ticks update Compose state rather
+        // than repeatedly replacing the entire Books screen.
+        if (compose.tag == "books-player-content") return
+        compose.tag = "books-player-content"
         compose.setContent {
+            val liveBook = booksPlayerBookState.value
             val liveTrackIndex = booksTrackIndexState.value
-            val livePlayerBook = playerBook?.let { book ->
+            val livePlayerBook = liveBook?.takeIf { it.tracks.isNotEmpty() }?.let { book ->
                 book.copy(currentTrackIndex = liveTrackIndex.coerceIn(0, book.tracks.lastIndex))
             }
             VoiceBooksScreen(
@@ -1220,9 +1228,7 @@ class MainActivity : FragmentActivity() {
                 playing = booksPlayingState.value,
                 positionMs = booksPositionState.value,
                 durationMs = booksDurationState.value,
-                onSearchChange = {
-                    audioBookSearchQuery = it
-                },
+                onSearchChange = { audioBookSearchQuery = it },
                 onAddBook = { showAudioBookAddContent() },
                 onBookClick = { resumeAudioBook(it) },
                 onBookOptions = { showAudioBookOptions(it) },
@@ -1248,6 +1254,7 @@ class MainActivity : FragmentActivity() {
                 },
                 onDeleteBookmark = { id, bookmarkId ->
                     AudioBookRepository.removeBookmark(this, id, bookmarkId)
+                    loadAudioBooksAsync()
                 },
                 rewindSeconds = getSharedPreferences("avb", MODE_PRIVATE).getInt("books_rewind_seconds", 20).coerceIn(5, 120),
                 forwardSeconds = getSharedPreferences("avb", MODE_PRIVATE).getInt("books_forward_seconds", 30).coerceIn(5, 120),
