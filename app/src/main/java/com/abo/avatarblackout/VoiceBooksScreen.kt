@@ -2,6 +2,7 @@
 
 package com.abo.avatarblackout
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -67,13 +68,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import android.os.Build
+import android.graphics.BitmapFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.ui.unit.dp
 
@@ -161,7 +168,6 @@ internal fun VoiceBooksScreen(
     durationMs: Long,
     onSearchChange: (String) -> Unit,
     onAddBook: () -> Unit,
-    onSettingsClick: () -> Unit,
     onPlayActive: () -> Unit,
     onBookClick: (String) -> Unit,
     onBookOptions: (String) -> Unit,
@@ -178,6 +184,7 @@ internal fun VoiceBooksScreen(
     onResumeBookmark: (String, Int, Long) -> Unit,
     onDeleteBookmark: (String, String) -> Unit,
     rewindSeconds: Int,
+    forwardSeconds: Int,
     onSpeed: () -> Unit,
     onSleepTimer: () -> Unit,
 ) {
@@ -193,7 +200,6 @@ internal fun VoiceBooksScreen(
                 searchQuery = searchQuery,
                 onSearchChange = onSearchChange,
                 onAddBook = onAddBook,
-                onSettingsClick = onSettingsClick,
                 onOpenBookmarks = { showAllBookmarks = true },
                 onPlayActive = onPlayActive,
                 onBookClick = onBookClick,
@@ -216,6 +222,7 @@ internal fun VoiceBooksScreen(
                 onBookmark = onBookmark,
                 onBookmarks = { showAllBookmarks = true },
                 rewindSeconds = rewindSeconds,
+                forwardSeconds = forwardSeconds,
                 onSpeed = onSpeed,
                 onSleepTimer = onSleepTimer,
             )
@@ -265,7 +272,6 @@ private fun BookOverviewScreen(
     searchQuery: String,
     onSearchChange: (String) -> Unit,
     onAddBook: () -> Unit,
-    onSettingsClick: () -> Unit,
     onOpenBookmarks: () -> Unit,
     onPlayActive: () -> Unit,
     onBookClick: (String) -> Unit,
@@ -317,20 +323,10 @@ private fun BookOverviewScreen(
                             IconButton(onClick = onOpenBookmarks) {
                                 Icon(Icons.Default.Bookmarks, contentDescription = "Saved bookmarks")
                             }
-                            IconButton(onClick = onSettingsClick) {
-                                Icon(Icons.Outlined.Settings, contentDescription = "Settings")
-                            }
                         }
                     }
                 },
             ) { }
-        },
-        floatingActionButton = {
-            if (activeBookId != null) {
-                FloatingActionButton(onClick = onPlayActive) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = "Resume playback")
-                }
-            }
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
@@ -413,7 +409,7 @@ private fun VoiceBookRow(
     ) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                BookCover(book.name, Modifier.padding(8.dp).size(76.dp))
+                BookCover(book.name, book.coverPath, Modifier.padding(8.dp).size(76.dp))
                 Column(
                     Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 8.dp),
                 ) {
@@ -465,6 +461,7 @@ private fun BookPlayView(
     onBookmark: () -> Unit,
     onBookmarks: () -> Unit,
     rewindSeconds: Int,
+    forwardSeconds: Int,
     onSpeed: () -> Unit,
     onSleepTimer: () -> Unit,
 ) {
@@ -503,7 +500,7 @@ private fun BookPlayView(
             Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            BookCover(book.name, Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp).clip(RoundedCornerShape(8.dp)))
+            BookCover(book.name, book.coverPath, Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp).clip(RoundedCornerShape(8.dp)))
             if (track != null) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 8.dp),
@@ -570,7 +567,10 @@ private fun BookPlayView(
                 }
                 Spacer(Modifier.size(16.dp))
                 IconButton(onClick = onForward, modifier = Modifier.size(56.dp)) {
-                    Icon(Icons.Default.Forward30, contentDescription = "Forward 30 seconds", modifier = Modifier.size(40.dp))
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Forward30, contentDescription = "Forward $forwardSeconds seconds", modifier = Modifier.size(40.dp))
+                        Text(forwardSeconds.toString(), style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomCenter))
+                    }
                 }
             }
             Spacer(Modifier.height(24.dp))
@@ -607,12 +607,23 @@ private fun BookPlayView(
 }
 
 @Composable
-private fun BookCover(title: String, modifier: Modifier = Modifier) {
+private fun BookCover(title: String, coverPath: String?, modifier: Modifier = Modifier) {
+    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, coverPath) {
+        value = withContext(Dispatchers.IO) {
+            coverPath?.let { path ->
+                runCatching { BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull()
+            }
+        }
+    }
     Box(
         modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center,
     ) {
-        Text("♫", style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (bitmap != null) {
+            Image(bitmap = bitmap!!, contentDescription = "$title cover", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        } else {
+            Text("♫", style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
