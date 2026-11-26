@@ -1213,7 +1213,6 @@ class MainActivity : FragmentActivity() {
                 onNext = { quranController?.seekToNextMediaItem() },
                 onChapters = { quranController?.seekTo(it, 0L) },
                 onBookmark = { selectedAudioBookId?.let { addAudioBookBookmark(it) } },
-                onBookmarks = { selectedAudioBookId?.let { showAudioBookBookmarks(it) } },
                 onResumeBookmark = { id, track, position ->
                     val offset = getSharedPreferences("avb", MODE_PRIVATE)
                         .getInt("books_resume_offset_seconds", 2).coerceIn(0, 10) * 1_000L
