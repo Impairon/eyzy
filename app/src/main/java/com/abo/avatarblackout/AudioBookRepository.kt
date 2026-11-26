@@ -5,6 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
+import java.security.MessageDigest
 
 internal data class AudioBookTrack(
     val path: String,
@@ -15,7 +16,9 @@ internal data class AudioBookTrack(
     val trackNumber: Int = 0,
     val discNumber: Int = 0,
     val mimeType: String = "",
-    val sourceName: String = ""
+    val sourceName: String = "",
+    val lastModified: Long = 0L,
+    val fileSize: Long = 0L
 )
 
 internal data class AudioBookBookmark(
@@ -43,6 +46,39 @@ internal object AudioBookRepository {
     private const val PREFS = "avb"
     private const val BOOK_IDS = "audio_book_ids"
     private const val ACTIVE_BOOK = "audio_active_book"
+
+    private fun cachedTrackKey(uri: String) = "audio_track_cache_" + MessageDigest.getInstance("SHA-256").digest(uri.toByteArray()).joinToString("") { "%02x".format(it) }
+
+    fun idForUri(uri: String): String = MessageDigest.getInstance("SHA-256").digest(uri.toByteArray()).joinToString("") { "%02x".format(it) }.take(32)
+
+    fun cachedTrack(context: Context, uri: String, lastModified: Long, fileSize: Long): AudioBookTrack? = runCatching {
+        val json = prefs(context).getString(cachedTrackKey(uri), null)?.let(::JSONObject) ?: return null
+        if (json.optLong("lastModified", -1L) != lastModified || json.optLong("fileSize", -1L) != fileSize) return null
+        AudioBookTrack(
+            path = uri,
+            title = json.optString("title"),
+            artist = json.optString("artist"),
+            album = json.optString("album"),
+            durationMs = json.optLong("durationMs"),
+            trackNumber = json.optInt("trackNumber"),
+            discNumber = json.optInt("discNumber"),
+            mimeType = json.optString("mimeType"),
+            sourceName = json.optString("sourceName"),
+            lastModified = lastModified,
+            fileSize = fileSize
+        )
+    }.getOrNull()
+
+    fun cacheTrack(context: Context, uri: String, track: AudioBookTrack) {
+        val json = JSONObject().apply {
+            put("title", track.title); put("artist", track.artist); put("album", track.album)
+            put("durationMs", track.durationMs); put("trackNumber", track.trackNumber)
+            put("discNumber", track.discNumber); put("mimeType", track.mimeType)
+            put("sourceName", track.sourceName); put("lastModified", track.lastModified)
+            put("fileSize", track.fileSize)
+        }
+        prefs(context).edit().putString(cachedTrackKey(uri), json.toString()).apply()
+    }
 
     private fun progressIndexKey(id: String) = "audio_book_progress_index_$id"
     private fun progressPositionKey(id: String) = "audio_book_progress_position_$id"
@@ -78,8 +114,10 @@ internal object AudioBookRepository {
                     trackNumber = item.optInt("trackNumber").coerceAtLeast(0),
                     discNumber = item.optInt("discNumber").coerceAtLeast(0),
                     mimeType = item.optString("mimeType"),
-                    sourceName = item.optString("sourceName")
-                ).takeIf { it.path.isNotBlank() && File(it.path).isFile }
+                    sourceName = item.optString("sourceName"),
+                    lastModified = item.optLong("lastModified"),
+                    fileSize = item.optLong("fileSize")
+                ).takeIf { it.path.startsWith("content://") || it.path.startsWith("file://") || File(it.path).isFile }
             }
             if (tracks.isEmpty()) return@runCatching null
             val bookmarkJson = json.optJSONArray("bookmarks") ?: JSONArray()
@@ -127,6 +165,8 @@ internal object AudioBookRepository {
                 put("discNumber", track.discNumber.coerceAtLeast(0))
                 put("mimeType", track.mimeType)
                 put("sourceName", track.sourceName)
+                put("lastModified", track.lastModified)
+                put("fileSize", track.fileSize)
             })
         }
         val bookmarks = JSONArray()
