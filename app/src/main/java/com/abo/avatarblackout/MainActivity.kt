@@ -203,7 +203,7 @@ class MainActivity : FragmentActivity() {
         UiText.translate(value, currentAppLanguage())
 
     private fun localizeTree(view: View, language: String = currentAppLanguage()) {
-        if (view is TextView) {
+        if (view is TextView && view.tag != USER_CONTENT_TAG) {
             view.text = UiText.translate(view.text.toString(), language)
             if (view is EditText) {
                 view.hint = UiText.translate(view.hint?.toString().orEmpty(), language)
@@ -1125,6 +1125,23 @@ class MainActivity : FragmentActivity() {
             })
         })
 
+        content.addView(card("Your books") { section ->
+            addText(section, "Add a folder, audio file, archive, or direct download link.")
+            section.addView(actionButton("Add new book").apply {
+                setOnClickListener { showNewAudioBookSourceDialog() }
+            })
+            audioImportStatusText = TextView(this).apply {
+                textSize = 13f
+                setTextColor(secondary)
+                setPadding(0, dp(6), 0, dp(6))
+            }
+            section.addView(audioImportStatusText)
+            audioBookListContainer = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            section.addView(audioBookListContainer)
+        })
+
         content.addView(card("Player controls") { section ->
             addText(section, "Playback continues in the background.")
             addText(section, "Reciter")
@@ -1244,6 +1261,8 @@ class MainActivity : FragmentActivity() {
         updateQuranPlaybackUi()
         quranProgressHandler.removeCallbacks(quranProgressTicker)
         quranProgressHandler.post(quranProgressTicker)
+        renderAudioBookLibrary()
+        observeAudioBookImports()
     }
 
     private fun connectQuranController() {
@@ -2633,5 +2652,9 @@ class MainActivity : FragmentActivity() {
         private const val IMPORT_REQUEST = 1003
         private const val STATE_PAGE = "swizy_current_page"
         private const val STATE_SCROLL_Y = "swizy_scroll_y"
+        private const val USER_CONTENT_TAG = "swizy_user_content"
+        private const val AUDIO_BOOK_FILE_REQUEST = 1010
+        private const val AUDIO_BOOK_FOLDER_REQUEST = 1011
+        private const val AUDIO_BOOK_IMPORT_TAG = "swizy_audio_book_import"
     }
 }
