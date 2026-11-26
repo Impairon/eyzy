@@ -40,8 +40,6 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.filled.ArrowLeft
-import androidx.compose.material.icons.filled.ArrowRight
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Timer
@@ -565,7 +563,7 @@ private fun BookPlayView(
             ) {
                 IconButton(onClick = onRewind, modifier = Modifier.size(56.dp)) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.ArrowRight, contentDescription = "Rewind $rewindSeconds seconds", modifier = Modifier.size(40.dp))
+                        Icon(Icons.Default.Replay, contentDescription = "Rewind $rewindSeconds seconds", modifier = Modifier.size(40.dp))
                         Text(
                             rewindSeconds.toString(),
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
@@ -596,7 +594,7 @@ private fun BookPlayView(
                 Spacer(Modifier.size(16.dp))
                 IconButton(onClick = onForward, modifier = Modifier.size(56.dp)) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.ArrowLeft, contentDescription = "Forward $forwardSeconds seconds", modifier = Modifier.size(40.dp))
+                        Icon(Icons.Default.Forward30, contentDescription = "Forward $forwardSeconds seconds", modifier = Modifier.size(40.dp))
                         Text(
                             forwardSeconds.toString(),
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
