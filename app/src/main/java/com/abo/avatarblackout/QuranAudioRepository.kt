@@ -63,9 +63,14 @@ internal object QuranAudioRepository {
         return runCatching {
             val json = JSONObject(raw)
             val chaptersJson = json.optJSONArray("chapters") ?: JSONArray()
-            val chapters = (0 until chaptersJson.length()).mapNotNull { index ->
+            val storedChapters = (0 until chaptersJson.length()).mapNotNull { index ->
                 chaptersJson.optInt(index).takeIf { it in 1..114 }
             }.distinct()
+            val chapters = if (id == MAIN_TIMELINE && storedChapters.isEmpty()) {
+                (1..114).toList()
+            } else {
+                storedChapters
+            }
             val index = json.optInt("chapterIndex", 0).coerceIn(
                 0, (chapters.size - 1).coerceAtLeast(0)
             )
