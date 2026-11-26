@@ -119,7 +119,7 @@ class AudioBookImportWorker(
                     val suggestedName = download(urlText, downloaded)
                     ensureActive()
                     setProgress(workDataOf(KEY_PROGRESS to 48, KEY_STAGE to "extract"))
-                    val result = extractAudio(downloaded, suggestedName, tracksDirectory, available)
+                    val result = extractAudio(downloaded, suggestedName, tracksDirectory)
                     downloaded.delete()
                     result
                 }
@@ -130,7 +130,7 @@ class AudioBookImportWorker(
                     copyContentUri(uri, downloaded, 0, 45)
                     ensureActive()
                     setProgress(workDataOf(KEY_PROGRESS to 48, KEY_STAGE to "extract"))
-                    extractAudio(downloaded, sourceName, tracksDirectory, available).also {
+                    extractAudio(downloaded, sourceName, tracksDirectory).also {
                         downloaded.delete()
                     }
                 }
@@ -309,8 +309,7 @@ class AudioBookImportWorker(
                         extractAudio(
                             archive,
                             name,
-                            extractedDir,
-                            StatFs(outputDirectory.absolutePath).availableBytes
+                            extractedDir
                         )
                     )
                     archive.delete()
@@ -379,10 +378,17 @@ class AudioBookImportWorker(
                 )
             }
             val length = connection.contentLengthLong
+            val availableForDownload = min(
+                MAX_DOWNLOAD_BYTES,
+                (StatFs(destination.parentFile!!.absolutePath).availableBytes - MIN_FREE_SPACE).coerceAtLeast(0L)
+            )
+            if (availableForDownload <= 0L) {
+                throw IllegalStateException("There is not enough free storage for this download.")
+            }
             if (length > MAX_DOWNLOAD_BYTES) {
                 throw IllegalArgumentException("The download is larger than the supported 16 GB limit.")
             }
-            if (length > 0L && length > StatFs(destination.parentFile!!.absolutePath).availableBytes - MIN_FREE_SPACE) {
+            if (length > 0L && length > availableForDownload) {
                 throw IllegalStateException("There is not enough free storage for this download.")
             }
             val dispositionName = fileNameFromDisposition(connection.getHeaderField("Content-Disposition"))
@@ -399,6 +405,9 @@ class AudioBookImportWorker(
                         copied += read
                         if (copied > MAX_DOWNLOAD_BYTES) {
                             throw IllegalArgumentException("The download is larger than the supported 16 GB limit.")
+                        }
+                        if (copied > availableForDownload) {
+                            throw IllegalStateException("There is not enough free storage for this download.")
                         }
                         output.write(buffer, 0, read)
                         val now = android.os.SystemClock.elapsedRealtime()
@@ -422,9 +431,9 @@ class AudioBookImportWorker(
     private suspend fun extractAudio(
         source: File,
         suggestedName: String,
-        outputDirectory: File,
-        availableBytes: Long
+        outputDirectory: File
     ): List<PendingTrack> {
+        val availableBytes = StatFs(outputDirectory.absolutePath).availableBytes
         val budget = ExtractionBudget(
             min(MAX_EXTRACTED_BYTES, (availableBytes - MIN_FREE_SPACE).coerceAtLeast(0L))
         )
