@@ -605,7 +605,14 @@ private fun BookCover(title: String, coverPath: String?, modifier: Modifier = Mo
     val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, coverPath) {
         value = withContext(Dispatchers.IO) {
             coverPath?.let { path ->
-                runCatching { BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull()
+                runCatching {
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(path, bounds)
+                    var sample = 1
+                    while (bounds.outWidth / sample > 1024 || bounds.outHeight / sample > 1024) sample *= 2
+                    val options = BitmapFactory.Options().apply { inSampleSize = sample }
+                    BitmapFactory.decodeFile(path, options)?.asImageBitmap()
+                }.getOrNull()
             }
         }
     }
