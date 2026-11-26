@@ -29,6 +29,10 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Forward30
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -43,6 +47,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.SearchBar
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -74,6 +80,8 @@ internal fun VoiceBooksScreen(
     durationMs: Long,
     onSearchChange: (String) -> Unit,
     onAddBook: () -> Unit,
+    onSettingsClick: () -> Unit,
+    onPlayActive: () -> Unit,
     onBookClick: (String) -> Unit,
     onBookOptions: (String) -> Unit,
     onBack: () -> Unit,
@@ -98,6 +106,8 @@ internal fun VoiceBooksScreen(
                 searchQuery = searchQuery,
                 onSearchChange = onSearchChange,
                 onAddBook = onAddBook,
+                onSettingsClick = onSettingsClick,
+                onPlayActive = onPlayActive,
                 onBookClick = onBookClick,
                 onBookOptions = onBookOptions,
             )
@@ -131,10 +141,13 @@ private fun BookOverviewScreen(
     searchQuery: String,
     onSearchChange: (String) -> Unit,
     onAddBook: () -> Unit,
+    onSettingsClick: () -> Unit,
+    onPlayActive: () -> Unit,
     onBookClick: (String) -> Unit,
     onBookOptions: (String) -> Unit,
 ) {
     var localQuery by remember { mutableStateOf(searchQuery) }
+    var searchActive by remember { mutableStateOf(false) }
     val filtered = remember(books, localQuery) {
         books.filter { book ->
             localQuery.isBlank() || book.name.contains(localQuery, true) ||
@@ -146,14 +159,46 @@ private fun BookOverviewScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Your library") },
-                actions = {
-                    IconButton(onClick = onAddBook) {
-                        Icon(Icons.Default.Add, contentDescription = "Add book")
+            SearchBar(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = if (searchActive) 0.dp else 16.dp),
+                query = if (searchActive) localQuery else "",
+                onQueryChange = {
+                    localQuery = it
+                    onSearchChange(it)
+                },
+                onSearch = onSearchChange,
+                active = searchActive,
+                onActiveChange = { searchActive = it },
+                placeholder = { Text("Search books") },
+                leadingIcon = {
+                    if (searchActive) {
+                        IconButton(onClick = { searchActive = false }) {
+                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Close search")
+                        }
+                    } else {
+                        Icon(Icons.Outlined.Search, contentDescription = "Search")
                     }
                 },
-            )
+                trailingIcon = {
+                    if (!searchActive) {
+                        Row {
+                            IconButton(onClick = onAddBook) {
+                                Icon(Icons.Outlined.Folder, contentDescription = "Add folder")
+                            }
+                            IconButton(onClick = onSettingsClick) {
+                                Icon(Icons.Outlined.Settings, contentDescription = "Settings")
+                            }
+                        }
+                    }
+                },
+            ) { }
+        },
+        floatingActionButton = {
+            if (activeBookId != null) {
+                FloatingActionButton(onClick = onPlayActive) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = "Resume playback")
+                }
+            }
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
