@@ -3,6 +3,11 @@
 package com.abo.avatarblackout
 
 import androidx.compose.foundation.Image
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.border
+import android.util.LruCache
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -540,8 +545,17 @@ private fun BookPlayView(
             )
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 val displayedPosition = if (isDragging) (durationMs * localSliderValue).toLong() else positionMs
-                Text(formatVoiceDuration(displayedPosition), style = MaterialTheme.typography.labelSmall)
-                Text(formatVoiceDuration(durationMs), style = MaterialTheme.typography.labelSmall)
+                var showRemainingTime by remember(book.id) { mutableStateOf(false) }
+                Text(
+                    text = if (showRemainingTime) "-${formatVoiceDuration((durationMs - displayedPosition).coerceAtLeast(0L))}" else formatVoiceDuration(displayedPosition),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.clickable { showRemainingTime = !showRemainingTime },
+                )
+                Text(
+                    formatVoiceDuration(durationMs),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.clickable { showRemainingTime = !showRemainingTime },
+                )
             }
             Spacer(Modifier.height(16.dp))
             Row(
@@ -563,7 +577,16 @@ private fun BookPlayView(
                     }
                 }
                 Spacer(Modifier.size(16.dp))
-                IconButton(onClick = onPlayPause, modifier = Modifier.size(80.dp)) {
+                val playCornerRadius by animateDpAsState(
+                    targetValue = if (playing) 22.dp else 44.dp,
+                    label = "playButtonShape",
+                )
+                IconButton(
+                    onClick = onPlayPause,
+                    modifier = Modifier.size(80.dp)
+                        .clip(RoundedCornerShape(playCornerRadius))
+                        .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(playCornerRadius)),
+                ) {
                     Icon(
                         if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (playing) "Pause" else "Play",
@@ -630,6 +653,12 @@ private fun BookPlayView(
     }
 }
 
+private object BookThumbnailCache {
+    private val cache = LruCache<String, ImageBitmap>(32)
+    @Synchronized fun get(key: String): ImageBitmap? = cache.get(key)
+    @Synchronized fun put(key: String, bitmap: ImageBitmap) { cache.put(key, bitmap) }
+}
+
 @Composable
 private fun BookCover(title: String, coverPath: String?, modifier: Modifier = Modifier, audioUri: String? = null) {
     val context = LocalContext.current
@@ -639,8 +668,11 @@ private fun BookCover(title: String, coverPath: String?, modifier: Modifier = Mo
             "${file.lastModified()}:${file.length()}"
         }.getOrDefault("") }.orEmpty()
     }
-    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, coverPath, coverSignature, audioUri) {
-        value = withContext(Dispatchers.IO) {
+    val cacheKey = remember(coverPath, coverSignature, audioUri) {
+        if (!coverPath.isNullOrBlank()) "file:$coverPath:$coverSignature" else "audio:${audioUri.orEmpty()}"
+    }
+    val bitmap by produceState<ImageBitmap?>(BookThumbnailCache.get(cacheKey), cacheKey) {
+        value = BookThumbnailCache.get(cacheKey) ?: withContext(Dispatchers.IO) {
             val saved = coverPath?.let { path -> runCatching {
                 val file = java.io.File(path)
                 if (!file.isFile || file.length() <= 0L) return@runCatching null
@@ -664,7 +696,7 @@ private fun BookCover(title: String, coverPath: String?, modifier: Modifier = Mo
                     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
                 } finally { runCatching { retriever.release() } }
             }.getOrNull() }
-        }
+        }?.also { BookThumbnailCache.put(cacheKey, it) }
     }
     Box(
         modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)),
@@ -677,6 +709,7 @@ private fun BookCover(title: String, coverPath: String?, modifier: Modifier = Mo
         }
     }
 }
+
 private fun formatVoiceDuration(milliseconds: Long): String {
     val seconds = milliseconds.coerceAtLeast(0L) / 1000L
     val hours = seconds / 3600L
