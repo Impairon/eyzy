@@ -953,7 +953,8 @@ class MainActivity : FragmentActivity() {
             item.background = if (selected) rounded(purple, 12) else rounded(Color.TRANSPARENT, 12)
         }
         if (::booksContinueBar.isInitialized) {
-            val activeBook = AudioBookRepository.activeBookId(this)?.let { AudioBookRepository.load(this, it) }
+            val activeBookId = AudioBookRepository.activeBookId(this)
+            val activeBook = booksLibraryState.value.firstOrNull { it.id == activeBookId }
             val showContinue = currentPage == 4 && selectedAudioBookId == null && activeBook != null
             booksContinueBar.visibility = if (showContinue) View.VISIBLE else View.GONE
             booksContinueButton?.text = activeBook?.let { translate("Continue listening") + " · " + it.name }
@@ -1703,6 +1704,7 @@ class MainActivity : FragmentActivity() {
                 if (generation != booksLibraryLoadGeneration || isFinishing || isDestroyed) return@runOnUiThread
                 booksLibraryState.value = loaded
                 booksLibraryLoadingState.value = false
+                if (currentPage == 4) refreshNavigation()
             }
         }
     }
