@@ -267,8 +267,7 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         if (::content.isInitialized) {
-            val scrollY = if (::mainScrollView.isInitialized) mainScrollView.scrollY else savedScrollY
-            openPage(currentPage, preserveScroll = true, restoreScrollY = scrollY)
+            openPage(currentPage, preserveScroll = true, restoreScrollY = savedScrollY)
         } else {
             registerSensors()
         }
@@ -315,6 +314,8 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onPause() {
+        if (::mainScrollView.isInitialized) savedScrollY = mainScrollView.scrollY
+        quranProgressHandler.removeCallbacks(quranProgressTicker)
         super.onPause()
         unregisterSensors()
     }
@@ -1255,6 +1256,7 @@ class MainActivity : FragmentActivity() {
                 controller.addListener(quranPlayerListener)
                 updateQuranPlaybackUi()
             }.onFailure {
+                quranControllerFuture = null
                 quranStatusText?.text = translate("Could not connect to the audio player.")
             }
         }, ContextCompat.getMainExecutor(this))
@@ -1323,7 +1325,7 @@ class MainActivity : FragmentActivity() {
                 }
             }
         }
-        quranStatusText?.text = translate("Choose a reciter to begin streaming.")
+        quranStatusText?.text = translate("Ready")
     }
 
     private fun playMainQuran() {
