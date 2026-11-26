@@ -86,6 +86,8 @@ class MainActivity : FragmentActivity() {
     private lateinit var mainScrollView: ScrollView
     private var savedScrollY = 0
     private lateinit var navigationBar: LinearLayout
+    private lateinit var booksContinueBar: LinearLayout
+    private var booksContinueButton: Button? = null
     private val navigationItems = mutableListOf<Pair<Int, TextView>>()
     private var currentPage = 0
     private var quranController: MediaController? = null
@@ -842,16 +844,6 @@ class MainActivity : FragmentActivity() {
             setPadding(dp(12), 0, dp(8), 0)
         }
         header.addView(pageTitle, LinearLayout.LayoutParams(0, dp(48), 1f))
-        val settings = TextView(this).apply {
-            text = "⚙"
-            textSize = 25f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            background = rounded(panelRaised, 14)
-            contentDescription = translate("Settings")
-            setOnClickListener { openPage(5) }
-        }
-        header.addView(settings, LinearLayout.LayoutParams(dp(48), dp(48)))
         shell.addView(header)
 
         mainScrollView = ScrollView(this).apply {
@@ -864,6 +856,19 @@ class MainActivity : FragmentActivity() {
         }
         mainScrollView.addView(content)
         shell.addView(mainScrollView, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        booksContinueBar = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(6), dp(18), dp(4))
+            visibility = View.GONE
+        }
+        booksContinueButton = actionButton("Continue listening").apply {
+            setOnClickListener {
+                AudioBookRepository.activeBookId(this@MainActivity)?.let { resumeAudioBook(it) }
+            }
+        }
+        booksContinueBar.addView(booksContinueButton, LinearLayout.LayoutParams(-1, dp(48)))
+        shell.addView(booksContinueBar, LinearLayout.LayoutParams(-1, -2))
 
         navigationBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -880,6 +885,7 @@ class MainActivity : FragmentActivity() {
         addNavigationItem("Sibha", 1)
         addNavigationItem("Prayers", 2)
         addNavigationItem("Books", 4)
+        addNavigationItem("Settings", 5)
         val navHolder = LinearLayout(this).apply {
             setPadding(dp(12), dp(4), dp(12), dp(10))
             addView(navigationBar, LinearLayout.LayoutParams(-1, dp(58)))
@@ -913,6 +919,13 @@ class MainActivity : FragmentActivity() {
             val selected = currentPage == page || (currentPage == 3 && page == 2)
             item.setTextColor(if (selected) Color.WHITE else secondary)
             item.background = if (selected) rounded(purple, 12) else rounded(Color.TRANSPARENT, 12)
+        }
+        if (::booksContinueBar.isInitialized) {
+            val activeBook = AudioBookRepository.activeBookId(this)?.let { AudioBookRepository.load(this, it) }
+            val showContinue = currentPage == 4 && selectedAudioBookId == null && activeBook != null
+            booksContinueBar.visibility = if (showContinue) View.VISIBLE else View.GONE
+            booksContinueButton?.text = activeBook?.let { translate("Continue listening") + " · " + it.name }
+                ?: translate("Continue listening")
         }
         if (::pageTitle.isInitialized) pageTitle.text = translate(pageTitle.text.toString())
     }
@@ -1164,30 +1177,34 @@ class MainActivity : FragmentActivity() {
                     audioBookSearchQuery = it
                 },
                 onAddBook = { showAudioBookAddContent() },
-                onSettingsClick = { openPage(5) },
-                onPlayActive = {
-                    AudioBookRepository.activeBookId(this)?.let { resumeAudioBook(it) }
-                },
                 onBookClick = { resumeAudioBook(it) },
                 onBookOptions = { showAudioBookOptions(it) },
                 onBack = { showQuranAudio() },
                 onPlayPause = { toggleQuranPlayback() },
                 onSeek = { quranController?.seekTo(it) },
                 onRewind = {
-                    val seconds = getSharedPreferences("avb", MODE_PRIVATE).getInt("books_rewind_seconds", 15).coerceIn(5, 60)
+                    val seconds = getSharedPreferences("avb", MODE_PRIVATE).getInt("books_rewind_seconds", 20).coerceIn(5, 120)
                     quranController?.seekTo((quranController?.currentPosition ?: 0L) - seconds * 1_000L)
                 },
-                onForward = { quranController?.seekTo((quranController?.currentPosition ?: 0L) + 30_000L) },
+                onForward = {
+                    val seconds = getSharedPreferences("avb", MODE_PRIVATE).getInt("books_forward_seconds", 30).coerceIn(5, 120)
+                    quranController?.seekTo((quranController?.currentPosition ?: 0L) + seconds * 1_000L)
+                },
                 onPrevious = { quranController?.seekToPreviousMediaItem() },
                 onNext = { quranController?.seekToNextMediaItem() },
                 onChapters = { quranController?.seekTo(it, 0L) },
                 onBookmark = { selectedAudioBookId?.let { addAudioBookBookmark(it) } },
                 onBookmarks = { selectedAudioBookId?.let { showAudioBookBookmarks(it) } },
-                onResumeBookmark = { id, track, position -> resumeAudioBook(id, track, position) },
+                onResumeBookmark = { id, track, position ->
+                    val offset = getSharedPreferences("avb", MODE_PRIVATE)
+                        .getInt("books_resume_offset_seconds", 2).coerceIn(0, 10) * 1_000L
+                    resumeAudioBook(id, track, (position - offset).coerceAtLeast(0L))
+                },
                 onDeleteBookmark = { id, bookmarkId ->
                     AudioBookRepository.removeBookmark(this, id, bookmarkId)
                 },
-                rewindSeconds = getSharedPreferences("avb", MODE_PRIVATE).getInt("books_rewind_seconds", 15).coerceIn(5, 60),
+                rewindSeconds = getSharedPreferences("avb", MODE_PRIVATE).getInt("books_rewind_seconds", 20).coerceIn(5, 120),
+                forwardSeconds = getSharedPreferences("avb", MODE_PRIVATE).getInt("books_forward_seconds", 30).coerceIn(5, 120),
                 onSpeed = { showAudioBookSpeedDialog() },
                 onSleepTimer = { showAudioBookSleepTimer() },
             )
@@ -2277,29 +2294,36 @@ class MainActivity : FragmentActivity() {
         content.addView(appLockCard)
         val booksSettingsCard = card("Books") { cardContent ->
             val prefs = getSharedPreferences("avb", MODE_PRIVATE)
-            val value = TextView(this).apply {
-                textSize = 14f
-                setTextColor(secondary)
-            }
-            val rewind = SeekBar(this).apply {
-                max = 11
-                progress = ((prefs.getInt("books_rewind_seconds", 15).coerceIn(5, 60) - 5) / 5)
-                fun updateLabel(seconds: Int) {
-                    value.text = translate("Rewind button") + ": " + seconds + " " + translate("seconds")
+            addText(cardContent, "Fine-tune audiobook skipping and saved-position playback.")
+            fun secondsSlider(label: String, key: String, min: Int, max: Int, step: Int, default: Int) {
+                val value = TextView(this).apply {
+                    textSize = 14f
+                    setTextColor(Color.WHITE)
+                    setPadding(0, dp(10), 0, dp(2))
                 }
-                updateLabel(5 + progress * 5)
-                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                        val seconds = 5 + progress * 5
-                        updateLabel(seconds)
-                        if (fromUser) prefs.edit().putInt("books_rewind_seconds", seconds).apply()
+                val slider = SeekBar(this).apply {
+                    this.max = (max - min) / step
+                    progress = ((prefs.getInt(key, default).coerceIn(min, max) - min) / step)
+                    fun update(number: Int) {
+                        value.text = translate(label) + "  ·  " + number + " " + translate("seconds")
                     }
-                    override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
-                    override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
-                })
+                    update(min + progress * step)
+                    setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                        override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                            val selected = min + progress * step
+                            update(selected)
+                            if (fromUser) prefs.edit().putInt(key, selected).apply()
+                        }
+                        override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+                        override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+                    })
+                }
+                cardContent.addView(value)
+                cardContent.addView(slider, LinearLayout.LayoutParams(-1, dp(44)))
             }
-            cardContent.addView(value)
-            cardContent.addView(rewind, LinearLayout.LayoutParams(-1, dp(42)))
+            secondsSlider("Rewind", "books_rewind_seconds", 5, 120, 5, 20)
+            secondsSlider("Skip forward", "books_forward_seconds", 5, 120, 5, 30)
+            secondsSlider("Resume before saved position", "books_resume_offset_seconds", 0, 10, 1, 2)
         }
         content.addView(booksSettingsCard)
         // Keep the existing controls intact while presenting them in a calmer visual hierarchy.
