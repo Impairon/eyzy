@@ -66,10 +66,6 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
-import androidx.work.Data
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkInfo
-import androidx.work.WorkManager
 import com.google.common.util.concurrent.ListenableFuture
 
 class MainActivity : FragmentActivity() {
@@ -111,7 +107,6 @@ class MainActivity : FragmentActivity() {
     private var sleepTimerEndAt = 0L
     private val sleepTimerHandler = Handler(Looper.getMainLooper())
     private var audioImportStatusText: TextView? = null
-    private var audioImportObservationAttached = false
     private val quranProgressHandler = Handler(Looper.getMainLooper())
     private val quranProgressTicker = object : Runnable {
         override fun run() {
@@ -319,7 +314,7 @@ class MainActivity : FragmentActivity() {
             }
             val displayName = runCatching { DocumentFile.fromTreeUri(this, uri)?.name }
                 .getOrNull()?.takeIf { it.isNotBlank() } ?: translate("My books")
-            enqueueAudioBookImport(uri.toString(), displayName)
+            previewAudioBookFolder(uri, displayName)
             return
         }
 
@@ -1150,7 +1145,6 @@ class MainActivity : FragmentActivity() {
 
         connectQuranController()
         renderAudioBookLibrary()
-        observeAudioBookImports()
         updateQuranPlaybackUi()
         quranProgressHandler.removeCallbacks(quranProgressTicker)
         quranProgressHandler.post(quranProgressTicker)
@@ -1425,57 +1419,58 @@ class MainActivity : FragmentActivity() {
             }
     }
 
-    private fun enqueueAudioBookImport(sourceUri: String, bookName: String) {
-        val bookId = AudioBookRepository.newId()
-        val data = Data.Builder()
-            .putString(AudioBookImportWorker.KEY_SOURCE_URI, sourceUri)
-            .putString(AudioBookImportWorker.KEY_BOOK_NAME, bookName)
-            .putString(AudioBookImportWorker.KEY_BOOK_ID, bookId)
-            .build()
-        val request = OneTimeWorkRequestBuilder<AudioBookImportWorker>()
-            .setInputData(data)
-            .addTag(AUDIO_BOOK_IMPORT_TAG)
-            .build()
-        runCatching { WorkManager.getInstance(applicationContext).enqueue(request) }
-            .onSuccess {
-                audioImportStatusText?.text = translate("Import queued…")
-                observeAudioBookImports()
+    private fun previewAudioBookFolder(uri: Uri, folderName: String) {
+        audioImportStatusText?.text = translate("Checking folder…")
+        AudioBookScanner.preview(this, uri) { result ->
+            if (isFinishing || isDestroyed) return@preview
+            result.onFailure { error ->
+                audioImportStatusText?.text = translate(error.message ?: "Could not read that folder.")
+            }.onSuccess { preview ->
+                val modes = AudioBookFolderMode.entries
+                val labels = arrayOf(
+                    "${translate("One book in this folder")} (${preview.candidates[AudioBookFolderMode.SingleBook].orEmpty().size})",
+                    "${translate("One book per folder")} (${preview.candidates[AudioBookFolderMode.Audiobooks].orEmpty().size})",
+                    "${translate("Books grouped by author")} (${preview.candidates[AudioBookFolderMode.Authors].orEmpty().size})"
+                )
+                var selected = preview.suggestedMode.ordinal
+                lateinit var dialog: AlertDialog
+                dialog = AlertDialog.Builder(this)
+                    .setTitle("${translate("Review folder")} · ${preview.folderName.ifBlank { folderName }}")
+                    .setSingleChoiceItems(labels, selected) { _, which ->
+                        selected = which
+                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled =
+                            preview.candidates[modes[selected]].orEmpty().isNotEmpty()
+                    }
+                    .setNegativeButton(translate("Cancel"), null)
+                    .setPositiveButton(translate("Add books")) { _, _ ->
+                        val mode = modes[selected]
+                        audioImportStatusText?.text = translate("Adding books…")
+                        AudioBookScanner.addBooks(applicationContext, preview, mode) { imported ->
+                            if (isDestroyed) return@addBooks
+                            imported.onSuccess { books ->
+                                audioImportStatusText?.text = if (books.isEmpty()) {
+                                    translate("No supported audio tracks were found.")
+                                } else {
+                                    translate("Books added.") + " " + books.size
+                                }
+                                renderAudioBookLibrary()
+                                if (books.isEmpty()) {
+                                    Toast.makeText(this, translate("No supported audio tracks were found."), Toast.LENGTH_LONG).show()
+                                } else {
+                                    Toast.makeText(this, translate("Books added.") + " " + books.size, Toast.LENGTH_SHORT).show()
+                                }
+                            }.onFailure { error ->
+                                audioImportStatusText?.text = translate(error.message ?: "The audio book could not be added.")
+                                Toast.makeText(this, audioImportStatusText?.text, Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                    .create()
+                dialog.show()
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled =
+                    preview.candidates[modes[selected]].orEmpty().isNotEmpty()
             }
-            .onFailure { audioImportStatusText?.text = translate("Could not start the import.") }
-    }
-
-    private fun observeAudioBookImports() {
-        if (audioImportObservationAttached) return
-        audioImportObservationAttached = true
-        WorkManager.getInstance(this)
-            .getWorkInfosByTagLiveData(AUDIO_BOOK_IMPORT_TAG)
-            .observe(this) { infos ->
-                val active = infos.firstOrNull { !it.state.isFinished }
-                if (active != null) {
-                    val percent = active.progress.getInt(AudioBookImportWorker.KEY_PROGRESS, 0)
-                    val stage = translate("Adding books…")
-                    audioImportStatusText?.text = "$stage $percent%"
-                    return@observe
-                }
-
-                val finished = infos.firstOrNull {
-                    it.state == WorkInfo.State.SUCCEEDED || it.state == WorkInfo.State.FAILED
-                } ?: return@observe
-                if (finished.state == WorkInfo.State.SUCCEEDED) {
-                    audioImportStatusText?.text = translate("Book imported successfully.")
-                    renderAudioBookLibrary()
-                } else {
-                    val error = finished.outputData.getString(AudioBookImportWorker.KEY_ERROR).orEmpty()
-                    audioImportStatusText?.text = translateImportError(error)
-                }
-            }
-    }
-
-    private fun translateImportError(error: String): String {
-        if (error.startsWith("The server returned HTTP ")) {
-            return translate("Download server error: ") + error.substringAfter("HTTP ")
         }
-        return translate(error).ifBlank { translate("The audio book could not be imported.") }
     }
 
     private fun renderAudioBookLibrary() {
@@ -1736,12 +1731,12 @@ class MainActivity : FragmentActivity() {
         }
         runCatching {
             saveCurrentQuranPosition()
-            val validTracks = book.tracks.filter { File(it.path).isFile }
+            val validTracks = book.tracks.filter { it.path.startsWith("content://") || it.path.startsWith("file://") || File(it.path).isFile }
             if (validTracks.isEmpty()) error(translate("No playable audio files remain in this book."))
             val items = validTracks.mapIndexed { index, track ->
                 MediaItem.Builder()
                     .setMediaId("book:" + bookId + "|" + index)
-                    .setUri(Uri.fromFile(File(track.path)))
+                    .setUri(if (track.path.startsWith("content://") || track.path.startsWith("file://")) Uri.parse(track.path) else Uri.fromFile(File(track.path)))
                     .setMediaMetadata(
                         MediaMetadata.Builder()
                             .setTitle(track.title.ifBlank { track.sourceName })
@@ -3064,6 +3059,5 @@ class MainActivity : FragmentActivity() {
         private const val STATE_SCROLL_Y = "swizy_scroll_y"
         private const val USER_CONTENT_TAG = "swizy_user_content"
         private const val AUDIO_BOOK_FOLDER_REQUEST = 1011
-        private const val AUDIO_BOOK_IMPORT_TAG = "swizy_audio_book_import"
     }
 }
