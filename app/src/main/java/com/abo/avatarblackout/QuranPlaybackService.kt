@@ -35,9 +35,16 @@ class QuranPlaybackService : MediaSessionService() {
             override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
                 val timelineId = mediaItem?.mediaId?.substringBefore('|')
                 if (timelineId == QuranAudioRepository.MAIN_TIMELINE ||
-                    timelineId == QuranAudioRepository.SIDE_TIMELINE
+                    timelineId == QuranAudioRepository.SIDE_TIMELINE ||
+                    timelineId.startsWith("book:")
                 ) {
                     QuranAudioRepository.setActiveTimeline(this@QuranPlaybackService, timelineId)
+                    if (timelineId.startsWith("book:")) {
+                        AudioBookRepository.setActive(
+                            this@QuranPlaybackService,
+                            timelineId.removePrefix("book:")
+                        )
+                    }
                 }
                 savePositionNow()
             }
@@ -72,11 +79,18 @@ class QuranPlaybackService : MediaSessionService() {
         val parts = mediaId?.split('|') ?: return
         if (parts.size != 2) return
         val timelineId = parts[0]
-        if (timelineId != QuranAudioRepository.MAIN_TIMELINE &&
-            timelineId != QuranAudioRepository.SIDE_TIMELINE
-        ) return
         val chapterIndex = parts[1].toIntOrNull() ?: return
-        QuranAudioRepository.saveProgress(this, timelineId, chapterIndex, positionMs)
+        when {
+            timelineId == QuranAudioRepository.MAIN_TIMELINE ||
+                timelineId == QuranAudioRepository.SIDE_TIMELINE -> {
+                QuranAudioRepository.saveProgress(this, timelineId, chapterIndex, positionMs)
+            }
+            timelineId.startsWith("book:") -> {
+                AudioBookRepository.saveProgress(
+                    this, timelineId.removePrefix("book:"), chapterIndex, positionMs
+                )
+            }
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
