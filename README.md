@@ -27,6 +27,15 @@ surah does not overwrite the main Quran's place. Playback continues in the
 background through an Android media session; an internet connection is needed
 for streaming.
 
+The same player also has a personal audio-book library. Add a book from a
+folder, a selected audio/archive file, or a direct HTTP(S) link. Online imports
+show a copyright and Terms of Service reminder first. ZIP, TAR, GZIP and TGZ
+archives are unpacked into the book; supported tracks are named from embedded
+metadata when available and naturally sorted by track/disc tags or filenames.
+Each book keeps its own playback position and supports rename, bookmarks,
+bookmark editing, and deletion. Imported audio is copied into Swizy's private
+app storage.
+
 ## Other features
 
 - Arabic and English interface
