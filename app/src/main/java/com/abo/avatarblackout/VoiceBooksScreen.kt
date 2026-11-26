@@ -7,6 +7,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.LinearEasing
@@ -708,7 +709,7 @@ private fun VoiceWavySeekBar(
     val phase by rememberInfiniteTransition(label = "seekWave")
         .animateFloat(
             initialValue = 0f,
-            targetValue = (2f * PI).toFloat(),
+            targetValue = 6.2831855f,
             animationSpec = infiniteRepeatable(
                 animation = tween(durationMillis = 5000, easing = LinearEasing),
                 repeatMode = RepeatMode.Restart,
@@ -756,12 +757,12 @@ private fun VoiceWavySeekBar(
         if (activeEnd > 0f) {
             val path = Path()
             var x = 0f
-            path.moveTo(x, centerY + waveAmplitude * sin(phase))
+            path.moveTo(x, centerY + waveAmplitude * sin(phase.toDouble()).toFloat())
             val step = 1.5.dp.toPx()
             while (x < activeEnd) {
                 x = (x + step).coerceAtMost(activeEnd)
-                val angle = x / wavelength * 2f * PI.toFloat() + phase
-                path.lineTo(x, centerY + waveAmplitude * sin(angle))
+                val angle = (x / wavelength) * 6.2831855f + phase
+                path.lineTo(x, centerY + waveAmplitude * sin(angle.toDouble()).toFloat())
             }
             drawPath(
                 path = path,
