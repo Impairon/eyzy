@@ -108,6 +108,7 @@ class MainActivity : FragmentActivity() {
     private var audioBookListContainer: LinearLayout? = null
     private var selectedAudioBookId: String? = null
     private var audioBookSearchQuery = ""
+    private var audioBookSearchQuery = ""
     private var sleepTimerEndAt = 0L
     private val sleepTimerHandler = Handler(Looper.getMainLooper())
     private var audioImportStatusText: TextView? = null
@@ -1107,6 +1108,24 @@ class MainActivity : FragmentActivity() {
             setOnClickListener { openAudioBookFolderPicker() }
         })
         content.addView(header)
+        val search = EditText(this).apply {
+            hint = translate("Search books")
+            setSingleLine(true)
+            setTextColor(Color.WHITE)
+            setHintTextColor(secondary)
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+            background = outlined(panelRaised, border, 14)
+            setText(audioBookSearchQuery)
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    audioBookSearchQuery = s?.toString().orEmpty()
+                    renderAudioBookLibrary()
+                }
+                override fun afterTextChanged(s: android.text.Editable?) = Unit
+            })
+        }
+        content.addView(search, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(12) })
 
         content.addView(TextView(this).apply {
             text = translate("Continue listening")
@@ -1533,8 +1552,10 @@ class MainActivity : FragmentActivity() {
     private fun renderAudioBookLibrary() {
         val container = audioBookListContainer ?: return
         container.removeAllViews()
-        val books = AudioBookRepository.all(this)
-        if (books.isEmpty()) {
+        val allBooks = AudioBookRepository.all(this)
+        val query = audioBookSearchQuery.trim()
+        val books = allBooks.filter { book -> query.isBlank() || book.name.contains(query, true) || book.tracks.any { it.title.contains(query, true) || it.artist.contains(query, true) } }
+        if (allBooks.isEmpty()) {
             container.addView(card("Your library is empty") { section ->
                 addText(section, "Choose your audiobook folder to add it here.")
                 section.addView(actionButton("Add folder").apply {
@@ -1545,9 +1566,9 @@ class MainActivity : FragmentActivity() {
         }
 
         val activeId = AudioBookRepository.activeBookId(this)
-        val continueBook = books.firstOrNull { it.id == activeId }
-            ?: books.firstOrNull { it.lastPlayedAt > 0L }
-        if (continueBook != null) {
+        val continueBook = allBooks.firstOrNull { it.id == activeId }
+            ?: allBooks.firstOrNull { it.lastPlayedAt > 0L }
+        if (continueBook != null && query.isBlank()) {
             container.addView(card("Continue listening") { section ->
                 val title = TextView(this).apply {
                     text = continueBook.name
@@ -1565,6 +1586,10 @@ class MainActivity : FragmentActivity() {
             })
         }
 
+        if (books.isEmpty()) {
+            container.addView(TextView(this).apply { text = translate("No matching books"); setTextColor(secondary); setPadding(0, dp(12), 0, dp(12)) })
+            return
+        }
         books.forEach { book ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -1803,6 +1828,7 @@ class MainActivity : FragmentActivity() {
         QuranAudioRepository.setActiveTimeline(this, "book:" + bookId)
         controller.setMediaItems(items, startIndex, startPosition.coerceAtLeast(0L))
         controller.prepare()
+        controller.setPlaybackSpeed(getSharedPreferences("avb", MODE_PRIVATE).getFloat("audio_book_speed", 1f))
         controller.play()
         showAudioBookPlayer(bookId)
     }
@@ -1881,6 +1907,14 @@ class MainActivity : FragmentActivity() {
             setOnClickListener { quranController?.seekTo((quranController?.currentPosition ?: 0L) + 30_000L) }
         }, LinearLayout.LayoutParams(0, dp(54), 1f))
         content.addView(transport)
+        val chapterNav = LinearLayout(this).apply { gravity = Gravity.CENTER }
+        chapterNav.addView(actionButton("Previous chapter").apply {
+            setOnClickListener { quranController?.seekToPreviousMediaItem() }
+        }, LinearLayout.LayoutParams(0, dp(44), 1f))
+        chapterNav.addView(actionButton("Next chapter").apply {
+            setOnClickListener { quranController?.seekToNextMediaItem() }
+        }, LinearLayout.LayoutParams(0, dp(44), 1f))
+        content.addView(chapterNav)
 
         content.addView(actionButton("Chapters").apply {
             setOnClickListener {
