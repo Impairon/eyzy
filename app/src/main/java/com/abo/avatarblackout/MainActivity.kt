@@ -1165,7 +1165,6 @@ class MainActivity : FragmentActivity() {
                 },
                 onAddBook = { showAudioBookAddContent() },
                 onSettingsClick = { openPage(5) },
-                onOpenBookmarks = { /* handled by the Books screen */ },
                 onPlayActive = {
                     AudioBookRepository.activeBookId(this)?.let { resumeAudioBook(it) }
                 },
