@@ -119,11 +119,17 @@ class MainActivity : FragmentActivity() {
     private var sleepTimerEndAt = 0L
     private val sleepTimerHandler = Handler(Looper.getMainLooper())
     private var audioImportStatusText: TextView? = null
+    private var lastTimelineSummaryRefreshAt = 0L
     private val quranProgressHandler = Handler(Looper.getMainLooper())
     private val quranProgressTicker = object : Runnable {
         override fun run() {
             updateQuranPlaybackUi()
-            if (currentPage == 4) quranProgressHandler.postDelayed(this, 1_000L)
+            if (currentPage == 4) {
+                // Keep the active audiobook seek position fluid without waking the UI
+                // four times per second when the player is not visible.
+                val interval = if (selectedBookPlayerVisible()) 250L else 1_000L
+                quranProgressHandler.postDelayed(this, interval)
+            }
         }
     }
     private val quranPlayerListener = object : Player.Listener {
@@ -989,6 +995,15 @@ class MainActivity : FragmentActivity() {
             else -> showSettings()
         }
         localizeTree(content)
+        // A short content cross-fade softens page changes without animating layout
+        // or keeping the previous page alive in memory.
+        content.animate().cancel()
+        content.alpha = 0f
+        content.animate()
+            .alpha(1f)
+            .setDuration(160L)
+            .setInterpolator(android.view.animation.DecelerateInterpolator())
+            .start()
         refreshNavigation()
         savedScrollY = targetScrollY
         if (::mainScrollView.isInitialized) {
@@ -1422,6 +1437,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun updateQuranTimelineSummaries() {
+        lastTimelineSummaryRefreshAt = SystemClock.elapsedRealtime()
         val main = QuranAudioRepository.loadTimeline(this, QuranAudioRepository.MAIN_TIMELINE)
         val side = QuranAudioRepository.loadTimeline(this, QuranAudioRepository.SIDE_TIMELINE)
         mainTimelineSummary?.text = main.currentSurah?.let {
@@ -1468,7 +1484,12 @@ class MainActivity : FragmentActivity() {
         }
         val timerLabel = if (sleepTimerEndAt > System.currentTimeMillis()) translate("Sleep timer active") else ""
         quranStatusText?.text = if (selectedBookPlayerVisible()) listOf(playbackState, timerLabel).filter { it.isNotBlank() }.joinToString(" · ") else listOf(timelineLabel, playbackState).filter { it.isNotBlank() }.joinToString(" · ")
-        updateQuranTimelineSummaries()
+        // Timeline summaries are persisted data; avoid re-reading and formatting
+        // both timelines on every playback tick.
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastTimelineSummaryRefreshAt >= 5_000L) {
+            updateQuranTimelineSummaries()
+        }
         booksPositionState.value = position
         booksDurationState.value = duration.takeIf { it > 0L && it != androidx.media3.common.C.TIME_UNSET } ?: 0L
         booksPlayingState.value = controller?.isPlaying == true
