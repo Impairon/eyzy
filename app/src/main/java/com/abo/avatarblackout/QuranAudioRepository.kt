@@ -30,7 +30,7 @@ internal data class QuranRecitation(
     fun audioUrl(surah: Int): String =
         "${server.trimEnd('/')}/${surah.toString().padStart(3, '0')}.mp3"
 
-    fun supportsFullQuran(): Boolean = surahs.size == 114 && surahs.containsAll(1..114)
+    fun supportsFullQuran(): Boolean = surahs == (1..114).toList()
 }
 
 /**
@@ -210,7 +210,7 @@ internal object QuranAudioRepository {
                         if (recitation.supportsFullQuran()) add(recitation)
                     }
                 }
-            }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.reciterName })
+            }.sortedBy { it.reciterName.lowercase() }
         } finally {
             connection.disconnect()
         }
