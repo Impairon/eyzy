@@ -31,6 +31,7 @@ object UiText {
         "This will clear the current count." to "سيتم مسح العدد الحالي.",
         "Cycle progress: %1\$d / 33" to "تقدّم الدورة: %1\$d / ٣٣",
         "Qibla finder" to "اتجاه القبلة", "Point your phone to find the direction of the Kaaba in Mecca." to "وجّه هاتفك لمعرفة اتجاه الكعبة المشرفة.",
+        "Calibrate compass" to "معايرة البوصلة", "I've done it" to "تمت المعايرة", "Skip" to "تخطي",
         "Set your location in the Prayers page first, or enable GPS there, then come back." to "حدّد موقعك من صفحة الصلاة أو فعّل GPS ثم عُد إلى هنا.",
         "Go to Prayers" to "الانتقال إلى الصلاة", "The saved location is invalid. Update it from the Prayers page." to "الموقع المحفوظ غير صالح. حدّثه من صفحة الصلاة.",
         "Finding compass direction…" to "جارٍ تحديد اتجاه البوصلة…",
