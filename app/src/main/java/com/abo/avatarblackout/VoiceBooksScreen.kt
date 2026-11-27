@@ -582,14 +582,19 @@ private fun BookPlayView(
             }
         }
 
+        Spacer(Modifier.height(12.dp))
         VoicePlayerControlsLayout(
             modifier = Modifier.weight(1f),
             cover = {
-                Box(Modifier.fillMaxSize().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                BoxWithConstraints(
+                    Modifier.fillMaxSize().padding(top = 12.dp, bottom = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val coverSize = minOf(maxWidth, maxHeight)
                     BookCover(
                         book.name,
                         book.coverPath,
-                        Modifier.fillMaxSize().aspectRatio(1f).clip(RoundedCornerShape(8.dp)),
+                        Modifier.size(coverSize).clip(RoundedCornerShape(8.dp)),
                         audioUri = track?.path,
                         loadEmbeddedArtwork = true,
                         maxDecodeDimension = 1024,
@@ -641,6 +646,17 @@ private fun BookPlayView(
                                     color = colors.onSurfaceVariant,
                                 )
                             }
+                        }
+                    }
+                    VoicePlayerControl.Timer -> Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = onSleepTimer) {
+                            Icon(Icons.Filled.Timer, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.size(6.dp))
+                            Text("Sleep timer")
                         }
                     }
                     VoicePlayerControl.Chapter -> if (hasChapters && track != null) {
@@ -773,9 +789,6 @@ private fun BookPlayView(
                         IconButton(onClick = onSpeed) {
                             Icon(Icons.Filled.Speed, contentDescription = "Playback speed", tint = colors.onPrimaryContainer)
                         }
-                        IconButton(onClick = onSleepTimer) {
-                            Icon(Icons.Filled.Timer, contentDescription = "Sleep timer", tint = colors.onPrimaryContainer)
-                        }
                     }
                 }
             },
@@ -828,7 +841,8 @@ private enum class VoicePlayerControl(
 ) {
     Title(0.dp, 0.dp),
     BookProgress(12.dp, 12.dp),
-    Chapter(16.dp, 12.dp),
+    Timer(4.dp, 4.dp),
+    Chapter(12.dp, 8.dp),
     Seek(12.dp, 12.dp),
     Transport(8.dp, 8.dp),
     Toolbar(20.dp, 12.dp),
@@ -839,6 +853,7 @@ private val VOICE_CONTROL_PRIORITY = listOf(
     VoicePlayerControl.Title,
     VoicePlayerControl.Seek,
     VoicePlayerControl.Toolbar,
+    VoicePlayerControl.Timer,
     VoicePlayerControl.Chapter,
     VoicePlayerControl.BookProgress,
 )
