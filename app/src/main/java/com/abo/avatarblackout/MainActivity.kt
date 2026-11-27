@@ -2021,13 +2021,21 @@ class MainActivity : FragmentActivity() {
         pageTitle.text = book.name
         content.removeAllViews()
         audioBookListContainer = null
+
+        // The player is a full-screen Compose destination. Never place it inside
+        // the Android ScrollView: LazyColumn/Compose scrolling needs bounded height.
         val compose = booksLibraryComposeView ?: ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         }.also { booksLibraryComposeView = it }
+        (booksAddContentComposeView?.parent as? android.view.ViewGroup)?.removeView(booksAddContentComposeView)
         (compose.parent as? android.view.ViewGroup)?.removeView(compose)
         compose.visibility = View.VISIBLE
         booksComposeView = compose
-        content.addView(compose, LinearLayout.LayoutParams(-1, -1))
+        val shell = mainScrollView.parent as? LinearLayout
+            ?: error("Books container is not attached to the app shell")
+        mainScrollView.visibility = View.GONE
+        val contentIndex = shell.indexOfChild(mainScrollView).coerceAtLeast(0)
+        shell.addView(compose, contentIndex, LinearLayout.LayoutParams(-1, 0, 1f))
         refreshBooksCompose()
         updateQuranPlaybackUi()
         refreshNavigation()
