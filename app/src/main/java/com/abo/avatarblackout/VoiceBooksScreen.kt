@@ -234,7 +234,15 @@ internal fun VoiceBooksScreen(
     onSleepTimer: () -> Unit,
 ) {
     val context = LocalContext.current
-    val voiceDarkColors = if (Build.VERSION.SDK_INT >= 31) dynamicDarkColorScheme(context) else darkColorScheme()
+    val voiceDarkColors = darkColorScheme(
+        primary = androidx.compose.ui.graphics.Color(0xFFD4B8FF),
+        onPrimary = androidx.compose.ui.graphics.Color(0xFF3D0870),
+        secondary = androidx.compose.ui.graphics.Color(0xFF8B5CF6),
+        secondaryContainer = androidx.compose.ui.graphics.Color(0xFF4A3556),
+        surface = androidx.compose.ui.graphics.Color(0xFF000000),
+        surfaceVariant = androidx.compose.ui.graphics.Color(0xFF302B36),
+        background = androidx.compose.ui.graphics.Color(0xFF000000),
+    )
     MaterialTheme(colorScheme = voiceDarkColors) {
         var showAllBookmarks by remember { mutableStateOf(false) }
         var deletedBookmarkIds by remember { mutableStateOf(emptySet<String>()) }
@@ -541,193 +549,199 @@ private fun BookPlayView(
     var showRemainingTime by remember(book.id) { mutableStateOf(false) }
     val track = book.currentTrack
     val chapterListState = rememberLazyListState()
+    val playerBackground = androidx.compose.ui.graphics.Color.Black
+    val mutedPurple = androidx.compose.ui.graphics.Color(0xFF4A3556)
+    val accent = androidx.compose.ui.graphics.Color(0xFF8B5CF6)
+    val brightPurple = androidx.compose.ui.graphics.Color(0xFFD4B8FF)
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        book.name,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close")
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        BoxWithConstraints(
-            Modifier.fillMaxSize().padding(padding),
+    BoxWithConstraints(
+        Modifier.fillMaxSize().background(playerBackground),
+    ) {
+        val coverSize = (maxHeight * 0.27f).coerceAtMost(maxWidth * 0.58f).coerceAtMost(224.dp).coerceAtLeast(112.dp)
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 26.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            val coverSize = (maxHeight * 0.25f)
-                .coerceAtMost(maxWidth * 0.68f)
-                .coerceAtMost(176.dp)
-                .coerceAtLeast(88.dp)
+            Row(
+                Modifier.fillMaxWidth().height(52.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    PlayerTopButton("More options", "⋮", onBack, mutedPurple)
+                    Spacer(Modifier.size(10.dp))
+                    PlayerTopButton("Chapter list", "▤", { showChapters = true }, mutedPurple)
+                }
+                PlayerTopButton("Back to books", "⌄", onBack, mutedPurple)
+            }
+
+            BookCover(
+                book.name,
+                book.coverPath,
+                Modifier.size(coverSize).clip(RoundedCornerShape(18.dp)),
+                track?.path,
+            )
 
             Column(
-                Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 4.dp),
+                Modifier.fillMaxWidth().padding(top = 2.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween,
             ) {
-                val coverScale by animateFloatAsState(
-                    targetValue = if (playing) 1f else 0.96f,
-                    animationSpec = spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessLow),
-                    label = "playbackCoverScale",
-                )
-                BookCover(
+                Text(
                     book.name,
-                    book.coverPath,
-                    Modifier.size(coverSize)
-                        .graphicsLayer { scaleX = coverScale; scaleY = coverScale }
-                        .clip(RoundedCornerShape(12.dp)),
-                    track?.path,
+                    color = androidx.compose.ui.graphics.Color(0xFFF4EAF7),
+                    style = MaterialTheme.typography.headlineMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
                 )
+                Text(
+                    track?.artist?.takeIf { it.isNotBlank() } ?: track?.title.orEmpty(),
+                    color = androidx.compose.ui.graphics.Color(0xFFD5C9D8),
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                )
+            }
 
-                if (track != null) {
-                    Row(
-                        Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        if (book.tracks.size > 1) {
-                            androidx.compose.material3.FilledTonalIconButton(onClick = onPrevious, modifier = Modifier.size(44.dp)) {
-                                Icon(Icons.Outlined.ChevronLeft, contentDescription = "Previous chapter")
-                            }
-                        }
-                        Surface(
-                            onClick = { showChapters = true },
-                            modifier = Modifier.weight(1f).height(48.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
-                        ) {
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("Chapter ${book.currentTrackIndex + 1} of ${book.tracks.size}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                    Text(track.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
-                                Icon(Icons.Outlined.ExpandMore, contentDescription = "Choose chapter")
-                            }
-                        }
-                        if (book.tracks.size > 1) {
-                            androidx.compose.material3.FilledTonalIconButton(onClick = onNext, modifier = Modifier.size(44.dp)) {
-                                Icon(Icons.Outlined.ChevronRight, contentDescription = "Next chapter")
-                            }
-                        }
-                    }
-                } else {
-                    Spacer(Modifier.height(8.dp))
-                }
-
-                Column(Modifier.fillMaxWidth()) {
-                    VoiceWavySeekBar(
-                        progress = if (isDragging) localSliderValue else if (durationMs > 0L) {
-                            (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
-                        } else 0f,
-                        playing = playing,
-                        dragging = isDragging,
-                        onDragStart = { isDragging = true },
-                        onProgressChange = { localSliderValue = it },
-                        onSeek = {
-                            if (durationMs > 0L) onSeek((durationMs * it).toLong())
-                            isDragging = false
-                        },
-                        modifier = Modifier.fillMaxWidth().height(36.dp).padding(horizontal = 8.dp),
+            Column(Modifier.fillMaxWidth()) {
+                LinearProgressIndicator(
+                    progress = { bookProgress(book) },
+                    modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(8.dp)),
+                    color = brightPurple,
+                    trackColor = mutedPurple,
+                )
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "${(bookProgress(book) * 100).roundToInt()}% of book",
+                        color = brightPurple,
+                        style = MaterialTheme.typography.labelMedium,
                     )
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        val displayedPosition = if (isDragging) (durationMs * localSliderValue).toLong() else positionMs
-                        Text(
-                            text = if (showRemainingTime) "-${formatVoiceDuration((durationMs - displayedPosition).coerceAtLeast(0L))}" else formatVoiceDuration(displayedPosition),
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.clickable { showRemainingTime = !showRemainingTime },
-                        )
-                        Text(
-                            formatVoiceDuration(durationMs),
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.clickable { showRemainingTime = !showRemainingTime },
-                        )
-                    }
+                    Text(
+                        "${book.tracks.size} chapters",
+                        color = androidx.compose.ui.graphics.Color(0xFFC9BFCE),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
                 }
+            }
 
+            if (track != null) {
                 Row(
                     Modifier.fillMaxWidth().height(64.dp),
-                    horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    VoiceSkipButton(
-                        forward = false,
-                        seconds = rewindSeconds,
-                        onClick = onRewind,
-                        modifier = Modifier.height(52.dp),
-                    )
-                    Spacer(Modifier.size(18.dp))
-                    val playCornerRadius by animateDpAsState(
-                        targetValue = if (playing) 22.dp else 40.dp,
-                        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow),
-                        label = "playButtonShape",
-                    )
-                    val playScale by animateFloatAsState(
-                        targetValue = if (playing) 1f else 0.96f,
-                        animationSpec = spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium),
-                        label = "playButtonScale",
-                    )
-                    Box(
-                        Modifier.size(60.dp)
-                            .graphicsLayer { scaleX = playScale; scaleY = playScale }
-                            .clip(RoundedCornerShape(playCornerRadius))
-                            .background(MaterialTheme.colorScheme.primary)
-                            .clickable(onClick = onPlayPause),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (playing) "Pause" else "Play",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(38.dp),
-                        )
+                    if (book.tracks.size > 1) {
+                        PlayerRoundButton("Previous chapter", "|◀", onPrevious, mutedPurple, 62.dp)
                     }
-                    Spacer(Modifier.size(18.dp))
-                    VoiceSkipButton(
-                        forward = true,
-                        seconds = forwardSeconds,
-                        onClick = onForward,
-                        modifier = Modifier.height(52.dp),
-                    )
+                    Surface(
+                        onClick = { showChapters = true },
+                        modifier = Modifier.weight(1f).height(58.dp),
+                        shape = RoundedCornerShape(26.dp),
+                        color = androidx.compose.ui.graphics.Color(0xFF302B36),
+                    ) {
+                        Row(
+                            Modifier.fillMaxSize().padding(horizontal = 18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "Chapter ${book.currentTrackIndex + 1} of ${book.tracks.size}",
+                                    color = brightPurple,
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                                Text(
+                                    track.title,
+                                    color = androidx.compose.ui.graphics.Color(0xFFF0E9F2),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Text("⌄", color = androidx.compose.ui.graphics.Color(0xFFD8C9E2), style = MaterialTheme.typography.headlineSmall)
+                        }
+                    }
+                    if (book.tracks.size > 1) {
+                        PlayerRoundButton("Next chapter", "▶|", onNext, mutedPurple, 62.dp)
+                    }
                 }
+            }
 
-                // Keep the secondary player actions together in one compact row,
-                // below the transport controls rather than in the title bar.
+            Column(Modifier.fillMaxWidth()) {
+                VoiceWavySeekBar(
+                    progress = if (isDragging) localSliderValue else if (durationMs > 0L) {
+                        (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+                    } else 0f,
+                    playing = playing,
+                    dragging = isDragging,
+                    onDragStart = { isDragging = true },
+                    onProgressChange = { localSliderValue = it },
+                    onSeek = {
+                        if (durationMs > 0L) onSeek((durationMs * it).toLong())
+                        isDragging = false
+                    },
+                    modifier = Modifier.fillMaxWidth().height(42.dp).padding(horizontal = 2.dp),
+                )
                 Row(
-                    Modifier.fillMaxWidth().height(48.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically,
+                    Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    PlayerUtilityAction(
-                        icon = { Icon(Icons.Outlined.BookmarkAdd, contentDescription = null) },
-                        label = "Save",
-                        onClick = onBookmark,
+                    val displayed = if (isDragging) (durationMs * localSliderValue).toLong() else positionMs
+                    Text(
+                        if (showRemainingTime) "-${formatVoiceDuration((durationMs - displayed).coerceAtLeast(0L))}" else formatVoiceDuration(displayed),
+                        color = androidx.compose.ui.graphics.Color(0xFFD8D0DC),
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.clickable { showRemainingTime = !showRemainingTime },
                     )
-                    PlayerUtilityAction(
-                        icon = { Icon(Icons.Default.Bookmarks, contentDescription = null) },
-                        label = "Bookmarks",
-                        onClick = onBookmarks,
-                    )
-                    PlayerUtilityAction(
-                        icon = { Icon(Icons.Default.Speed, contentDescription = null) },
-                        label = "Speed",
-                        onClick = onSpeed,
-                    )
-                    PlayerUtilityAction(
-                        icon = { Icon(Icons.Default.Timer, contentDescription = null) },
-                        label = "Sleep",
-                        onClick = onSleepTimer,
+                    Text(
+                        formatVoiceDuration(durationMs),
+                        color = androidx.compose.ui.graphics.Color(0xFFD8D0DC),
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.clickable { showRemainingTime = !showRemainingTime },
                     )
                 }
+            }
+
+            Row(
+                Modifier.fillMaxWidth().height(126.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PlayerRoundButton("Rewind ${rewindSeconds} seconds", "↶", onRewind, mutedPurple, 88.dp)
+                Box(
+                    Modifier.size(132.dp).clip(RoundedCornerShape(34.dp))
+                        .background(brightPurple).clickable(onClick = onPlayPause),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        if (playing) "Ⅱ" else "▶",
+                        color = androidx.compose.ui.graphics.Color(0xFF4A087E),
+                        style = MaterialTheme.typography.displayLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                PlayerRoundButton("Forward ${forwardSeconds} seconds", "↷", onForward, mutedPurple, 88.dp)
+            }
+
+            Row(
+                Modifier.fillMaxWidth().height(76.dp)
+                    .clip(RoundedCornerShape(48.dp))
+                    .background(androidx.compose.ui.graphics.Color(0xFF6500C8))
+                    .padding(horizontal = 8.dp, vertical = 7.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PlayerUtilityIcon("Save bookmark", "◉", onBookmark, brightPurple, androidx.compose.ui.graphics.Color(0xFF4A087E))
+                PlayerUtilityIcon("Chapters", "✂", { showChapters = true }, brightPurple, androidx.compose.ui.graphics.Color(0xFF4A087E))
+                PlayerUtilityIcon("Bookmarks", "▣", onBookmarks, brightPurple, androidx.compose.ui.graphics.Color(0xFF4A087E))
+                PlayerUtilityIcon("Playback speed", "◴", onSpeed, brightPurple, androidx.compose.ui.graphics.Color(0xFF4A087E))
+                PlayerUtilityIcon("Sleep timer", "☾", onSleepTimer, brightPurple, androidx.compose.ui.graphics.Color(0xFF4A087E))
             }
         }
     }
@@ -769,6 +783,53 @@ private fun BookPlayView(
             },
             confirmButton = { TextButton(onClick = { showChapters = false }) { Text("Close") } },
         )
+    }
+}
+
+@Composable
+private fun PlayerTopButton(
+    description: String,
+    glyph: String,
+    onClick: () -> Unit,
+    background: androidx.compose.ui.graphics.Color,
+) {
+    Box(
+        Modifier.size(52.dp).clip(CircleShape).background(background).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(glyph, color = androidx.compose.ui.graphics.Color(0xFFEDE4F2), style = MaterialTheme.typography.headlineMedium)
+    }
+}
+
+@Composable
+private fun PlayerRoundButton(
+    description: String,
+    glyph: String,
+    onClick: () -> Unit,
+    background: androidx.compose.ui.graphics.Color,
+    size: androidx.compose.ui.unit.Dp,
+) {
+    Box(
+        Modifier.size(size).clip(CircleShape).background(background).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(glyph, color = androidx.compose.ui.graphics.Color(0xFFF0DDFB), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun PlayerUtilityIcon(
+    description: String,
+    glyph: String,
+    onClick: () -> Unit,
+    tint: androidx.compose.ui.graphics.Color,
+    selectedBackground: androidx.compose.ui.graphics.Color,
+) {
+    Box(
+        Modifier.size(54.dp).clip(CircleShape).background(selectedBackground).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(glyph, color = tint, style = MaterialTheme.typography.headlineSmall)
     }
 }
 
