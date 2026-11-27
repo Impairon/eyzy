@@ -1009,6 +1009,10 @@ class MainActivity : FragmentActivity() {
             }
         }
         currentPage = targetPage
+        if (::mainScrollView.isInitialized) {
+            mainScrollView.visibility = if (targetPage == 4) View.GONE else View.VISIBLE
+        }
+        if (targetPage != 4) booksLibraryComposeView?.visibility = View.INVISIBLE
         if (currentPage == 3) {
             // Re-register on every Qibla entry so Android restarts the sensor
             // stream and we wait for fresh readings instead of reusing stale state.
@@ -1226,7 +1230,10 @@ class MainActivity : FragmentActivity() {
         (compose.parent as? android.view.ViewGroup)?.removeView(compose)
         compose.visibility = View.VISIBLE
         booksComposeView = compose
-        content.addView(compose, LinearLayout.LayoutParams(-1, -1))
+        val shell = mainScrollView.parent as? LinearLayout
+            ?: error("Books container is not attached to the app shell")
+        val scrollIndex = shell.indexOfChild(mainScrollView).coerceAtLeast(0)
+        shell.addView(compose, scrollIndex, LinearLayout.LayoutParams(-1, 0, 1f))
         connectQuranController()
         refreshBooksCompose()
         loadAudioBooksAsync()
