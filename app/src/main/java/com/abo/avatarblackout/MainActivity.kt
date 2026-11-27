@@ -980,6 +980,8 @@ class MainActivity : FragmentActivity() {
         })
     }
 
+    private lateinit var undo: Button
+
     private fun showSibha() {
         pageTitle.text = "Sibha"
         content.removeAllViews()
@@ -1006,8 +1008,32 @@ class MainActivity : FragmentActivity() {
             gravity = Gravity.CENTER
             setPadding(0, dp(16), 0, dp(16))
         }
-        fun update() { count.text = Prefs.sibhaCount(this).toString() }
-        update()
+        val cycleLabel = TextView(this).apply {
+            textSize = 13f
+            setTextColor(secondary)
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, dp(8))
+        }
+        val cycleProgress = ProgressBar(
+            this, null, android.R.attr.progressBarStyleHorizontal
+        ).apply {
+            max = SibhaProgress.CYCLE_SIZE
+            progressTintList = android.content.res.ColorStateList.valueOf(purple)
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(76, 64, 99))
+        }
+        fun update() {
+            val total = Prefs.sibhaCount(this@MainActivity)
+            val progress = SibhaProgress.progress(total)
+            count.text = total.toString()
+            cycleProgress.progress = progress
+            cycleLabel.text = String.format(
+                Locale.getDefault(),
+                translate("Cycle progress: %1\$d / 33"),
+                progress
+            )
+            undo.isEnabled = total > 0
+            undo.alpha = if (total > 0) 1f else 0.45f
+        }
         val bead = Button(this).apply {
             text = "Tap to count"
             textSize = 24f
@@ -1015,20 +1041,54 @@ class MainActivity : FragmentActivity() {
             setTextColor(Color.WHITE)
             background = rounded(purple, 28)
             setOnClickListener {
-                val next = Prefs.sibhaCount(this@MainActivity) + 1
+                val current = Prefs.sibhaCount(this@MainActivity)
+                if (current == Int.MAX_VALUE) return@setOnClickListener
+                val next = current + 1
                 Prefs.setSibhaCount(this@MainActivity, next)
                 peepIfNeeded(next)
+                performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                 update()
             }
         }
+        undo = actionButton("Undo")
+        undo.setOnClickListener {
+            val current = Prefs.sibhaCount(this@MainActivity)
+            if (current > 0) Prefs.setSibhaCount(this@MainActivity, current - 1)
+            update()
+        }
         val reset = actionButton("Reset")
-        reset.setOnClickListener { Prefs.setSibhaCount(this, 0); update() }
+        reset.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle(translate("Reset count?"))
+                .setMessage(translate("This will clear the current count."))
+                .setNegativeButton(translate("Cancel"), null)
+                .setPositiveButton(translate("Reset")) { _, _ ->
+                    Prefs.setSibhaCount(this, 0)
+                    update()
+                }
+                .show()
+        }
+        update()
         card.addView(label)
         card.addView(count)
+        card.addView(cycleLabel)
+        card.addView(cycleProgress, LinearLayout.LayoutParams(-1, dp(8)).apply {
+            bottomMargin = dp(18)
+        })
         card.addView(bead, LinearLayout.LayoutParams(-1, dp(180)))
         content.addView(card)
         content.addView(Space(this), LinearLayout.LayoutParams(1, dp(18)))
-        content.addView(reset, LinearLayout.LayoutParams(-1, dp(52)))
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        actions.addView(undo, LinearLayout.LayoutParams(0, dp(52), 1f).apply {
+            marginEnd = dp(6)
+        })
+        actions.addView(reset, LinearLayout.LayoutParams(0, dp(52), 1f).apply {
+            marginStart = dp(6)
+        })
+        content.addView(actions)
     }
 
     private fun showQibla() {
