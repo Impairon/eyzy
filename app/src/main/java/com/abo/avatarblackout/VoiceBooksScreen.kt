@@ -206,6 +206,8 @@ internal fun VoiceAddContentScreen(
 internal fun VoiceBooksScreen(
     books: List<AudioBook>,
     loadingBooks: Boolean = false,
+    activeBookId: String? = null,
+    activePositionMs: Long = 0L,
     searchQuery: String,
     playerBook: AudioBook?,
     playing: Boolean,
@@ -240,6 +242,8 @@ internal fun VoiceBooksScreen(
             BookOverviewScreen(
                 books = books,
                 loadingBooks = loadingBooks,
+                activeBookId = activeBookId,
+                activePositionMs = activePositionMs,
                 searchQuery = searchQuery,
                 onSearchChange = onSearchChange,
                 onAddBook = onAddBook,
@@ -311,6 +315,8 @@ internal fun VoiceBooksScreen(
 private fun BookOverviewScreen(
     books: List<AudioBook>,
     loadingBooks: Boolean,
+    activeBookId: String?,
+    activePositionMs: Long,
     searchQuery: String,
     onSearchChange: (String) -> Unit,
     onAddBook: () -> Unit,
@@ -320,12 +326,7 @@ private fun BookOverviewScreen(
 ) {
     var localQuery by remember { mutableStateOf(searchQuery) }
     var searchActive by remember { mutableStateOf(false) }
-    val filtered = remember(books, localQuery) {
-        books.filter { book ->
-            localQuery.isBlank() || book.name.contains(localQuery, true) ||
-                book.tracks.any { it.title.contains(localQuery, true) || it.artist.contains(localQuery, true) }
-        }
-    }
+    val filtered = remember(books, localQuery) { books.filter { book -> fuzzyBookMatch(book, localQuery) } }
     val (currentBooks, notStartedBooks, finishedBooks) = remember(filtered) {
         Triple(
             filtered.filter { bookProgress(it) > 0f && bookProgress(it) < 0.995f }
@@ -346,7 +347,7 @@ private fun BookOverviewScreen(
                     localQuery = it
                     onSearchChange(it)
                 },
-                onSearch = onSearchChange,
+                onSearch = { query -> localQuery = query; onSearchChange(query); searchActive = false },
                 active = searchActive,
                 onActiveChange = { searchActive = it },
                 placeholder = { Text("Search books") },
@@ -390,7 +391,7 @@ private fun BookOverviewScreen(
                         )
                     }
                     items(currentBooks, key = { it.id }) { book ->
-                        VoiceBookRow(book, onBookClick, onBookOptions)
+                        VoiceBookRow(book, onBookClick, onBookOptions, activePositionMs.takeIf { book.id == activeBookId })
                     }
                 }
                 if (notStartedBooks.isNotEmpty()) {
@@ -404,7 +405,7 @@ private fun BookOverviewScreen(
                         )
                     }
                     items(notStartedBooks, key = { it.id }) { book ->
-                        VoiceBookRow(book, onBookClick, onBookOptions)
+                        VoiceBookRow(book, onBookClick, onBookOptions, activePositionMs.takeIf { book.id == activeBookId })
                     }
                 }
                 if (finishedBooks.isNotEmpty()) {
@@ -418,7 +419,7 @@ private fun BookOverviewScreen(
                         )
                     }
                     items(finishedBooks, key = { it.id }) { book ->
-                        VoiceBookRow(book, onBookClick, onBookOptions)
+                        VoiceBookRow(book, onBookClick, onBookOptions, activePositionMs.takeIf { book.id == activeBookId })
                     }
                 }
                 if (filtered.isEmpty()) {
@@ -445,10 +446,13 @@ private fun VoiceBookRow(
     book: AudioBook,
     onBookClick: (String) -> Unit,
     onBookOptions: (String) -> Unit,
+    livePositionMs: Long? = null,
 ) {
-    val progress = bookProgress(book)
     val totalDuration = book.tracks.sumOf { it.durationMs.coerceAtLeast(0L) }
-    val elapsed = (totalDuration * progress).toLong()
+    val index = book.currentTrackIndex.coerceIn(0, book.tracks.lastIndex)
+    val elapsedBefore = book.tracks.take(index).sumOf { it.durationMs.coerceAtLeast(0L) }
+    val elapsed = (elapsedBefore + (livePositionMs ?: book.positionMs)).coerceIn(0L, totalDuration)
+    val progress = if (totalDuration > 0L) elapsed.toFloat() / totalDuration.toFloat() else 0f
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
             .combinedClickable(
@@ -488,6 +492,16 @@ private fun VoiceBookRow(
             }
         }
     }
+}
+
+private fun fuzzyBookMatch(book: AudioBook, query: String): Boolean {
+    val words = query.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+    if (words.isEmpty()) return true
+    val searchable = buildString {
+        append(book.name).append(' ')
+        book.tracks.forEach { track -> append(track.title).append(' ').append(track.artist).append(' ') }
+    }.lowercase(java.util.Locale.ROOT)
+    return words.all { word -> searchable.contains(word.lowercase(java.util.Locale.ROOT)) }
 }
 
 private fun bookProgress(book: AudioBook): Float {
@@ -549,10 +563,10 @@ private fun BookPlayView(
         BoxWithConstraints(
             Modifier.fillMaxSize().padding(padding),
         ) {
-            val coverSize = (maxHeight * 0.34f)
-                .coerceAtMost(maxWidth * 0.78f)
-                .coerceAtMost(240.dp)
-                .coerceAtLeast(112.dp)
+            val coverSize = (maxHeight * 0.25f)
+                .coerceAtMost(maxWidth * 0.68f)
+                .coerceAtMost(176.dp)
+                .coerceAtLeast(88.dp)
 
             Column(
                 Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 4.dp),
@@ -575,32 +589,30 @@ private fun BookPlayView(
 
                 if (track != null) {
                     Row(
-                        Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 4.dp),
+                        Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         if (book.tracks.size > 1) {
-                            IconButton(onClick = onPrevious) {
+                            androidx.compose.material3.FilledTonalIconButton(onClick = onPrevious, modifier = Modifier.size(44.dp)) {
                                 Icon(Icons.Outlined.ChevronLeft, contentDescription = "Previous chapter")
                             }
                         }
-                        Row(
-                            Modifier.weight(1f).clickable { showChapters = true },
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically,
+                        Surface(
+                            onClick = { showChapters = true },
+                            modifier = Modifier.weight(1f).height(48.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
                         ) {
-                            Text(
-                                track.title,
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center,
-                            )
-                            if (book.tracks.size > 1) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Chapter ${book.currentTrackIndex + 1} of ${book.tracks.size}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                    Text(track.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
                                 Icon(Icons.Outlined.ExpandMore, contentDescription = "Choose chapter")
                             }
                         }
                         if (book.tracks.size > 1) {
-                            IconButton(onClick = onNext) {
+                            androidx.compose.material3.FilledTonalIconButton(onClick = onNext, modifier = Modifier.size(44.dp)) {
                                 Icon(Icons.Outlined.ChevronRight, contentDescription = "Next chapter")
                             }
                         }
@@ -622,7 +634,7 @@ private fun BookPlayView(
                             if (durationMs > 0L) onSeek((durationMs * it).toLong())
                             isDragging = false
                         },
-                        modifier = Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 8.dp),
+                        modifier = Modifier.fillMaxWidth().height(36.dp).padding(horizontal = 8.dp),
                     )
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 8.dp),
@@ -643,7 +655,7 @@ private fun BookPlayView(
                 }
 
                 Row(
-                    Modifier.fillMaxWidth().height(76.dp),
+                    Modifier.fillMaxWidth().height(64.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -665,7 +677,7 @@ private fun BookPlayView(
                         label = "playButtonScale",
                     )
                     Box(
-                        Modifier.size(68.dp)
+                        Modifier.size(60.dp)
                             .graphicsLayer { scaleX = playScale; scaleY = playScale }
                             .clip(RoundedCornerShape(playCornerRadius))
                             .background(MaterialTheme.colorScheme.primary)
@@ -676,7 +688,7 @@ private fun BookPlayView(
                             if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = if (playing) "Pause" else "Play",
                             tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(44.dp),
+                            modifier = Modifier.size(38.dp),
                         )
                     }
                     Spacer(Modifier.size(18.dp))
@@ -691,7 +703,7 @@ private fun BookPlayView(
                 // Keep the secondary player actions together in one compact row,
                 // below the transport controls rather than in the title bar.
                 Row(
-                    Modifier.fillMaxWidth().height(58.dp),
+                    Modifier.fillMaxWidth().height(48.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -735,22 +747,20 @@ private fun BookPlayView(
             text = {
                 LazyColumn(state = chapterListState) {
                     itemsIndexed(book.tracks, key = { index, item -> "${book.id}:$index:${item.path}" }) { index, chapter ->
-                        Row(
-                            Modifier.fillMaxWidth().clickable {
-                                onChapters(index)
-                                showChapters = false
-                            }.padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                        Surface(
+                            onClick = { onChapters(index); showChapters = false },
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (index == book.currentTrackIndex) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f) else MaterialTheme.colorScheme.surface,
                         ) {
-                            BookCover(chapter.title, null, Modifier.size(48.dp), chapter.path)
-                            Text(
-                                text = chapter.title,
-                                color = if (index == book.currentTrackIndex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                maxLines = 2,
-                                modifier = Modifier.weight(1f).padding(start = 12.dp),
-                            )
-                            if (index == book.currentTrackIndex) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = "Currently playing", tint = MaterialTheme.colorScheme.primary)
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text((index + 1).toString().padStart(2, '0'), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                BookCover(chapter.title, null, Modifier.padding(start = 10.dp).size(44.dp), chapter.path)
+                                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                                    Text(chapter.title, color = if (index == book.currentTrackIndex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, maxLines = 2)
+                                    Text(formatVoiceDuration(chapter.durationMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (index == book.currentTrackIndex) Icon(Icons.Default.PlayArrow, contentDescription = "Currently playing", tint = MaterialTheme.colorScheme.primary)
                             }
                         }
                         HorizontalDivider()
