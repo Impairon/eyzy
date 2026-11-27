@@ -8,7 +8,6 @@ import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.Context
-import android.content.ComponentName
 import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -59,12 +58,6 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
-import androidx.media3.common.Player
-import androidx.media3.session.MediaController
-import androidx.media3.session.SessionToken
-import com.google.common.util.concurrent.ListenableFuture
 
 class MainActivity : FragmentActivity() {
     // Swizy's violet identity: deep plum surfaces keep the accent vivid without glare.
@@ -85,39 +78,6 @@ class MainActivity : FragmentActivity() {
     private var currentPage = 0
     private var pageBeforeSettings = 0
     private var settingsButton: ImageButton? = null
-    private var quranController: MediaController? = null
-    private var quranControllerFuture: ListenableFuture<MediaController>? = null
-    private var quranRecitations: List<QuranRecitation> = emptyList()
-    private var selectedQuranRecitation: QuranRecitation? = null
-    private var loadingQuranRecitations = false
-    private var quranReciterSpinner: Spinner? = null
-    private var quranSurahSpinner: Spinner? = null
-    private var quranStatusText: TextView? = null
-    private var quranNowPlayingText: TextView? = null
-    private var quranPlayPauseButton: Button? = null
-    private var quranSeekBar: SeekBar? = null
-    private var quranPositionText: TextView? = null
-    private var quranDurationText: TextView? = null
-    private var mainTimelineSummary: TextView? = null
-    private var sideTimelineSummary: TextView? = null
-    private var quranSeeking = false
-    private val quranProgressHandler = Handler(Looper.getMainLooper())
-    private val quranProgressTicker = object : Runnable {
-        override fun run() {
-            updateQuranPlaybackUi()
-            if (currentPage == 4) quranProgressHandler.postDelayed(this, 1_000L)
-        }
-    }
-    private val quranPlayerListener = object : Player.Listener {
-        override fun onIsPlayingChanged(isPlaying: Boolean) = updateQuranPlaybackUi()
-        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = updateQuranPlaybackUi()
-        override fun onPlaybackStateChanged(playbackState: Int) = updateQuranPlaybackUi()
-        override fun onPositionDiscontinuity(
-            oldPosition: Player.PositionInfo,
-            newPosition: Player.PositionInfo,
-            reason: Int
-        ) = updateQuranPlaybackUi()
-    }
     private var prayerRequestInFlight = false
     private var prayerRequestId = 0L
     private var activeLocationListener: LocationListener? = null
@@ -222,7 +182,7 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         instance = this
         installCrashLogger()
-        currentPage = savedInstanceState?.getInt(STATE_PAGE, 0)?.coerceIn(0, 5) ?: 0
+        currentPage = savedInstanceState?.getInt(STATE_PAGE, 0)?.coerceIn(0, 4) ?: 0
         savedScrollY = savedInstanceState?.getInt(STATE_SCROLL_Y, 0)?.coerceAtLeast(0) ?: 0
         window.statusBarColor = backgroundColor
         window.navigationBarColor = backgroundColor
@@ -257,11 +217,6 @@ class MainActivity : FragmentActivity() {
             }
         }
         activeLocationListener = null
-        quranProgressHandler.removeCallbacks(quranProgressTicker)
-        quranController?.removeListener(quranPlayerListener)
-        quranControllerFuture?.let { MediaController.releaseFuture(it) }
-        quranControllerFuture = null
-        quranController = null
         if (instance === this) instance = null
         super.onDestroy()
     }
@@ -318,7 +273,6 @@ class MainActivity : FragmentActivity() {
 
     override fun onPause() {
         if (::mainScrollView.isInitialized) savedScrollY = mainScrollView.scrollY
-        quranProgressHandler.removeCallbacks(quranProgressTicker)
         super.onPause()
         unregisterSensors()
     }
@@ -803,10 +757,10 @@ class MainActivity : FragmentActivity() {
             contentDescription = translate("Settings")
             setPadding(dp(10), dp(10), dp(10), dp(10))
             setOnClickListener {
-                if (currentPage == 5) openPage(pageBeforeSettings)
+                if (currentPage == 4) openPage(pageBeforeSettings)
                 else {
                     pageBeforeSettings = currentPage
-                    openPage(5)
+                    openPage(4)
                 }
             }
         }
@@ -838,7 +792,6 @@ class MainActivity : FragmentActivity() {
         addNavigationItem("Lowery", 0)
         addNavigationItem("Sibha", 1)
         addNavigationItem("Prayers", 2)
-        addNavigationItem("Quran", 4)
         val navHolder = LinearLayout(this).apply {
             setPadding(dp(12), dp(4), dp(12), dp(10))
             addView(navigationBar, LinearLayout.LayoutParams(-1, dp(58)))
@@ -881,7 +834,7 @@ class MainActivity : FragmentActivity() {
         preserveScroll: Boolean = false,
         restoreScrollY: Int? = null
     ) {
-        val targetPage = page.mod(6)
+        val targetPage = page.mod(5)
         val targetScrollY = when {
             restoreScrollY != null -> restoreScrollY.coerceAtLeast(0)
             preserveScroll && ::mainScrollView.isInitialized -> mainScrollView.scrollY
@@ -912,8 +865,7 @@ class MainActivity : FragmentActivity() {
             1 -> showSibha()
             2 -> showPrayers()
             3 -> showQibla()
-            4 -> showQuranAudio()
-            else -> showSettings()
+            4 -> showSettings()
         }
         localizeTree(content)
         // A short content cross-fade softens page changes without animating layout
@@ -934,7 +886,7 @@ class MainActivity : FragmentActivity() {
 
     private fun navigate(step: Int) {
         // Settings is intentionally excluded from swipe navigation; open it only via the gear.
-        val swipePages = 5
+        val swipePages = 4
         openPage((currentPage + step).mod(swipePages))
     }
 
@@ -1077,428 +1029,6 @@ class MainActivity : FragmentActivity() {
         content.addView(card)
         content.addView(Space(this), LinearLayout.LayoutParams(1, dp(18)))
         content.addView(reset, LinearLayout.LayoutParams(-1, dp(52)))
-    }
-
-    private fun showQuranAudio() {
-        pageTitle.text = "Quran"
-        content.removeAllViews()
-
-        content.addView(card("Main Quran") { section ->
-            addText(section, "The main Quran and side surah keep separate saved positions.")
-            mainTimelineSummary = TextView(this).apply {
-                textSize = 14f
-                setTextColor(secondary)
-                setPadding(0, dp(4), 0, dp(8))
-            }
-            section.addView(mainTimelineSummary)
-            section.addView(actionButton("Continue main Quran").apply {
-                setOnClickListener { playMainQuran() }
-            })
-        })
-
-        content.addView(card("Side listening") { section ->
-            addText(section, "Choose a surah for side listening.")
-            val surahs = (1..114).map {
-                QuranSurahs.name(it, currentAppLanguage())
-            }.toTypedArray()
-            val selector = styledSpinner().apply {
-                adapter = optionAdapter(surahs)
-                setSelection(QuranAudioRepository.selectedSideSurah(this@MainActivity) - 1)
-                onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                    override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-                    override fun onItemSelected(
-                        parent: AdapterView<*>?, view: View?, position: Int, id: Long
-                    ) {
-                        QuranAudioRepository.setSelectedSideSurah(this@MainActivity, position + 1)
-                    }
-                }
-            }
-            quranSurahSpinner = selector
-            section.addView(selector, LinearLayout.LayoutParams(-1, dp(52)))
-            sideTimelineSummary = TextView(this).apply {
-                textSize = 14f
-                setTextColor(secondary)
-                setPadding(0, dp(8), 0, dp(8))
-            }
-            section.addView(sideTimelineSummary)
-            section.addView(actionButton("Play selected side surah").apply {
-                setOnClickListener {
-                    val surah = quranSurahSpinner?.selectedItemPosition?.plus(1)
-                        ?: QuranAudioRepository.selectedSideSurah(this@MainActivity)
-                    playSideSurah(surah)
-                }
-            })
-            section.addView(actionButton("Random side surah").apply {
-                setOnClickListener {
-                    val randomSurah = kotlin.random.Random.nextInt(1, 115)
-                    quranSurahSpinner?.setSelection(randomSurah - 1)
-                    playSideSurah(randomSurah)
-                }
-            })
-        })
-
-        content.addView(card("Player controls") { section ->
-            addText(section, "Playback continues in the background.")
-            addText(section, "Reciter")
-            quranReciterSpinner = styledSpinner().apply {
-                adapter = optionAdapter(arrayOf("Loading reciters…"))
-            }
-            section.addView(quranReciterSpinner, LinearLayout.LayoutParams(-1, dp(52)))
-
-            quranNowPlayingText = TextView(this).apply {
-                text = translate("No audio playing")
-                textSize = 18f
-                typeface = Typeface.DEFAULT_BOLD
-                gravity = Gravity.CENTER
-                setTextColor(Color.WHITE)
-                setPadding(0, dp(12), 0, dp(4))
-            }
-            section.addView(quranNowPlayingText)
-
-            quranStatusText = TextView(this).apply {
-                text = translate("Loading reciters…")
-                textSize = 13f
-                gravity = Gravity.CENTER
-                setTextColor(secondary)
-                setPadding(0, 0, 0, dp(8))
-            }
-            section.addView(quranStatusText)
-
-            quranSeekBar = SeekBar(this).apply {
-                max = 1000
-                progress = 0
-                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                        quranSeeking = true
-                    }
-
-                    override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                        val controller = quranController
-                        val duration = controller?.duration ?: 0L
-                        if (controller != null && duration > 0L) {
-                            controller.seekTo(duration * (seekBar?.progress ?: 0) / 1000L)
-                        }
-                        quranSeeking = false
-                        updateQuranPlaybackUi()
-                    }
-
-                    override fun onProgressChanged(
-                        seekBar: SeekBar?, progress: Int, fromUser: Boolean
-                    ) {
-                        if (fromUser && quranSeeking) {
-                            val duration = quranController?.duration ?: 0L
-                            if (duration > 0L) {
-                                quranPositionText?.text =
-                                    formatQuranDuration(duration * progress / 1000L)
-                            }
-                        }
-                    }
-                })
-            }
-            section.addView(quranSeekBar)
-
-            val timeRow = LinearLayout(this).apply {
-                gravity = Gravity.CENTER_VERTICAL
-            }
-            quranPositionText = TextView(this).apply {
-                text = "00:00"
-                textSize = 12f
-                setTextColor(secondary)
-            }
-            quranDurationText = TextView(this).apply {
-                text = "--:--"
-                textSize = 12f
-                setTextColor(secondary)
-                gravity = Gravity.END
-            }
-            timeRow.addView(quranPositionText, LinearLayout.LayoutParams(0, -2, 1f))
-            timeRow.addView(quranDurationText, LinearLayout.LayoutParams(0, -2, 1f))
-            section.addView(timeRow)
-
-            val controls = LinearLayout(this).apply {
-                gravity = Gravity.CENTER
-            }
-            val previous = Button(this).apply {
-                text = "◀|"
-                isAllCaps = false
-                setTextColor(Color.WHITE)
-                background = rounded(panelRaised, 12)
-                setOnClickListener { quranController?.seekToPreviousMediaItem() }
-            }
-            quranPlayPauseButton = Button(this).apply {
-                text = translate("Play")
-                isAllCaps = false
-                setTextColor(Color.WHITE)
-                typeface = Typeface.DEFAULT_BOLD
-                background = rounded(purple, 12)
-                setOnClickListener { toggleQuranPlayback() }
-            }
-            val next = Button(this).apply {
-                text = "|▶"
-                isAllCaps = false
-                setTextColor(Color.WHITE)
-                background = rounded(panelRaised, 12)
-                setOnClickListener { quranController?.seekToNextMediaItem() }
-            }
-            controls.addView(previous, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
-                marginEnd = dp(6)
-            })
-            controls.addView(quranPlayPauseButton, LinearLayout.LayoutParams(0, dp(48), 1.4f).apply {
-                marginEnd = dp(6)
-            })
-            controls.addView(next, LinearLayout.LayoutParams(0, dp(48), 1f))
-            section.addView(controls)
-        })
-
-        connectQuranController()
-        loadQuranRecitations()
-        updateQuranTimelineSummaries()
-        updateQuranPlaybackUi()
-        quranProgressHandler.removeCallbacks(quranProgressTicker)
-        quranProgressHandler.post(quranProgressTicker)
-    }
-
-    private fun connectQuranController() {
-        if (quranController != null || quranControllerFuture != null) {
-            updateQuranPlaybackUi()
-            return
-        }
-        val token = SessionToken(this, ComponentName(this, QuranPlaybackService::class.java))
-        val future = MediaController.Builder(this, token).buildAsync()
-        quranControllerFuture = future
-        future.addListener({
-            if (isDestroyed) {
-                MediaController.releaseFuture(future)
-                return@addListener
-            }
-            runCatching { future.get() }.onSuccess { controller ->
-                quranController = controller
-                controller.addListener(quranPlayerListener)
-                updateQuranPlaybackUi()
-            }.onFailure {
-                quranControllerFuture = null
-                quranStatusText?.text = translate("Could not connect to the audio player.")
-            }
-        }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun loadQuranRecitations() {
-        if (quranRecitations.isNotEmpty()) {
-            applyQuranRecitations(quranRecitations)
-            return
-        }
-        val cached = QuranAudioRepository.cachedRecitations(this)
-        if (cached.isNotEmpty()) applyQuranRecitations(cached)
-        if (loadingQuranRecitations) return
-        loadingQuranRecitations = true
-        val language = if (currentAppLanguage() == "ar") "ar" else "eng"
-        thread(name = "quran-reciter-catalog") {
-            val fresh = runCatching {
-                QuranAudioRepository.fetchRecitations(language)
-            }.getOrDefault(emptyList())
-            runOnUiThread {
-                loadingQuranRecitations = false
-                if (fresh.isNotEmpty()) {
-                    QuranAudioRepository.cacheRecitations(this, fresh)
-                    applyQuranRecitations(fresh)
-                } else if (quranRecitations.isEmpty()) {
-                    quranStatusText?.text = translate("Could not load reciters. Check your connection.")
-                }
-            }
-        }
-    }
-
-    private fun applyQuranRecitations(recitations: List<QuranRecitation>) {
-        if (recitations.isEmpty()) {
-            if (quranRecitations.isEmpty()) {
-                quranStatusText?.text = translate("No complete recitations were found.")
-            }
-            return
-        }
-        quranRecitations = recitations
-        val saved = QuranAudioRepository.selectedRecitation(this)
-        selectedQuranRecitation = recitations.firstOrNull {
-            saved != null && it.moshafId == saved.moshafId
-        } ?: recitations.first()
-        selectedQuranRecitation?.let {
-            QuranAudioRepository.saveSelectedRecitation(this, it)
-        }
-        quranReciterSpinner?.let { spinner ->
-            spinner.adapter = optionAdapter(recitations.map {
-                "${it.reciterName} · ${it.moshafName}"
-            }.toTypedArray())
-            val selectedIndex = recitations.indexOfFirst {
-                it.moshafId == selectedQuranRecitation?.moshafId
-            }.coerceAtLeast(0)
-            spinner.setSelection(selectedIndex, false)
-            spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-                override fun onItemSelected(
-                    parent: AdapterView<*>?, view: View?, position: Int, id: Long
-                ) {
-                    recitations.getOrNull(position)?.let { recitation ->
-                        selectedQuranRecitation = recitation
-                        QuranAudioRepository.saveSelectedRecitation(this@MainActivity, recitation)
-                        quranStatusText?.text =
-                            translate("This reciter selection applies the next time you load a timeline.")
-                    }
-                }
-            }
-        }
-        quranStatusText?.text = translate("Ready")
-    }
-
-    private fun playMainQuran() {
-        saveCurrentQuranPosition()
-        startQuranTimeline(QuranAudioRepository.loadTimeline(this, QuranAudioRepository.MAIN_TIMELINE))
-    }
-
-    private fun playSideSurah(surah: Int) {
-        saveCurrentQuranPosition()
-        val state = QuranAudioRepository.selectSideSurah(this, surah)
-        startQuranTimeline(state)
-    }
-
-    private fun resumeSideSurah() {
-        saveCurrentQuranPosition()
-        val existing = QuranAudioRepository.loadTimeline(this, QuranAudioRepository.SIDE_TIMELINE)
-        val state = if (existing.chapters.isEmpty()) {
-            QuranAudioRepository.selectSideSurah(
-                this, QuranAudioRepository.selectedSideSurah(this)
-            )
-        } else existing
-        startQuranTimeline(state)
-    }
-
-    private fun startQuranTimeline(state: QuranTimelineState) {
-        val controller = quranController
-        if (controller == null) {
-            connectQuranController()
-            Toast.makeText(this, translate("The audio player is still starting. Try again."), Toast.LENGTH_SHORT).show()
-            return
-        }
-        val recitation = selectedQuranRecitation
-            ?: QuranAudioRepository.selectedRecitation(this)
-        if (recitation == null || !recitation.supportsFullQuran()) {
-            Toast.makeText(this, translate("Choose a reciter to begin streaming."), Toast.LENGTH_LONG).show()
-            loadQuranRecitations()
-            return
-        }
-        if (state.chapters.isEmpty()) return
-        val timelineTitle = if (state.id == QuranAudioRepository.MAIN_TIMELINE) {
-            translate("Main timeline")
-        } else translate("Side timeline")
-        val mediaItems = state.chapters.mapIndexed { index, surah ->
-            MediaItem.Builder()
-                .setMediaId("${state.id}|$index")
-                .setUri(recitation.audioUrl(surah))
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(QuranSurahs.name(surah, currentAppLanguage()))
-                        .setArtist(recitation.reciterName)
-                        .setAlbumTitle(timelineTitle)
-                        .build()
-                )
-                .build()
-        }
-        QuranAudioRepository.setActiveTimeline(this, state.id)
-        controller.setMediaItems(
-            mediaItems,
-            state.currentChapterIndex.coerceIn(0, mediaItems.lastIndex),
-            state.positionMs.coerceAtLeast(0L)
-        )
-        controller.prepare()
-        controller.play()
-        updateQuranPlaybackUi()
-    }
-
-    private fun saveCurrentQuranPosition() {
-        val controller = quranController ?: return
-        val mediaId = controller.currentMediaItem?.mediaId ?: return
-        val parts = mediaId.split('|')
-        if (parts.size != 2) return
-        val timelineId = parts[0]
-        val index = parts[1].toIntOrNull() ?: return
-        QuranAudioRepository.saveProgress(
-            this, timelineId, index, controller.currentPosition
-        )
-    }
-
-    private fun toggleQuranPlayback() {
-        val controller = quranController
-        if (controller == null) {
-            connectQuranController()
-            return
-        }
-        when {
-            controller.isPlaying -> controller.pause()
-            controller.mediaItemCount > 0 -> controller.play()
-            QuranAudioRepository.activeTimeline(this) == QuranAudioRepository.SIDE_TIMELINE ->
-                resumeSideSurah()
-            else -> playMainQuran()
-        }
-        updateQuranPlaybackUi()
-    }
-
-    private fun updateQuranTimelineSummaries() {
-        val main = QuranAudioRepository.loadTimeline(this, QuranAudioRepository.MAIN_TIMELINE)
-        val side = QuranAudioRepository.loadTimeline(this, QuranAudioRepository.SIDE_TIMELINE)
-        mainTimelineSummary?.text = main.currentSurah?.let {
-            "${QuranSurahs.name(it, currentAppLanguage())} · ${formatQuranDuration(main.positionMs)}"
-        } ?: translate("No audio playing")
-        sideTimelineSummary?.text = side.currentSurah?.let {
-            "${QuranSurahs.name(it, currentAppLanguage())} · ${formatQuranDuration(side.positionMs)}"
-        } ?: translate("No audio playing")
-    }
-
-    private fun updateQuranPlaybackUi() {
-        val controller = quranController
-        val item = controller?.currentMediaItem
-        quranNowPlayingText?.text =
-            item?.mediaMetadata?.title?.toString() ?: translate("No audio playing")
-        quranNowPlayingText?.tag = if (item != null) USER_CONTENT_TAG else null
-        quranPlayPauseButton?.text =
-            translate(if (controller?.isPlaying == true) "Pause" else "Play")
-
-        val duration = controller?.duration?.takeIf { it > 0L } ?: 0L
-        val position = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L
-        if (!quranSeeking) {
-            quranSeekBar?.let { seek ->
-                seek.progress = if (duration > 0L) {
-                    (position * 1000L / duration).toInt().coerceIn(0, 1000)
-                } else 0
-                quranPositionText?.text = formatQuranDuration(position)
-            }
-        }
-        quranDurationText?.text = if (duration > 0L) formatQuranDuration(duration) else "--:--"
-
-        val timelineId = item?.mediaId?.substringBefore('|')
-        val timelineLabel = when (timelineId) {
-            QuranAudioRepository.MAIN_TIMELINE -> translate("Main timeline")
-            QuranAudioRepository.SIDE_TIMELINE -> translate("Side timeline")
-            else -> ""
-        }
-        val playbackState = when {
-            controller == null -> translate("Loading reciters…")
-            controller.isPlaying -> translate("Playing")
-            item != null -> translate("Paused")
-            else -> translate("Choose a reciter to begin streaming.")
-        }
-        quranStatusText?.text = listOf(timelineLabel, playbackState)
-            .filter { it.isNotBlank() }.joinToString(" · ")
-        updateQuranTimelineSummaries()
-    }
-
-    private fun formatQuranDuration(milliseconds: Long): String {
-        val totalSeconds = milliseconds.coerceAtLeast(0L) / 1000L
-        val hours = totalSeconds / 3600L
-        val minutes = (totalSeconds % 3600L) / 60L
-        val seconds = totalSeconds % 60L
-        return if (hours > 0L) {
-            String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
-        } else {
-            String.format(Locale.US, "%02d:%02d", minutes, seconds)
-        }
     }
 
     private fun showQibla() {

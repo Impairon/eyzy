@@ -18,15 +18,6 @@ can be added or edited from the floating control and managed in Settings.
 The floating control can add, move, resize, hide/show, or remove regions. Drag
 it to the bottom close target to dismiss the current control session.
 
-## Quran audio
-
-The Quran page streams complete recitations from the MP3Quran catalogue. The
-main timeline contains all 114 surahs and remembers its current surah and
-position. Side listening has a separate saved timeline, so choosing a random
-surah does not overwrite the main Quran's place. Playback continues in the
-background through an Android media session; an internet connection is needed
-for streaming.
-
 ## Other features
 
 - Arabic and English interface
