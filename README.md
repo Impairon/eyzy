@@ -18,16 +18,14 @@ can be added or edited from the floating control and managed in Settings.
 The floating control can add, move, resize, hide/show, or remove regions. Drag
 it to the bottom close target to dismiss the current control session.
 
-## Books
+## Quran audio
 
-The Books tab follows the simple local-library approach of the open-source
-[Voice audiobook player](https://github.com/PaulWoitaschek/Voice): add an
-audiobook folder, browse your books, search titles/authors, and continue where
-you stopped. Each book remembers its own place. The focused player provides
-chapter navigation, 15-second rewind, 30-second skip, bookmarks, playback
-speed, and a sleep timer. Playback continues in the background through the
-Android media session. The interface uses Swizy's dark-purple theme and
-supports Arabic and English.
+The Quran page streams complete recitations from the MP3Quran catalogue. The
+main timeline contains all 114 surahs and remembers its current surah and
+position. Side listening has a separate saved timeline, so choosing a random
+surah does not overwrite the main Quran's place. Playback continues in the
+background through an Android media session; an internet connection is needed
+for streaming.
 
 ## Other features
 
