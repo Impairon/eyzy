@@ -233,7 +233,6 @@ internal fun VoiceBooksScreen(
     onSpeed: () -> Unit,
     onSleepTimer: () -> Unit,
 ) {
-    val context = LocalContext.current
     val voiceDarkColors = darkColorScheme(
         primary = androidx.compose.ui.graphics.Color(0xFFD4B8FF),
         onPrimary = androidx.compose.ui.graphics.Color(0xFF3D0870),
@@ -551,7 +550,6 @@ private fun BookPlayView(
     val chapterListState = rememberLazyListState()
     val playerBackground = androidx.compose.ui.graphics.Color.Black
     val mutedPurple = androidx.compose.ui.graphics.Color(0xFF4A3556)
-    val accent = androidx.compose.ui.graphics.Color(0xFF8B5CF6)
     val brightPurple = androidx.compose.ui.graphics.Color(0xFFD4B8FF)
 
     BoxWithConstraints(
@@ -794,7 +792,9 @@ private fun PlayerTopButton(
     background: androidx.compose.ui.graphics.Color,
 ) {
     Box(
-        Modifier.size(52.dp).clip(CircleShape).background(background).clickable(onClick = onClick),
+        Modifier.size(52.dp).clip(CircleShape).background(background)
+            .clickable(onClick = onClick)
+            .clearAndSetSemantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
         Text(glyph, color = androidx.compose.ui.graphics.Color(0xFFEDE4F2), style = MaterialTheme.typography.headlineMedium)
@@ -810,7 +810,9 @@ private fun PlayerRoundButton(
     size: androidx.compose.ui.unit.Dp,
 ) {
     Box(
-        Modifier.size(size).clip(CircleShape).background(background).clickable(onClick = onClick),
+        Modifier.size(size).clip(CircleShape).background(background)
+            .clickable(onClick = onClick)
+            .clearAndSetSemantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
         Text(glyph, color = androidx.compose.ui.graphics.Color(0xFFF0DDFB), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Medium)
@@ -826,7 +828,9 @@ private fun PlayerUtilityIcon(
     selectedBackground: androidx.compose.ui.graphics.Color,
 ) {
     Box(
-        Modifier.size(54.dp).clip(CircleShape).background(selectedBackground).clickable(onClick = onClick),
+        Modifier.size(54.dp).clip(CircleShape).background(selectedBackground)
+            .clickable(onClick = onClick)
+            .clearAndSetSemantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
         Text(glyph, color = tint, style = MaterialTheme.typography.headlineSmall)
