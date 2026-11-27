@@ -1091,6 +1091,21 @@ class MainActivity : FragmentActivity() {
         content.addView(actions)
     }
 
+    private fun showCompassCalibrationPrompt() {
+        val guide = TextView(this).apply {
+            text = "∞\n\nMove your phone slowly in a figure-eight motion for 5–10 seconds. Rotate it through different angles, keeping it away from laptops, magnets and metal. This helps the phone's compass sensors recalibrate."
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setTextColor(secondary)
+            setPadding(dp(20), dp(12), dp(20), dp(8))
+        }
+        AlertDialog.Builder(this)
+            .setTitle(translate("Calibrate compass"))
+            .setView(guide)
+            .setPositiveButton(translate("I've done it"), null)
+            .setNegativeButton(translate("Skip"), null)
+            .show()
+    }
     private fun showQibla() {
         pageTitle.text = "Qibla"
         content.removeAllViews()
@@ -1233,6 +1248,7 @@ class MainActivity : FragmentActivity() {
             )
             compass.refreshStatus()
         })
+        showCompassCalibrationPrompt()
         content.addView(card("About Qibla") {
             addText(it, "The Qibla is the direction faced during prayer, toward the Kaaba in Mecca. The compass shows this direction relative to north as detected by your phone.")
         })
