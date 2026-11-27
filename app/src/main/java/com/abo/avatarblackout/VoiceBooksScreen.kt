@@ -66,6 +66,9 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.outlined.Search
@@ -580,6 +583,7 @@ private fun BookPlayView(
         }
 
         VoicePlayerControlsLayout(
+            modifier = Modifier.weight(1f),
             cover = {
                 Box(Modifier.fillMaxSize().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
                     BookCover(
@@ -829,6 +833,7 @@ private enum class VoicePlayerControl(val gap: androidx.compose.ui.unit.Dp, val 
 private fun VoicePlayerControlsLayout(
     cover: (@Composable () -> Unit)?,
     controls: @Composable (VoicePlayerControl) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val priority = listOf(
         VoicePlayerControl.Transport,
@@ -840,7 +845,7 @@ private fun VoicePlayerControlsLayout(
     )
     androidx.compose.ui.layout.Layout(
         contents = listOf(cover ?: {}) + VoicePlayerControl.entries.map { item -> @Composable { controls(item) } },
-        modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
+        modifier = modifier.fillMaxSize().padding(horizontal = 24.dp),
     ) { slots, constraints ->
         val width = constraints.maxWidth
         val height = constraints.maxHeight
@@ -858,14 +863,14 @@ private fun VoicePlayerControlsLayout(
                     if (item == items.first()) 0 else gap(item, compact)
             }
         val all = measurables.keys.sorted()
-        val compact = stackHeight(all, false) + if (coverMeasurable != null) 120.dp.roundToPx() else 0 > height
+        val compact = stackHeight(all, false) + (if (coverMeasurable != null) 120.dp.roundToPx() else 0) > height
         val showCover = coverMeasurable != null && stackHeight(all, compact) + 120.dp.roundToPx() <= height
         var shown = all
         if (!showCover) {
             shown = emptyList()
-            priority.filter { it in all }.forEach { item ->
+            for (item in priority.filter { it in all }) {
                 val next = (shown + item).sorted()
-                if (shown.isNotEmpty() && stackHeight(next, compact) > height) return@forEach
+                if (shown.isNotEmpty() && stackHeight(next, compact) > height) break
                 shown = next
             }
         }
