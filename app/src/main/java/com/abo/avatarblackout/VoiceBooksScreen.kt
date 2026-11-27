@@ -590,7 +590,9 @@ private fun BookPlayView(
                         book.name,
                         book.coverPath,
                         Modifier.fillMaxSize().aspectRatio(1f).clip(RoundedCornerShape(8.dp)),
-                        track?.path,
+                        audioUri = track?.path,
+                        loadEmbeddedArtwork = true,
+                        maxDecodeDimension = 1024,
                     )
                 }
             },
@@ -820,7 +822,10 @@ private fun BookPlayView(
     }
 }
 
-private enum class VoicePlayerControl(val gap: androidx.compose.ui.unit.Dp, val compactGap: androidx.compose.ui.unit.Dp) {
+private enum class VoicePlayerControl(
+    val gapAbove: androidx.compose.ui.unit.Dp,
+    val compactGapAbove: androidx.compose.ui.unit.Dp,
+) {
     Title(0.dp, 0.dp),
     BookProgress(12.dp, 12.dp),
     Chapter(16.dp, 12.dp),
@@ -829,63 +834,74 @@ private enum class VoicePlayerControl(val gap: androidx.compose.ui.unit.Dp, val 
     Toolbar(20.dp, 12.dp),
 }
 
+private val VOICE_CONTROL_PRIORITY = listOf(
+    VoicePlayerControl.Transport,
+    VoicePlayerControl.Title,
+    VoicePlayerControl.Seek,
+    VoicePlayerControl.Toolbar,
+    VoicePlayerControl.Chapter,
+    VoicePlayerControl.BookProgress,
+)
+
 @Composable
 private fun VoicePlayerControlsLayout(
     cover: (@Composable () -> Unit)?,
     controls: @Composable (VoicePlayerControl) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val priority = listOf(
-        VoicePlayerControl.Transport,
-        VoicePlayerControl.Title,
-        VoicePlayerControl.Seek,
-        VoicePlayerControl.Toolbar,
-        VoicePlayerControl.Chapter,
-        VoicePlayerControl.BookProgress,
-    )
     androidx.compose.ui.layout.Layout(
-        contents = listOf(cover ?: {}) + VoicePlayerControl.entries.map { item -> @Composable { controls(item) } },
-        modifier = modifier.fillMaxSize().padding(horizontal = 24.dp),
+        contents = listOf(cover ?: {}) + VoicePlayerControl.entries.map { entry -> @Composable { controls(entry) } },
+        modifier = modifier,
     ) { slots, constraints ->
         val width = constraints.maxWidth
         val height = constraints.maxHeight
         val coverMeasurable = slots.first().firstOrNull()
-        val measurables = VoicePlayerControl.entries.zip(slots.drop(1))
-            .mapNotNull { (control, slot) -> slot.firstOrNull()?.let { control to it } }.toMap()
-        val placeables = measurables.filterKeys { it != VoicePlayerControl.Transport }
+        val measurables = VoicePlayerControl.entries
+            .zip(slots.drop(1))
+            .mapNotNull { (control, items) -> items.firstOrNull()?.let { control to it } }
+            .toMap()
+        val placeables = measurables
+            .filterKeys { it != VoicePlayerControl.Transport }
             .mapValues { it.value.measure(androidx.compose.ui.unit.Constraints.fixedWidth(width)) }
-        fun playSize(compact: Boolean) = (if (compact) 80.dp else 104.dp).roundToPx()
-        fun padding(compact: Boolean) = (if (compact) 8.dp else 16.dp).roundToPx()
-        fun gap(control: VoicePlayerControl, compact: Boolean) = (if (compact) control.compactGap else control.gap).roundToPx()
-        fun stackHeight(items: List<VoicePlayerControl>, compact: Boolean): Int =
-            2 * padding(compact) + items.sumOf { item ->
-                (placeables[item]?.height ?: playSize(compact)) +
-                    if (item == items.first()) 0 else gap(item, compact)
+
+        fun playButtonSize(compact: Boolean) = (if (compact) 80.dp else 104.dp).roundToPx()
+        fun verticalPadding(compact: Boolean) = (if (compact) 8.dp else 16.dp).roundToPx()
+        fun gapAbove(control: VoicePlayerControl, compact: Boolean) =
+            (if (compact) control.compactGapAbove else control.gapAbove).roundToPx()
+
+        fun heightOf(items: List<VoicePlayerControl>, compact: Boolean): Int =
+            2 * verticalPadding(compact) + items.sumOf { control ->
+                (placeables[control]?.height ?: playButtonSize(compact)) +
+                    if (control == items.first()) 0 else gapAbove(control, compact)
             }
+
         val all = measurables.keys.sorted()
-        val compact = stackHeight(all, false) + (if (coverMeasurable != null) 120.dp.roundToPx() else 0) > height
-        val showCover = coverMeasurable != null && stackHeight(all, compact) + 120.dp.roundToPx() <= height
+        val minCover = 120.dp.roundToPx()
+        val compact = heightOf(all, false) + (if (coverMeasurable != null) minCover else 0) > height
+        val showCover = coverMeasurable != null && heightOf(all, compact) + minCover <= height
         var shown = all
         if (!showCover) {
             shown = emptyList()
-            for (item in priority.filter { it in all }) {
-                val next = (shown + item).sorted()
-                if (shown.isNotEmpty() && stackHeight(next, compact) > height) break
-                shown = next
+            for (control in VOICE_CONTROL_PRIORITY.filter { it in all }) {
+                val more = (shown + control).sorted()
+                if (shown.isNotEmpty() && heightOf(more, compact) > height) break
+                shown = more
             }
         }
-        val controlsHeight = stackHeight(shown, compact)
-        val coverPlaceable = if (showCover) coverMeasurable!!.measure(androidx.compose.ui.unit.Constraints.fixed(width, height - controlsHeight)) else null
-        val transportSize = playSize(compact)
+        val controlsHeight = heightOf(shown, compact)
+        val coverPlaceable = if (showCover) {
+            coverMeasurable!!.measure(androidx.compose.ui.unit.Constraints.fixed(width, height - controlsHeight))
+        } else null
         val transport = measurables[VoicePlayerControl.Transport]?.measure(
-            androidx.compose.ui.unit.Constraints.fixed(width, transportSize),
+            androidx.compose.ui.unit.Constraints.fixed(width, playButtonSize(compact)),
         )
         layout(width, height) {
             coverPlaceable?.place(0, 0)
-            var y = padding(compact) + if (coverPlaceable != null) height - controlsHeight else (height - controlsHeight) / 2
-            shown.forEach { item ->
-                if (item != shown.first()) y += gap(item, compact)
-                val placeable = placeables[item] ?: transport
+            var y = verticalPadding(compact) +
+                if (coverPlaceable != null) height - controlsHeight else (height - controlsHeight) / 2
+            shown.forEach { control ->
+                if (control != shown.first()) y += gapAbove(control, compact)
+                val placeable = placeables[control] ?: transport
                 if (placeable != null) {
                     placeable.place(0, y)
                     y += placeable.height
