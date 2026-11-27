@@ -117,6 +117,7 @@ class MainActivity : FragmentActivity() {
     private val booksDurationState = mutableStateOf(0L)
     private val booksPlayingState = mutableStateOf(false)
     private val booksTrackIndexState = mutableStateOf(0)
+    private val booksActiveBookIdState = mutableStateOf<String?>(null)
     private val booksPlayerBookState = mutableStateOf<AudioBook?>(null)
     private val booksLibraryState = mutableStateOf<List<AudioBook>>(emptyList())
     private val booksLibraryLoadingState = mutableStateOf(true)
@@ -759,10 +760,10 @@ class MainActivity : FragmentActivity() {
     @Deprecated("Deprecated in Android")
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        if (menu.visibility == View.VISIBLE) {
-            toggleMenu()
-        } else {
-            super.onBackPressed()
+        when {
+            menu.visibility == View.VISIBLE -> toggleMenu()
+            selectedAudioBookId != null -> showQuranAudio()
+            else -> super.onBackPressed()
         }
     }
 
@@ -1225,7 +1226,7 @@ class MainActivity : FragmentActivity() {
         (compose.parent as? android.view.ViewGroup)?.removeView(compose)
         compose.visibility = View.VISIBLE
         booksComposeView = compose
-        content.addView(compose, LinearLayout.LayoutParams(-1, dp(640)))
+        content.addView(compose, LinearLayout.LayoutParams(-1, -1))
         connectQuranController()
         refreshBooksCompose()
         loadAudioBooksAsync()
@@ -1266,6 +1267,8 @@ class MainActivity : FragmentActivity() {
             VoiceBooksScreen(
                 books = booksLibraryState.value,
                 loadingBooks = booksLibraryLoadingState.value,
+                activeBookId = booksActiveBookIdState.value,
+                activePositionMs = booksPositionState.value,
                 searchQuery = audioBookSearchQuery,
                 playerBook = livePlayerBook,
                 playing = booksPlayingState.value,
@@ -1556,6 +1559,7 @@ class MainActivity : FragmentActivity() {
         booksDurationState.value = duration.takeIf { it > 0L && it != androidx.media3.common.C.TIME_UNSET } ?: 0L
         booksPlayingState.value = controller?.isPlaying == true
         booksTrackIndexState.value = controller?.currentMediaItemIndex?.takeIf { it >= 0 } ?: 0
+        booksActiveBookIdState.value = item?.mediaId?.takeIf { it.startsWith("book:") }?.removePrefix("book:")?.substringBefore('|')
     }
 
     private fun selectedBookPlayerVisible(): Boolean = selectedAudioBookId != null && quranNowPlayingText != null
@@ -1832,6 +1836,10 @@ class MainActivity : FragmentActivity() {
                 AudioBookRepository.addBookmark(
                     this, bookId, input.text.toString().ifBlank { defaultName }, trackIndex, position
                 )
+                val updatedBook = AudioBookRepository.load(this, bookId)
+                if (updatedBook != null) {
+                    booksLibraryState.value = booksLibraryState.value.map { existing -> if (existing.id == bookId) updatedBook else existing }
+                }
                 audioImportStatusText?.text = translate("Bookmark saved.")
                 refreshBooksCompose()
             }
@@ -2000,7 +2008,7 @@ class MainActivity : FragmentActivity() {
         (compose.parent as? android.view.ViewGroup)?.removeView(compose)
         compose.visibility = View.VISIBLE
         booksComposeView = compose
-        content.addView(compose, LinearLayout.LayoutParams(-1, dp(640)))
+        content.addView(compose, LinearLayout.LayoutParams(-1, -1))
         refreshBooksCompose()
         updateQuranPlaybackUi()
         refreshNavigation()
