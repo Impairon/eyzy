@@ -1456,6 +1456,7 @@ class MainActivity : FragmentActivity() {
         val item = controller?.currentMediaItem
         quranNowPlayingText?.text =
             item?.mediaMetadata?.title?.toString() ?: translate("No audio playing")
+        quranNowPlayingText?.tag = if (item != null) USER_CONTENT_TAG else null
         quranPlayPauseButton?.text =
             translate(if (controller?.isPlaying == true) "Pause" else "Play")
 
