@@ -112,6 +112,7 @@ class MainActivity : FragmentActivity() {
     private var audioBookListContainer: LinearLayout? = null
     private var booksComposeView: ComposeView? = null
     private var booksLibraryComposeView: ComposeView? = null
+    private var booksAddContentComposeView: ComposeView? = null
     private var booksLibraryLoadStarted = false
     private val booksPositionState = mutableStateOf(0L)
     private val booksDurationState = mutableStateOf(0L)
@@ -1227,13 +1228,15 @@ class MainActivity : FragmentActivity() {
         val compose = booksLibraryComposeView ?: ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         }.also { booksLibraryComposeView = it }
+        (booksAddContentComposeView?.parent as? android.view.ViewGroup)?.removeView(booksAddContentComposeView)
         (compose.parent as? android.view.ViewGroup)?.removeView(compose)
         compose.visibility = View.VISIBLE
         booksComposeView = compose
         val shell = mainScrollView.parent as? LinearLayout
             ?: error("Books container is not attached to the app shell")
-        val scrollIndex = shell.indexOfChild(mainScrollView).coerceAtLeast(0)
-        shell.addView(compose, scrollIndex, LinearLayout.LayoutParams(-1, 0, 1f))
+        mainScrollView.visibility = View.GONE
+        val contentIndex = shell.indexOfChild(mainScrollView).coerceAtLeast(0)
+        shell.addView(compose, contentIndex, LinearLayout.LayoutParams(-1, 0, 1f))
         connectQuranController()
         refreshBooksCompose()
         loadAudioBooksAsync()
@@ -1588,15 +1591,24 @@ class MainActivity : FragmentActivity() {
         content.removeAllViews()
         audioBookListContainer = null
         audioImportStatusText = null
-        val addContentComposeView = ComposeView(this)
-        content.addView(addContentComposeView, LinearLayout.LayoutParams(-1, dp(640)))
-        addContentComposeView.setContent {
-            VoiceAddContentScreen(
-                onBack = { showQuranAudio() },
-                onChooseFolder = { openAudioBookFolderPicker() },
-                onChooseFile = { openAudioBookFilePicker() },
-            )
-        }
+        val shell = mainScrollView.parent as? LinearLayout
+            ?: error("Books container is not attached to the app shell")
+        val compose = booksAddContentComposeView ?: ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                VoiceAddContentScreen(
+                    onBack = { showQuranAudio() },
+                    onChooseFolder = { openAudioBookFolderPicker() },
+                    onChooseFile = { openAudioBookFilePicker() },
+                )
+            }
+        }.also { booksAddContentComposeView = it }
+        (booksLibraryComposeView?.parent as? android.view.ViewGroup)?.removeView(booksLibraryComposeView)
+        (compose.parent as? android.view.ViewGroup)?.removeView(compose)
+        mainScrollView.visibility = View.GONE
+        val contentIndex = shell.indexOfChild(mainScrollView).coerceAtLeast(0)
+        shell.addView(compose, contentIndex, LinearLayout.LayoutParams(-1, 0, 1f))
+        refreshNavigation()
     }
 
     private fun openAudioBookFilePicker() {
