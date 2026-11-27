@@ -1011,9 +1011,29 @@ class MainActivity : FragmentActivity() {
         }
         currentPage = targetPage
         if (::mainScrollView.isInitialized) {
-            mainScrollView.visibility = if (targetPage == 4) View.GONE else View.VISIBLE
+            if (targetPage == 4) {
+                mainScrollView.visibility = View.GONE
+            } else {
+                // Books player/library and Add content are temporary full-height
+                // siblings of the ScrollView. Detach them when leaving Books:
+                // an INVISIBLE weighted child still consumes half the shell height.
+                val shell = mainScrollView.parent as? android.view.ViewGroup
+                booksLibraryComposeView?.let { compose ->
+                    (compose.parent as? android.view.ViewGroup)?.removeView(compose)
+                    compose.visibility = View.INVISIBLE
+                }
+                booksAddContentComposeView?.let { compose ->
+                    (compose.parent as? android.view.ViewGroup)?.removeView(compose)
+                }
+                mainScrollView.visibility = View.VISIBLE
+                mainScrollView.layoutParams = mainScrollView.layoutParams?.apply {
+                    width = -1
+                    height = 0
+                    if (this is LinearLayout.LayoutParams) weight = 1f
+                }
+                shell?.requestLayout()
+            }
         }
-        if (targetPage != 4) booksLibraryComposeView?.visibility = View.INVISIBLE
         if (currentPage == 3) {
             // Re-register on every Qibla entry so Android restarts the sensor
             // stream and we wait for fresh readings instead of reusing stale state.
