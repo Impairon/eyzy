@@ -1028,7 +1028,7 @@ class MainActivity : FragmentActivity() {
             cycleProgress.progress = progress
             cycleLabel.text = String.format(
                 Locale.getDefault(),
-                translate("Cycle progress: %1$d / 33"),
+                translate("Cycle progress: %1\$d / 33"),
                 progress
             )
             undo.isEnabled = total > 0
