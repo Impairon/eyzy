@@ -8,7 +8,6 @@ import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.Context
-import android.net.Uri
 import android.content.ComponentName
 import android.content.res.Configuration
 import android.content.pm.PackageManager
@@ -27,7 +26,6 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.media.AudioManager
-import android.media.MediaMetadataRetriever
 import android.media.ToneGenerator
 import android.os.Bundle
 import android.os.LocaleList
@@ -61,10 +59,6 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
-import androidx.documentfile.provider.DocumentFile
-import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.runtime.mutableStateOf
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -87,8 +81,6 @@ class MainActivity : FragmentActivity() {
     private lateinit var mainScrollView: ScrollView
     private var savedScrollY = 0
     private lateinit var navigationBar: LinearLayout
-    private lateinit var booksContinueBar: LinearLayout
-    private var booksContinueButton: Button? = null
     private val navigationItems = mutableListOf<Pair<Int, TextView>>()
     private var currentPage = 0
     private var pageBeforeSettings = 0
@@ -109,37 +101,11 @@ class MainActivity : FragmentActivity() {
     private var mainTimelineSummary: TextView? = null
     private var sideTimelineSummary: TextView? = null
     private var quranSeeking = false
-    private var audioBookListContainer: LinearLayout? = null
-    private var booksComposeView: ComposeView? = null
-    private var booksLibraryComposeView: ComposeView? = null
-    private var booksAddContentComposeView: ComposeView? = null
-    private var booksLibraryLoadStarted = false
-    private val booksPositionState = mutableStateOf(0L)
-    private val booksDurationState = mutableStateOf(0L)
-    private val booksPlayingState = mutableStateOf(false)
-    private val booksTrackIndexState = mutableStateOf(0)
-    private val booksActiveBookIdState = mutableStateOf<String?>(null)
-    private val booksPlayerBookState = mutableStateOf<AudioBook?>(null)
-    private val booksLibraryState = mutableStateOf<List<AudioBook>>(emptyList())
-    private val booksLibraryLoadingState = mutableStateOf(true)
-    private var booksLibraryLoadGeneration = 0L
-    private var selectedAudioBookId: String? = null
-    private var audioBookSearchQuery = ""
-    private var sleepTimerEndAt = 0L
-    private val sleepTimerHandler = Handler(Looper.getMainLooper())
-    private var audioImportStatusText: TextView? = null
-    private var returningFromAudioPicker = false
-    private var lastTimelineSummaryRefreshAt = 0L
     private val quranProgressHandler = Handler(Looper.getMainLooper())
     private val quranProgressTicker = object : Runnable {
         override fun run() {
             updateQuranPlaybackUi()
-            if (currentPage == 4) {
-                // Keep the active audiobook seek position fluid without waking the UI
-                // four times per second when the player is not visible.
-                val interval = if (selectedBookPlayerVisible()) 250L else 1_000L
-                quranProgressHandler.postDelayed(this, interval)
-            }
+            if (currentPage == 4) quranProgressHandler.postDelayed(this, 1_000L)
         }
     }
     private val quranPlayerListener = object : Player.Listener {
@@ -292,7 +258,6 @@ class MainActivity : FragmentActivity() {
         }
         activeLocationListener = null
         quranProgressHandler.removeCallbacks(quranProgressTicker)
-        sleepTimerHandler.removeCallbacksAndMessages(null)
         quranController?.removeListener(quranPlayerListener)
         quranControllerFuture?.let { MediaController.releaseFuture(it) }
         quranControllerFuture = null
@@ -303,14 +268,11 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (returningFromAudioPicker) {
-            returningFromAudioPicker = false
-            // Keep the current Add Content screen after the document picker closes.
-        } else if (!::content.isInitialized) {
+        if (::content.isInitialized) {
+            openPage(currentPage, preserveScroll = true, restoreScrollY = savedScrollY)
+        } else {
             registerSensors()
         }
-        // Do not rebuild the current page on every resume. Rebuilding Books here
-        // discarded its player screen when returning from the folder picker.
         enforceAppLock()
     }
 
@@ -328,39 +290,6 @@ class MainActivity : FragmentActivity() {
             deviceCredentialLauncherActive = false
             if (resultCode == RESULT_OK) unlockApp()
             else showLockMessage(translate("Authentication required to open Swizy."))
-            return
-        }
-
-        if (requestCode == AUDIO_BOOK_FILE_REQUEST) {
-            if (resultCode != RESULT_OK) return
-            val uri = data?.data ?: return
-            val permissionSaved = runCatching {
-                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }.isSuccess
-            if (!permissionSaved) {
-                Toast.makeText(this, translate("Could not access that audio file. Please choose it again."), Toast.LENGTH_LONG).show()
-                return
-            }
-            addAudioBookFile(uri)
-            return
-        }
-
-        if (requestCode == AUDIO_BOOK_FOLDER_REQUEST) {
-            if (resultCode != RESULT_OK) return
-            val uri = data?.data ?: return
-            val permissionSaved = runCatching {
-                contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            }.isSuccess
-            if (!permissionSaved) {
-                Toast.makeText(this, translate("Could not access that folder. Please choose it again."), Toast.LENGTH_LONG).show()
-                return
-            }
-            val displayName = runCatching { DocumentFile.fromTreeUri(this, uri)?.name }
-                .getOrNull()?.takeIf { it.isNotBlank() } ?: translate("My books")
-            previewAudioBookFolder(uri, displayName)
             return
         }
 
@@ -758,13 +687,12 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    @Deprecated("Deprecated in Android")
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        when {
-            menu.visibility == View.VISIBLE -> toggleMenu()
-            selectedAudioBookId != null -> showQuranAudio()
-            else -> super.onBackPressed()
+        if (menu.visibility == View.VISIBLE) {
+            toggleMenu()
+        } else {
+            super.onBackPressed()
         }
     }
 
@@ -896,23 +824,6 @@ class MainActivity : FragmentActivity() {
         mainScrollView.addView(content)
         shell.addView(mainScrollView, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        booksContinueBar = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(6), dp(18), dp(4))
-            visibility = View.GONE
-        }
-        booksContinueButton = actionButton("Continue listening").apply {
-            setOnClickListener {
-                AudioBookRepository.activeBookId(this@MainActivity)?.let { bookId ->
-                    val rewind = getSharedPreferences("avb", MODE_PRIVATE)
-                        .getInt("books_resume_offset_seconds", 2).coerceIn(0, 10)
-                    resumeAudioBook(bookId, rewindSeconds = rewind)
-                }
-            }
-        }
-        booksContinueBar.addView(booksContinueButton, LinearLayout.LayoutParams(-1, dp(48)))
-        shell.addView(booksContinueBar, LinearLayout.LayoutParams(-1, -2))
-
         navigationBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -927,7 +838,7 @@ class MainActivity : FragmentActivity() {
         addNavigationItem("Lowery", 0)
         addNavigationItem("Sibha", 1)
         addNavigationItem("Prayers", 2)
-        addNavigationItem("Books", 4)
+        addNavigationItem("Quran", 4)
         val navHolder = LinearLayout(this).apply {
             setPadding(dp(12), dp(4), dp(12), dp(10))
             addView(navigationBar, LinearLayout.LayoutParams(-1, dp(58)))
@@ -938,19 +849,6 @@ class MainActivity : FragmentActivity() {
         root.addView(shell, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
         openPage(currentPage, preserveScroll = true, restoreScrollY = savedScrollY)
-
-        // Begin reading the lightweight local catalogue immediately at app startup.
-        // The first screen remains responsive because repository work runs off-main.
-        loadAudioBooksAsync()
-
-        // After the first frame, compose and measure Books at the real app dimensions
-        // while hidden. Catalogue results can arrive during this warm-up, allowing
-        // visible book rows and their thumbnail loaders to be prepared in advance.
-        root.post {
-            if (!isFinishing && !isDestroyed && booksLibraryComposeView == null) {
-                prepareBooksLibrary()
-            }
-        }
     }
 
     private fun addNavigationItem(label: String, page: Int) {
@@ -975,15 +873,6 @@ class MainActivity : FragmentActivity() {
             item.setTextColor(if (selected) Color.WHITE else secondary)
             item.background = if (selected) rounded(purple, 12) else rounded(Color.TRANSPARENT, 12)
         }
-        if (::booksContinueBar.isInitialized) {
-            val activeBookId = AudioBookRepository.activeBookId(this)
-            val activeBook = booksLibraryState.value.firstOrNull { it.id == activeBookId }
-            val showContinue = currentPage == 4 && selectedAudioBookId == null && activeBook != null
-            booksContinueBar.visibility = if (showContinue) View.VISIBLE else View.GONE
-            booksContinueButton?.text = activeBook?.let { translate("Continue listening") + " · " + it.name }
-                ?: translate("Continue listening")
-        }
-        settingsButton?.background = rounded(if (currentPage == 5) purple else panelRaised, 12)
         if (::pageTitle.isInitialized) pageTitle.text = translate(pageTitle.text.toString())
     }
 
@@ -1010,30 +899,6 @@ class MainActivity : FragmentActivity() {
             }
         }
         currentPage = targetPage
-        if (::mainScrollView.isInitialized) {
-            if (targetPage == 4) {
-                mainScrollView.visibility = View.GONE
-            } else {
-                // Books player/library and Add content are temporary full-height
-                // siblings of the ScrollView. Detach them when leaving Books:
-                // an INVISIBLE weighted child still consumes half the shell height.
-                val shell = mainScrollView.parent as? android.view.ViewGroup
-                booksLibraryComposeView?.let { compose ->
-                    (compose.parent as? android.view.ViewGroup)?.removeView(compose)
-                    compose.visibility = View.INVISIBLE
-                }
-                booksAddContentComposeView?.let { compose ->
-                    (compose.parent as? android.view.ViewGroup)?.removeView(compose)
-                }
-                mainScrollView.visibility = View.VISIBLE
-                mainScrollView.layoutParams = mainScrollView.layoutParams?.apply {
-                    width = -1
-                    height = 0
-                    if (this is LinearLayout.LayoutParams) weight = 1f
-                }
-                shell?.requestLayout()
-            }
-        }
         if (currentPage == 3) {
             // Re-register on every Qibla entry so Android restarts the sensor
             // stream and we wait for fresh readings instead of reusing stale state.
@@ -1214,129 +1079,183 @@ class MainActivity : FragmentActivity() {
         content.addView(reset, LinearLayout.LayoutParams(-1, dp(52)))
     }
 
-    private fun prepareBooksLibrary() {
-        val compose = booksLibraryComposeView ?: ComposeView(this).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-        }.also { booksLibraryComposeView = it }
-        if (compose.parent == null) {
-            // Keep the screen attached at the real app size while hidden. INVISIBLE
-            // views are still measured, so Compose can build and lay out the actual
-            // Books UI before the user opens the tab.
-            compose.visibility = View.INVISIBLE
-            compose.isClickable = false
-            compose.isFocusable = false
-            compose.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-            root.addView(compose, FrameLayout.LayoutParams(-1, -1))
-        }
-        booksComposeView = compose
-        refreshBooksCompose()
-    }
-
     private fun showQuranAudio() {
-        selectedAudioBookId = null
-        pageTitle.text = translate("Books")
+        pageTitle.text = "Quran"
         content.removeAllViews()
-        quranNowPlayingText = null
-        quranStatusText = null
-        quranSeekBar = null
-        quranPositionText = null
-        quranDurationText = null
-        quranPlayPauseButton = null
-        audioImportStatusText = null
-        audioBookListContainer = null
 
-        val compose = booksLibraryComposeView ?: ComposeView(this).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-        }.also { booksLibraryComposeView = it }
-        (booksAddContentComposeView?.parent as? android.view.ViewGroup)?.removeView(booksAddContentComposeView)
-        (compose.parent as? android.view.ViewGroup)?.removeView(compose)
-        compose.visibility = View.VISIBLE
-        booksComposeView = compose
-        val shell = mainScrollView.parent as? LinearLayout
-            ?: error("Books container is not attached to the app shell")
-        mainScrollView.visibility = View.GONE
-        val contentIndex = shell.indexOfChild(mainScrollView).coerceAtLeast(0)
-        shell.addView(compose, contentIndex, LinearLayout.LayoutParams(-1, 0, 1f))
+        content.addView(card("Main Quran") { section ->
+            addText(section, "The main Quran and side surah keep separate saved positions.")
+            mainTimelineSummary = TextView(this).apply {
+                textSize = 14f
+                setTextColor(secondary)
+                setPadding(0, dp(4), 0, dp(8))
+            }
+            section.addView(mainTimelineSummary)
+            section.addView(actionButton("Continue main Quran").apply {
+                setOnClickListener { playMainQuran() }
+            })
+        })
+
+        content.addView(card("Side listening") { section ->
+            addText(section, "Choose a surah for side listening.")
+            val surahs = (1..114).map {
+                QuranSurahs.name(it, currentAppLanguage())
+            }.toTypedArray()
+            val selector = styledSpinner().apply {
+                adapter = optionAdapter(surahs)
+                setSelection(QuranAudioRepository.selectedSideSurah(this@MainActivity) - 1)
+                onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                    override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+                    override fun onItemSelected(
+                        parent: AdapterView<*>?, view: View?, position: Int, id: Long
+                    ) {
+                        QuranAudioRepository.setSelectedSideSurah(this@MainActivity, position + 1)
+                    }
+                }
+            }
+            quranSurahSpinner = selector
+            section.addView(selector, LinearLayout.LayoutParams(-1, dp(52)))
+            sideTimelineSummary = TextView(this).apply {
+                textSize = 14f
+                setTextColor(secondary)
+                setPadding(0, dp(8), 0, dp(8))
+            }
+            section.addView(sideTimelineSummary)
+            section.addView(actionButton("Play selected side surah").apply {
+                setOnClickListener {
+                    val surah = quranSurahSpinner?.selectedItemPosition?.plus(1)
+                        ?: QuranAudioRepository.selectedSideSurah(this@MainActivity)
+                    playSideSurah(surah)
+                }
+            })
+            section.addView(actionButton("Random side surah").apply {
+                setOnClickListener {
+                    val randomSurah = kotlin.random.Random.nextInt(1, 115)
+                    quranSurahSpinner?.setSelection(randomSurah - 1)
+                    playSideSurah(randomSurah)
+                }
+            })
+        })
+
+        content.addView(card("Player controls") { section ->
+            addText(section, "Playback continues in the background.")
+            addText(section, "Reciter")
+            quranReciterSpinner = styledSpinner().apply {
+                adapter = optionAdapter(arrayOf("Loading reciters…"))
+            }
+            section.addView(quranReciterSpinner, LinearLayout.LayoutParams(-1, dp(52)))
+
+            quranNowPlayingText = TextView(this).apply {
+                text = translate("No audio playing")
+                textSize = 18f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                setPadding(0, dp(12), 0, dp(4))
+            }
+            section.addView(quranNowPlayingText)
+
+            quranStatusText = TextView(this).apply {
+                text = translate("Loading reciters…")
+                textSize = 13f
+                gravity = Gravity.CENTER
+                setTextColor(secondary)
+                setPadding(0, 0, 0, dp(8))
+            }
+            section.addView(quranStatusText)
+
+            quranSeekBar = SeekBar(this).apply {
+                max = 1000
+                progress = 0
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                        quranSeeking = true
+                    }
+
+                    override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                        val controller = quranController
+                        val duration = controller?.duration ?: 0L
+                        if (controller != null && duration > 0L) {
+                            controller.seekTo(duration * (seekBar?.progress ?: 0) / 1000L)
+                        }
+                        quranSeeking = false
+                        updateQuranPlaybackUi()
+                    }
+
+                    override fun onProgressChanged(
+                        seekBar: SeekBar?, progress: Int, fromUser: Boolean
+                    ) {
+                        if (fromUser && quranSeeking) {
+                            val duration = quranController?.duration ?: 0L
+                            if (duration > 0L) {
+                                quranPositionText?.text =
+                                    formatQuranDuration(duration * progress / 1000L)
+                            }
+                        }
+                    }
+                })
+            }
+            section.addView(quranSeekBar)
+
+            val timeRow = LinearLayout(this).apply {
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            quranPositionText = TextView(this).apply {
+                text = "00:00"
+                textSize = 12f
+                setTextColor(secondary)
+            }
+            quranDurationText = TextView(this).apply {
+                text = "--:--"
+                textSize = 12f
+                setTextColor(secondary)
+                gravity = Gravity.END
+            }
+            timeRow.addView(quranPositionText, LinearLayout.LayoutParams(0, -2, 1f))
+            timeRow.addView(quranDurationText, LinearLayout.LayoutParams(0, -2, 1f))
+            section.addView(timeRow)
+
+            val controls = LinearLayout(this).apply {
+                gravity = Gravity.CENTER
+            }
+            val previous = Button(this).apply {
+                text = "◀|"
+                isAllCaps = false
+                setTextColor(Color.WHITE)
+                background = rounded(panelRaised, 12)
+                setOnClickListener { quranController?.seekToPreviousMediaItem() }
+            }
+            quranPlayPauseButton = Button(this).apply {
+                text = translate("Play")
+                isAllCaps = false
+                setTextColor(Color.WHITE)
+                typeface = Typeface.DEFAULT_BOLD
+                background = rounded(purple, 12)
+                setOnClickListener { toggleQuranPlayback() }
+            }
+            val next = Button(this).apply {
+                text = "|▶"
+                isAllCaps = false
+                setTextColor(Color.WHITE)
+                background = rounded(panelRaised, 12)
+                setOnClickListener { quranController?.seekToNextMediaItem() }
+            }
+            controls.addView(previous, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                marginEnd = dp(6)
+            })
+            controls.addView(quranPlayPauseButton, LinearLayout.LayoutParams(0, dp(48), 1.4f).apply {
+                marginEnd = dp(6)
+            })
+            controls.addView(next, LinearLayout.LayoutParams(0, dp(48), 1f))
+            section.addView(controls)
+        })
+
         connectQuranController()
-        refreshBooksCompose()
-        loadAudioBooksAsync()
+        loadQuranRecitations()
+        updateQuranTimelineSummaries()
         updateQuranPlaybackUi()
-        refreshNavigation()
         quranProgressHandler.removeCallbacks(quranProgressTicker)
         quranProgressHandler.post(quranProgressTicker)
-    }
-
-    private fun refreshBooksCompose() {
-        val compose = booksComposeView ?: return
-        val controller = quranController
-        val playerBook = selectedAudioBookId?.let { id ->
-            booksLibraryState.value.firstOrNull { it.id == id }?.let { book ->
-                val index = controller?.currentMediaItemIndex
-                    ?.takeIf { it in book.tracks.indices } ?: book.currentTrackIndex
-                book.copy(currentTrackIndex = index)
-            }
-        }
-        booksPlayerBookState.value = playerBook
-        booksPositionState.value = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L
-        booksDurationState.value = controller?.duration
-            ?.takeIf { it > 0L && it != androidx.media3.common.C.TIME_UNSET } ?: 0L
-        booksPlayingState.value = controller?.isPlaying == true
-        booksTrackIndexState.value = controller?.currentMediaItemIndex?.takeIf { it >= 0 }
-            ?: playerBook?.currentTrackIndex ?: 0
-
-        // Install the composition once. Playback ticks update Compose state rather
-        // than repeatedly replacing the entire Books screen.
-        if (compose.tag == "books-player-content") return
-        compose.tag = "books-player-content"
-        compose.setContent {
-            val liveBook = booksPlayerBookState.value
-            val liveTrackIndex = booksTrackIndexState.value
-            val livePlayerBook = liveBook?.takeIf { it.tracks.isNotEmpty() }?.let { book ->
-                book.copy(currentTrackIndex = liveTrackIndex.coerceIn(0, book.tracks.lastIndex))
-            }
-            VoiceBooksScreen(
-                books = booksLibraryState.value,
-                loadingBooks = booksLibraryLoadingState.value,
-                activeBookId = booksActiveBookIdState.value,
-                activePositionMs = booksPositionState.value,
-                searchQuery = audioBookSearchQuery,
-                playerBook = livePlayerBook,
-                playing = booksPlayingState.value,
-                positionMs = booksPositionState.value,
-                durationMs = booksDurationState.value,
-                onSearchChange = { audioBookSearchQuery = it },
-                onAddBook = { showAudioBookAddContent() },
-                onBookClick = { resumeAudioBook(it) },
-                onBookOptions = { showAudioBookOptions(it) },
-                onBack = { showQuranAudio() },
-                onPlayPause = { toggleQuranPlayback() },
-                onSeek = { quranController?.seekTo(it) },
-                onRewind = {
-                    val seconds = getSharedPreferences("avb", MODE_PRIVATE).getInt("books_rewind_seconds", 20).coerceIn(5, 120)
-                    quranController?.seekTo((quranController?.currentPosition ?: 0L) - seconds * 1_000L)
-                },
-                onForward = {
-                    val seconds = getSharedPreferences("avb", MODE_PRIVATE).getInt("books_forward_seconds", 30).coerceIn(5, 120)
-                    quranController?.seekTo((quranController?.currentPosition ?: 0L) + seconds * 1_000L)
-                },
-                onPrevious = { quranController?.seekToPreviousMediaItem() },
-                onNext = { quranController?.seekToNextMediaItem() },
-                onChapters = { quranController?.seekTo(it, 0L) },
-                onBookmark = { selectedAudioBookId?.let { addAudioBookBookmark(it) } },
-                onResumeBookmark = { id, track, position ->
-                    // A saved bookmark is an exact point; only Continue listening rewinds.
-                    resumeAudioBook(id, track, position)
-                },
-                onDeleteBookmark = { id, bookmarkId ->
-                    AudioBookRepository.removeBookmark(this, id, bookmarkId)
-                    loadAudioBooksAsync()
-                },
-                rewindSeconds = getSharedPreferences("avb", MODE_PRIVATE).getInt("books_rewind_seconds", 20).coerceIn(5, 120),
-                forwardSeconds = getSharedPreferences("avb", MODE_PRIVATE).getInt("books_forward_seconds", 30).coerceIn(5, 120),
-                onSpeed = { showAudioBookSpeedDialog() },
-                onSleepTimer = { showAudioBookSleepTimer() },
-            )
-        }
     }
 
     private fun connectQuranController() {
@@ -1500,17 +1419,9 @@ class MainActivity : FragmentActivity() {
         if (parts.size != 2) return
         val timelineId = parts[0]
         val index = parts[1].toIntOrNull() ?: return
-        when {
-            timelineId == QuranAudioRepository.MAIN_TIMELINE ||
-                timelineId == QuranAudioRepository.SIDE_TIMELINE -> {
-                QuranAudioRepository.saveProgress(this, timelineId, index, controller.currentPosition)
-            }
-            timelineId.startsWith("book:") -> {
-                AudioBookRepository.saveProgress(
-                    this, timelineId.removePrefix("book:"), index, controller.currentPosition
-                )
-            }
-        }
+        QuranAudioRepository.saveProgress(
+            this, timelineId, index, controller.currentPosition
+        )
     }
 
     private fun toggleQuranPlayback() {
@@ -1524,15 +1435,12 @@ class MainActivity : FragmentActivity() {
             controller.mediaItemCount > 0 -> controller.play()
             QuranAudioRepository.activeTimeline(this) == QuranAudioRepository.SIDE_TIMELINE ->
                 resumeSideSurah()
-            QuranAudioRepository.activeTimeline(this).startsWith("book:") ->
-                resumeAudioBook(QuranAudioRepository.activeTimeline(this).removePrefix("book:"))
             else -> playMainQuran()
         }
         updateQuranPlaybackUi()
     }
 
     private fun updateQuranTimelineSummaries() {
-        lastTimelineSummaryRefreshAt = SystemClock.elapsedRealtime()
         val main = QuranAudioRepository.loadTimeline(this, QuranAudioRepository.MAIN_TIMELINE)
         val side = QuranAudioRepository.loadTimeline(this, QuranAudioRepository.SIDE_TIMELINE)
         mainTimelineSummary?.text = main.currentSurah?.let {
@@ -1564,35 +1472,21 @@ class MainActivity : FragmentActivity() {
         quranDurationText?.text = if (duration > 0L) formatQuranDuration(duration) else "--:--"
 
         val timelineId = item?.mediaId?.substringBefore('|')
-        val timelineLabel = when {
-            timelineId == QuranAudioRepository.MAIN_TIMELINE -> translate("Main timeline")
-            timelineId == QuranAudioRepository.SIDE_TIMELINE -> translate("Side timeline")
-            timelineId?.startsWith("book:") == true -> translate("Audio book")
+        val timelineLabel = when (timelineId) {
+            QuranAudioRepository.MAIN_TIMELINE -> translate("Main timeline")
+            QuranAudioRepository.SIDE_TIMELINE -> translate("Side timeline")
             else -> ""
         }
-        quranNowPlayingText?.tag = if (item != null) USER_CONTENT_TAG else null
         val playbackState = when {
             controller == null -> translate("Loading reciters…")
             controller.isPlaying -> translate("Playing")
             item != null -> translate("Paused")
             else -> translate("Choose a reciter to begin streaming.")
         }
-        val timerLabel = if (sleepTimerEndAt > System.currentTimeMillis()) translate("Sleep timer active") else ""
-        quranStatusText?.text = if (selectedBookPlayerVisible()) listOf(playbackState, timerLabel).filter { it.isNotBlank() }.joinToString(" · ") else listOf(timelineLabel, playbackState).filter { it.isNotBlank() }.joinToString(" · ")
-        // Timeline summaries are persisted data; avoid re-reading and formatting
-        // both timelines on every playback tick.
-        val now = SystemClock.elapsedRealtime()
-        if (now - lastTimelineSummaryRefreshAt >= 5_000L) {
-            updateQuranTimelineSummaries()
-        }
-        booksPositionState.value = position
-        booksDurationState.value = duration.takeIf { it > 0L && it != androidx.media3.common.C.TIME_UNSET } ?: 0L
-        booksPlayingState.value = controller?.isPlaying == true
-        booksTrackIndexState.value = controller?.currentMediaItemIndex?.takeIf { it >= 0 } ?: 0
-        booksActiveBookIdState.value = item?.mediaId?.takeIf { it.startsWith("book:") }?.removePrefix("book:")?.substringBefore('|')
+        quranStatusText?.text = listOf(timelineLabel, playbackState)
+            .filter { it.isNotBlank() }.joinToString(" · ")
+        updateQuranTimelineSummaries()
     }
-
-    private fun selectedBookPlayerVisible(): Boolean = selectedAudioBookId != null && quranNowPlayingText != null
 
     private fun formatQuranDuration(milliseconds: Long): String {
         val totalSeconds = milliseconds.coerceAtLeast(0L) / 1000L
@@ -1604,505 +1498,6 @@ class MainActivity : FragmentActivity() {
         } else {
             String.format(Locale.US, "%02d:%02d", minutes, seconds)
         }
-    }
-
-    private fun showAudioBookAddContent() {
-        pageTitle.text = translate("Add content")
-        content.removeAllViews()
-        audioBookListContainer = null
-        audioImportStatusText = null
-        val shell = mainScrollView.parent as? LinearLayout
-            ?: error("Books container is not attached to the app shell")
-        val compose = booksAddContentComposeView ?: ComposeView(this).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-            setContent {
-                VoiceAddContentScreen(
-                    onBack = { showQuranAudio() },
-                    onChooseFolder = { openAudioBookFolderPicker() },
-                    onChooseFile = { openAudioBookFilePicker() },
-                )
-            }
-        }.also { booksAddContentComposeView = it }
-        (booksLibraryComposeView?.parent as? android.view.ViewGroup)?.removeView(booksLibraryComposeView)
-        (compose.parent as? android.view.ViewGroup)?.removeView(compose)
-        mainScrollView.visibility = View.GONE
-        val contentIndex = shell.indexOfChild(mainScrollView).coerceAtLeast(0)
-        shell.addView(compose, contentIndex, LinearLayout.LayoutParams(-1, 0, 1f))
-        refreshNavigation()
-    }
-
-    private fun openAudioBookFilePicker() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "audio/*"
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-        }
-        returningFromAudioPicker = true
-        runCatching { startActivityForResult(intent, AUDIO_BOOK_FILE_REQUEST) }
-            .onFailure {
-                returningFromAudioPicker = false
-                Toast.makeText(this, translate("Could not open the audio picker."), Toast.LENGTH_LONG).show()
-            }
-    }
-
-    private fun addAudioBookFile(uri: Uri) {
-        audioImportStatusText?.text = translate("Adding audio…")
-        thread(name = "swizy-audio-file-import") {
-            val result = runCatching {
-                val retriever = MediaMetadataRetriever()
-                try {
-                    retriever.setDataSource(this, uri)
-                    fun metadata(key: Int) = retriever.extractMetadata(key).orEmpty()
-                    val document = DocumentFile.fromSingleUri(this, uri)
-                    val sourceName = document?.name?.takeIf { it.isNotBlank() } ?: "Audio"
-                    val title = metadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
-                        .ifBlank { sourceName.substringBeforeLast('.', sourceName) }
-                    val duration = metadata(MediaMetadataRetriever.METADATA_KEY_DURATION).toLongOrNull() ?: 0L
-                    val track = AudioBookTrack(
-                        path = uri.toString(),
-                        title = title,
-                        artist = metadata(MediaMetadataRetriever.METADATA_KEY_ARTIST),
-                        album = metadata(MediaMetadataRetriever.METADATA_KEY_ALBUM),
-                        durationMs = duration.coerceAtLeast(0L),
-                        trackNumber = metadata(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)
-                            .substringBefore('/').toIntOrNull() ?: 0,
-                        mimeType = document?.type.orEmpty(),
-                        sourceName = sourceName,
-                        lastModified = document?.lastModified() ?: 0L,
-                        fileSize = document?.length() ?: 0L
-                    )
-                    val bookId = AudioBookRepository.idForUri(uri.toString())
-                    val coverPath = runCatching {
-                        retriever.embeddedPicture?.let { picture ->
-                            AudioBookScanner.storeCover(this, bookId, picture)
-                        }
-                    }.getOrNull()
-                    val book = AudioBook(
-                        id = bookId,
-                        name = track.album.ifBlank { title },
-                        tracks = listOf(track),
-                        coverPath = coverPath
-                    )
-                    AudioBookRepository.save(this, book)
-                    book
-                } finally {
-                    retriever.release()
-                }
-            }
-            runOnUiThread {
-                if (isDestroyed) return@runOnUiThread
-                result.onSuccess {
-                    audioImportStatusText?.text = translate("Audio added.")
-                    showQuranAudio()
-                    loadAudioBooksAsync(force = true)
-                    Toast.makeText(this, translate("Audio added."), Toast.LENGTH_SHORT).show()
-                }.onFailure { error ->
-                    val message = translate(error.message ?: "Could not add that audio file.")
-                    audioImportStatusText?.text = message
-                    Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
-    private fun openAudioBookFolderPicker() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-            addFlags(
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-            )
-        }
-        returningFromAudioPicker = true
-        runCatching { startActivityForResult(intent, AUDIO_BOOK_FOLDER_REQUEST) }
-            .onFailure {
-                returningFromAudioPicker = false
-                Toast.makeText(this, translate("Could not open the folder picker."), Toast.LENGTH_LONG).show()
-            }
-    }
-
-    private fun previewAudioBookFolder(uri: Uri, folderName: String) {
-        audioImportStatusText?.text = translate("Checking folder…")
-        AudioBookScanner.preview(this, uri) { result ->
-            if (isFinishing || isDestroyed) return@preview
-            result.onFailure { error ->
-                audioImportStatusText?.text = translate(error.message ?: "Could not read that folder.")
-            }.onSuccess { preview ->
-                val modes = AudioBookFolderMode.entries
-                val labels = arrayOf(
-                    "${translate("One book in this folder")} (${preview.candidates[AudioBookFolderMode.SingleBook].orEmpty().size})",
-                    "${translate("One book per folder")} (${preview.candidates[AudioBookFolderMode.Audiobooks].orEmpty().size})",
-                    "${translate("Books grouped by author")} (${preview.candidates[AudioBookFolderMode.Authors].orEmpty().size})"
-                )
-                var selected = preview.suggestedMode.ordinal
-                fun summary(mode: AudioBookFolderMode): String {
-                    val books = preview.candidates[mode].orEmpty()
-                    return books.take(10).joinToString("\n") { "• ${it.name}" } +
-                        if (books.size > 10) "\n… ${books.size - 10} more" else ""
-                }
-                lateinit var dialog: AlertDialog
-                dialog = AlertDialog.Builder(this)
-                    .setTitle("${translate("Review folder")} · ${preview.folderName.ifBlank { folderName }}")
-                    .setMessage(summary(modes[selected]).ifBlank { translate("No supported audio tracks were found.") })
-                    .setSingleChoiceItems(labels, selected) { _, which ->
-                        selected = which
-                        dialog.setMessage(summary(modes[selected]).ifBlank { translate("No supported audio tracks were found.") })
-                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled =
-                            preview.candidates[modes[selected]].orEmpty().isNotEmpty()
-                    }
-                    .setNegativeButton(translate("Cancel"), null)
-                    .setPositiveButton(translate("Add books")) { _, _ ->
-                        val mode = modes[selected]
-                        audioImportStatusText?.text = translate("Adding books…")
-                        AudioBookScanner.addBooks(applicationContext, preview, mode) { imported ->
-                            if (isDestroyed) return@addBooks
-                            imported.onSuccess { books ->
-                                audioImportStatusText?.text = if (books.isEmpty()) {
-                                    translate("No supported audio tracks were found.")
-                                } else {
-                                    translate("Books added.") + " " + books.size
-                                }
-                                showQuranAudio()
-                                loadAudioBooksAsync(force = true)
-                                if (books.isEmpty()) {
-                                    Toast.makeText(this, translate("No supported audio tracks were found."), Toast.LENGTH_LONG).show()
-                                } else {
-                                    Toast.makeText(this, translate("Books added.") + " " + books.size, Toast.LENGTH_SHORT).show()
-                                }
-                            }.onFailure { error ->
-                                val message = translate(error.message ?: "The audio book could not be added.")
-                                audioImportStatusText?.text = message
-                                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    }
-                    .create()
-                dialog.show()
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled =
-                    preview.candidates[modes[selected]].orEmpty().isNotEmpty()
-            }
-        }
-    }
-
-    private fun renderAudioBookLibrary() {
-        refreshBooksCompose()
-        loadAudioBooksAsync(force = true)
-    }
-
-    private fun loadAudioBooksAsync(force: Boolean = false) {
-        if (booksLibraryLoadStarted && !force) return
-        booksLibraryLoadStarted = true
-        val generation = ++booksLibraryLoadGeneration
-        if (booksLibraryState.value.isEmpty()) booksLibraryLoadingState.value = true
-        thread(name = "audio-book-library") {
-            val loaded = runCatching { AudioBookRepository.all(applicationContext) }
-                .getOrDefault(emptyList())
-            runOnUiThread {
-                if (generation != booksLibraryLoadGeneration || isFinishing || isDestroyed) return@runOnUiThread
-                booksLibraryState.value = loaded
-                booksLibraryLoadingState.value = false
-                if (currentPage == 4) refreshNavigation()
-            }
-        }
-    }
-
-    private fun showAudioBookOptions(bookId: String) {
-        val book = AudioBookRepository.load(this, bookId) ?: return
-        val options = arrayOf(
-            translate("Resume book"),
-            translate("Rename book"),
-            translate("Add bookmark"),
-            translate("Bookmarks"),
-            translate("Delete book")
-        )
-        AlertDialog.Builder(this)
-            .setTitle(book.name)
-            .setItems(options) { _, index ->
-                when (index) {
-                    0 -> resumeAudioBook(bookId)
-                    1 -> renameAudioBook(bookId)
-                    2 -> addAudioBookBookmark(bookId)
-                    3 -> showAudioBookBookmarks(bookId)
-                    4 -> confirmDeleteAudioBook(bookId)
-                }
-            }
-            .setNegativeButton(translate("Cancel"), null)
-            .show()
-    }
-
-    private fun renameAudioBook(bookId: String) {
-        val book = AudioBookRepository.load(this, bookId) ?: return
-        val input = EditText(this).apply {
-            setText(book.name)
-            setTextColor(Color.WHITE)
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            background = outlined(panelRaised, border, 12)
-        }
-        AlertDialog.Builder(this)
-            .setTitle(translate("Rename book"))
-            .setView(input)
-            .setPositiveButton(translate("Save")) { _, _ ->
-                val name = input.text.toString().trim()
-                if (name.isNotBlank()) {
-                    AudioBookRepository.rename(this, bookId, name)
-                    renderAudioBookLibrary()
-                }
-            }
-            .setNegativeButton(translate("Cancel"), null)
-            .show()
-    }
-
-    private fun addAudioBookBookmark(bookId: String) {
-        val book = AudioBookRepository.load(this, bookId) ?: return
-        val controller = quranController
-        val mediaId = controller?.currentMediaItem?.mediaId.orEmpty()
-        val parts = mediaId.split('|')
-        val isCurrentBook = parts.size == 2 && parts[0] == "book:" + bookId
-        val trackIndex = if (isCurrentBook) parts[1].toIntOrNull() ?: book.currentTrackIndex
-            else book.currentTrackIndex
-        val position = if (isCurrentBook) controller?.currentPosition ?: book.positionMs
-            else book.positionMs
-        val defaultName = translate("Bookmark") + " " + (book.bookmarks.size + 1)
-        val input = EditText(this).apply {
-            setText(defaultName)
-            setTextColor(Color.WHITE)
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            background = outlined(panelRaised, border, 12)
-        }
-        AlertDialog.Builder(this)
-            .setTitle(translate("Bookmark name"))
-            .setView(input)
-            .setPositiveButton(translate("Save")) { _, _ ->
-                AudioBookRepository.addBookmark(
-                    this, bookId, input.text.toString().ifBlank { defaultName }, trackIndex, position
-                )
-                val updatedBook = AudioBookRepository.load(this, bookId)
-                if (updatedBook != null) {
-                    booksLibraryState.value = booksLibraryState.value.map { existing -> if (existing.id == bookId) updatedBook else existing }
-                }
-                audioImportStatusText?.text = translate("Bookmark saved.")
-                refreshBooksCompose()
-            }
-            .setNegativeButton(translate("Cancel"), null)
-            .show()
-    }
-
-    private fun showAudioBookBookmarks(bookId: String) {
-        val book = AudioBookRepository.load(this, bookId) ?: return
-        if (book.bookmarks.isEmpty()) {
-            AlertDialog.Builder(this)
-                .setTitle(translate("Bookmarks"))
-                .setMessage(translate("No bookmarks yet."))
-                .setPositiveButton(translate("Close"), null)
-                .show()
-            return
-        }
-        val labels = book.bookmarks.map { bookmark ->
-            val track = book.tracks.getOrNull(bookmark.trackIndex)?.title.orEmpty()
-            bookmark.name + " · " + track + " · " + formatQuranDuration(bookmark.positionMs)
-        }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle(translate("Bookmarks"))
-            .setItems(labels) { _, index ->
-                book.bookmarks.getOrNull(index)?.let { showAudioBookBookmarkOptions(bookId, it) }
-            }
-            .setNegativeButton(translate("Close"), null)
-            .show()
-    }
-
-    private fun showAudioBookBookmarkOptions(bookId: String, bookmark: AudioBookBookmark) {
-        val choices = arrayOf(
-            translate("Resume bookmark"),
-            translate("Rename bookmark"),
-            translate("Delete bookmark")
-        )
-        AlertDialog.Builder(this)
-            .setTitle(bookmark.name)
-            .setItems(choices) { _, index ->
-                when (index) {
-                    0 -> resumeAudioBook(bookId, bookmark.trackIndex, bookmark.positionMs)
-                    1 -> {
-                        val input = EditText(this).apply {
-                            setText(bookmark.name)
-                            setTextColor(Color.WHITE)
-                        }
-                        AlertDialog.Builder(this)
-                            .setTitle(translate("Rename bookmark"))
-                            .setView(input)
-                            .setPositiveButton(translate("Save")) { _, _ ->
-                                AudioBookRepository.renameBookmark(
-                                    this, bookId, bookmark.id, input.text.toString()
-                                )
-                                renderAudioBookLibrary()
-                            }
-                            .setNegativeButton(translate("Cancel"), null)
-                            .show()
-                    }
-                    2 -> {
-                        AudioBookRepository.removeBookmark(this, bookId, bookmark.id)
-                        renderAudioBookLibrary()
-                    }
-                }
-            }
-            .setNegativeButton(translate("Cancel"), null)
-            .show()
-    }
-
-    private fun confirmDeleteAudioBook(bookId: String) {
-        if (AudioBookRepository.load(this, bookId) == null) return
-        AlertDialog.Builder(this)
-            .setTitle(translate("Delete book"))
-            .setMessage(translate("Remove this book from your library? Your original audio files will stay where they are."))
-            .setPositiveButton(translate("Delete")) { _, _ ->
-                if (quranController?.currentMediaItem?.mediaId?.startsWith("book:" + bookId + "|") == true) {
-                    quranController?.stop()
-                    QuranAudioRepository.setActiveTimeline(this, QuranAudioRepository.MAIN_TIMELINE)
-                }
-                AudioBookRepository.delete(this, bookId)
-                renderAudioBookLibrary()
-            }
-            .setNegativeButton(translate("Cancel"), null)
-            .show()
-    }
-
-    private fun resumeAudioBook(
-        bookId: String,
-        targetTrackIndex: Int? = null,
-        targetPositionMs: Long? = null,
-        rewindSeconds: Int = 0
-    ) {
-        val book = booksLibraryState.value.firstOrNull { it.id == bookId }
-            ?: runCatching { AudioBookRepository.load(this, bookId) }.getOrNull()
-        if (book == null) {
-            Toast.makeText(this, translate("This book is no longer available."), Toast.LENGTH_SHORT).show()
-            renderAudioBookLibrary()
-            return
-        }
-        val controller = quranController
-        if (controller == null) {
-            connectQuranController()
-            Toast.makeText(this, translate("The audio player is still starting. Try again."), Toast.LENGTH_SHORT).show()
-            return
-        }
-        val currentMediaId = controller.currentMediaItem?.mediaId.orEmpty()
-        val sameBookAlreadyLoaded = currentMediaId.startsWith("book:$bookId|") &&
-            controller.playbackState != Player.STATE_IDLE &&
-            controller.playbackState != Player.STATE_ENDED
-        if (sameBookAlreadyLoaded && targetTrackIndex == null &&
-            targetPositionMs == null && rewindSeconds == 0
-        ) {
-            // Opening the book already in the player must not replace its queue
-            // or seek back to a stale saved position.
-            AudioBookRepository.setActive(this, bookId)
-            showAudioBookPlayer(bookId)
-            return
-        }
-        val liveTrackIndex = if (sameBookAlreadyLoaded) controller.currentMediaItemIndex else -1
-        val livePosition = if (sameBookAlreadyLoaded) controller.currentPosition else -1L
-        runCatching {
-            saveCurrentQuranPosition()
-            val validTracks = book.tracks.filter { it.path.startsWith("content://") || it.path.startsWith("file://") || File(it.path).isFile }
-            if (validTracks.isEmpty()) error(translate("No playable audio files remain in this book."))
-            val items = validTracks.mapIndexed { index, track ->
-                MediaItem.Builder()
-                    .setMediaId("book:" + bookId + "|" + index)
-                    .setUri(if (track.path.startsWith("content://") || track.path.startsWith("file://")) Uri.parse(track.path) else Uri.fromFile(File(track.path)))
-                    .setMediaMetadata(
-                        MediaMetadata.Builder()
-                            .setTitle(track.title.ifBlank { track.sourceName })
-                            .setArtist(track.artist.ifBlank { book.name })
-                            .setAlbumTitle(track.album.ifBlank { book.name })
-                            .build()
-                    )
-                    .build()
-            }
-            val startIndex = (targetTrackIndex ?: liveTrackIndex.takeIf { it in items.indices }
-                ?: book.currentTrackIndex).coerceIn(0, items.lastIndex)
-            val resumePosition = livePosition.takeIf { it >= 0L } ?: book.positionMs
-            val startPosition = targetPositionMs
-                ?: (resumePosition - rewindSeconds.coerceIn(0, 10) * 1_000L).coerceAtLeast(0L)
-            AudioBookRepository.setActive(this, bookId)
-            QuranAudioRepository.setActiveTimeline(this, "book:" + bookId)
-            controller.setMediaItems(items, startIndex, startPosition.coerceAtLeast(0L))
-            controller.prepare()
-            val speed = getSharedPreferences("avb", MODE_PRIVATE).getFloat("audio_book_speed", 1f)
-                .takeIf { it.isFinite() && it in 0.5f..2.0f } ?: 1f
-            controller.setPlaybackSpeed(speed)
-            controller.play()
-            showAudioBookPlayer(bookId)
-        }.onFailure { error ->
-            Toast.makeText(this, translate("Could not play this book.") + " " + (error.message ?: ""), Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun showAudioBookPlayer(bookId: String) {
-        val book = booksLibraryState.value.firstOrNull { it.id == bookId }
-            ?: AudioBookRepository.load(this, bookId) ?: return
-        selectedAudioBookId = bookId
-        pageTitle.text = book.name
-        content.removeAllViews()
-        audioBookListContainer = null
-
-        // The player is a full-screen Compose destination. Never place it inside
-        // the Android ScrollView: LazyColumn/Compose scrolling needs bounded height.
-        val compose = booksLibraryComposeView ?: ComposeView(this).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-        }.also { booksLibraryComposeView = it }
-        (booksAddContentComposeView?.parent as? android.view.ViewGroup)?.removeView(booksAddContentComposeView)
-        (compose.parent as? android.view.ViewGroup)?.removeView(compose)
-        compose.visibility = View.VISIBLE
-        booksComposeView = compose
-        val shell = mainScrollView.parent as? LinearLayout
-            ?: error("Books container is not attached to the app shell")
-        mainScrollView.visibility = View.GONE
-        val contentIndex = shell.indexOfChild(mainScrollView).coerceAtLeast(0)
-        shell.addView(compose, contentIndex, LinearLayout.LayoutParams(-1, 0, 1f))
-        refreshBooksCompose()
-        updateQuranPlaybackUi()
-        refreshNavigation()
-    }
-
-    private fun showAudioBookSpeedDialog() {
-        val speeds = arrayOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
-        val labels = speeds.map { "${it}×" }.toTypedArray()
-        val prefs = getSharedPreferences("avb", MODE_PRIVATE)
-        val current = prefs.getFloat("audio_book_speed", 1f)
-        val selected = speeds.indices.minByOrNull { kotlin.math.abs(speeds[it] - current) } ?: 1
-        AlertDialog.Builder(this)
-            .setTitle(translate("Playback speed"))
-            .setSingleChoiceItems(labels, selected) { dialog, which ->
-                prefs.edit().putFloat("audio_book_speed", speeds[which]).apply()
-                quranController?.setPlaybackSpeed(speeds[which])
-                dialog.dismiss()
-            }
-            .setNegativeButton(translate("Cancel"), null)
-            .show()
-    }
-
-    private fun showAudioBookSleepTimer() {
-        val choices = arrayOf("5 min", "15 min", "30 min", "45 min", translate("End of chapter"), translate("Turn off"))
-        AlertDialog.Builder(this)
-            .setTitle(translate("Sleep timer"))
-            .setItems(choices) { _, which ->
-                sleepTimerHandler.removeCallbacksAndMessages(null)
-                sleepTimerEndAt = 0L
-                if (which == 4) {
-                    val controller = quranController ?: return@setItems
-                    val duration = controller.duration
-                    if (duration <= 0L || duration == androidx.media3.common.C.TIME_UNSET) {
-                        Toast.makeText(this, translate("Chapter duration is not available yet."), Toast.LENGTH_SHORT).show()
-                        return@setItems
-                    }
-                    val remaining = (duration - controller.currentPosition).coerceAtLeast(0L)
-                    sleepTimerEndAt = System.currentTimeMillis() + remaining
-                    sleepTimerHandler.postDelayed({ runCatching { controller.pause() }; sleepTimerEndAt = 0L }, remaining)
-                } else if (which != 5) {
-                    val minutes = listOf(5L, 15L, 30L, 45L)[which]
-                    sleepTimerEndAt = System.currentTimeMillis() + minutes * 60_000L
-                    sleepTimerHandler.postDelayed({ quranController?.pause(); sleepTimerEndAt = 0L }, minutes * 60_000L)
-                }
-                updateQuranPlaybackUi()
-            }
-            .show()
     }
 
     private fun showQibla() {
@@ -2719,42 +2114,6 @@ class MainActivity : FragmentActivity() {
             import.setOnClickListener { importBackup() }
             section.addView(import)
         })
-        content.addView(collapsibleSection("Books", defaultOpen = false) { cardContent ->
-            val prefs = getSharedPreferences("avb", MODE_PRIVATE)
-            addText(cardContent, "Fine-tune audiobook skipping and saved-position playback.")
-            fun secondsSlider(label: String, key: String, min: Int, max: Int, step: Int, default: Int) {
-                val value = TextView(this).apply {
-                    textSize = 14f
-                    setTextColor(Color.WHITE)
-                    setPadding(0, dp(10), 0, dp(2))
-                }
-                val slider = SeekBar(this).apply {
-                    this.max = (max - min) / step
-                    progressTintList = android.content.res.ColorStateList.valueOf(purple)
-                    progressBackgroundTintList = android.content.res.ColorStateList.valueOf(border)
-                    thumbTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
-                    progress = ((prefs.getInt(key, default).coerceIn(min, max) - min) / step)
-                    fun update(number: Int) {
-                        value.text = translate(label) + "  ·  " + number + " " + translate("seconds")
-                    }
-                    update(min + progress * step)
-                    setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                        override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                            val selected = min + progress * step
-                            update(selected)
-                            if (fromUser) prefs.edit().putInt(key, selected).apply()
-                        }
-                        override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
-                        override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
-                    })
-                }
-                cardContent.addView(value)
-                cardContent.addView(slider, LinearLayout.LayoutParams(-1, dp(44)))
-            }
-            secondsSlider("Rewind", "books_rewind_seconds", 5, 120, 5, 20)
-            secondsSlider("Skip forward", "books_forward_seconds", 5, 120, 5, 30)
-            secondsSlider("Resume before saved position", "books_resume_offset_seconds", 0, 10, 1, 2)
-        })
         localizeTree(content)
         refreshNavigation()
     }
@@ -3277,7 +2636,5 @@ class MainActivity : FragmentActivity() {
         private const val STATE_PAGE = "swizy_current_page"
         private const val STATE_SCROLL_Y = "swizy_scroll_y"
         private const val USER_CONTENT_TAG = "swizy_user_content"
-        private const val AUDIO_BOOK_FOLDER_REQUEST = 1011
-        private const val AUDIO_BOOK_FILE_REQUEST = 1012
     }
 }
